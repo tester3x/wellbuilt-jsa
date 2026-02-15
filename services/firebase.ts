@@ -10,16 +10,16 @@ import {
   where,
 } from "firebase/firestore";
 
-// Firebase configuration
-// TODO: Replace these with your actual Firebase project credentials
-// Get these from: Firebase Console > Project Settings > General > Your apps > Web app
+// Firebase configuration — WellBuilt Suite (shared with WB Tickets)
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
+  apiKey: "AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI",
+  authDomain: "wellbuilt-sync.firebaseapp.com",
+  databaseURL: "https://wellbuilt-sync-default-rtdb.firebaseio.com",
+  projectId: "wellbuilt-sync",
+  storageBucket: "wellbuilt-sync.firebasestorage.app",
+  messagingSenderId: "559487114498",
+  appId: "1:559487114498:web:e951ab0c6388339d5bf61b",
+  measurementId: "G-XWQQ98B8LG",
 };
 
 // Initialize Firebase

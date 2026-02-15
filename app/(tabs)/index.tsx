@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
+    ActivityIndicator,
     Alert,
     Image,
     Keyboard,
@@ -20,6 +21,13 @@ import {
 
 import { colors } from "../../constants/colors";
 import { STORAGE_KEYS } from "../../constants/storageKeys";
+import {
+  loadAllWells,
+  loadOperators,
+  loadAliases,
+  searchWells,
+  WellRecord,
+} from "../../services/wellData";
 import { useLanguage } from "../contexts/LanguageContext";
 
 export default function JsaHomeScreen() {
@@ -29,11 +37,12 @@ export default function JsaHomeScreen() {
   const [truckNumber, setTruckNumber] = useState("");
   const [locationInput, setLocationInput] = useState("");
   const [favoriteLocations, setFavoriteLocations] = useState<string[]>([]);
-  const [favoriteWells, setFavoriteWells] = useState<string[]>([]);
   const [jobActivityName, setJobActivityName] = useState("");
   const [pusher, setPusher] = useState("");
   const [wellName, setWellName] = useState("");
-  const [addedWells, setAddedWells] = useState<string[]>([]);
+  const [addedWells, setAddedWells] = useState<{ name: string; operator: string; county: string }[]>([]);
+  const [wellSuggestions, setWellSuggestions] = useState<WellRecord[]>([]);
+  const [wellDataLoading, setWellDataLoading] = useState(false);
   const [otherInfo, setOtherInfo] = useState("");
   const [date, setDate] = useState(
     new Date().toISOString().slice(0, 10) // YYYY-MM-DD
@@ -41,6 +50,21 @@ export default function JsaHomeScreen() {
   const [continueJsa, setContinueJsa] = useState<any | null>(null);
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const { t, toggleLang, lang, setLang } = useLanguage();
+
+  // Load NDIC well data on mount (operators, aliases, all wells)
+  useEffect(() => {
+    const loadWellData = async () => {
+      setWellDataLoading(true);
+      try {
+        await Promise.all([loadOperators(), loadAliases(), loadAllWells()]);
+      } catch (err) {
+        console.warn('[JSA] Failed to load NDIC well data:', err);
+      } finally {
+        setWellDataLoading(false);
+      }
+    };
+    loadWellData();
+  }, []);
 
   const scrollViewRef = useRef<ScrollView>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -60,21 +84,37 @@ export default function JsaHomeScreen() {
 
   const [addedLocations, setAddedLocations] = useState<string[]>([]);
 
-  const addWellToList = (well: string) => {
-    const trimmed = well.trim();
-    if (!trimmed) return;
-    if (!addedWells.some(w => w.toLowerCase() === trimmed.toLowerCase())) {
-      setAddedWells((prev) => [...prev, trimmed]);
+  const handleWellTextChange = (text: string) => {
+    setWellName(text);
+    if (text.trim().length >= 3) {
+      const results = searchWells(text);
+      setWellSuggestions(results);
+    } else {
+      setWellSuggestions([]);
     }
-    // Also save as favorite if not already
-    if (!favoriteWells.some(w => w.toLowerCase() === trimmed.toLowerCase())) {
-      setFavoriteWells((prev) => [...prev, trimmed]);
-    }
-    setWellName("");
   };
 
-  const removeWellFromList = (well: string) => {
-    setAddedWells((prev) => prev.filter((item) => item !== well));
+  const handleWellSelect = (well: WellRecord) => {
+    const entry = { name: well.well_name, operator: well.operator, county: well.county };
+    if (!addedWells.some(w => w.name === well.well_name && w.operator === well.operator)) {
+      setAddedWells((prev) => [...prev, entry]);
+    }
+    setWellName("");
+    setWellSuggestions([]);
+  };
+
+  const addWellManual = () => {
+    const trimmed = wellName.trim();
+    if (!trimmed) return;
+    if (!addedWells.some(w => w.name.toLowerCase() === trimmed.toLowerCase())) {
+      setAddedWells((prev) => [...prev, { name: trimmed, operator: '', county: '' }]);
+    }
+    setWellName("");
+    setWellSuggestions([]);
+  };
+
+  const removeWellFromList = (name: string) => {
+    setAddedWells((prev) => prev.filter((item) => item.name !== name));
   };
 
   const addLocationToList = (loc: string) => {
@@ -94,26 +134,15 @@ export default function JsaHomeScreen() {
     setAddedLocations((prev) => prev.filter((item) => item !== loc));
   };
 
-  // Load favorites on mount - combined to ensure we only mark loaded after both are done
+  // Load location favorites on mount
   useEffect(() => {
     const loadFavorites = async () => {
       try {
-        const [storedLocations, storedWells] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.favoriteLocations),
-          AsyncStorage.getItem(STORAGE_KEYS.favoriteWells),
-        ]);
-
+        const storedLocations = await AsyncStorage.getItem(STORAGE_KEYS.favoriteLocations);
         if (storedLocations) {
           const parsedLocs = JSON.parse(storedLocations);
           if (Array.isArray(parsedLocs)) {
             setFavoriteLocations(parsedLocs.filter((item) => typeof item === "string"));
-          }
-        }
-
-        if (storedWells) {
-          const parsedWells = JSON.parse(storedWells);
-          if (Array.isArray(parsedWells)) {
-            setFavoriteWells(parsedWells.filter((item) => typeof item === "string"));
           }
         }
       } catch (error) {
@@ -125,20 +154,13 @@ export default function JsaHomeScreen() {
     loadFavorites();
   }, []);
 
-  // Only save favorites after initial load is complete
+  // Save location favorites after initial load
   useEffect(() => {
     if (!favoritesLoaded) return;
     AsyncStorage.setItem(STORAGE_KEYS.favoriteLocations, JSON.stringify(favoriteLocations)).catch((error) =>
       console.warn("Failed to save favorite locations", error)
     );
   }, [favoriteLocations, favoritesLoaded]);
-
-  useEffect(() => {
-    if (!favoritesLoaded) return;
-    AsyncStorage.setItem(STORAGE_KEYS.favoriteWells, JSON.stringify(favoriteWells)).catch((error) =>
-      console.warn("Failed to save favorite wells", error)
-    );
-  }, [favoriteWells, favoritesLoaded]);
 
   useEffect(() => {
     const loadDriverAndTruck = async () => {
@@ -217,8 +239,8 @@ export default function JsaHomeScreen() {
         truckNumber,
         jobActivityName,
         pusher,
-        wellName: addedWells[0] || wellName,
-        wells: JSON.stringify(addedWells),
+        wellName: addedWells[0]?.name || wellName,
+        wells: JSON.stringify(addedWells.map(w => w.name)),
         otherInfo,
         location: addedLocations[0] || locationInput.trim(),
         locations: JSON.stringify(addedLocations),
@@ -406,65 +428,43 @@ export default function JsaHomeScreen() {
 
           <View style={[styles.field, { zIndex: 20 }]}>
             <Text style={styles.label}>{t("Well Name")}</Text>
+            {wellDataLoading && (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.loadingText}>{t("Loading NDIC wells...")}</Text>
+              </View>
+            )}
             <TextInput
               style={styles.input}
-              placeholder={t("Well name")}
+              placeholder={wellDataLoading ? t("Loading wells...") : t("Search NDIC wells (3+ chars)...")}
               placeholderTextColor={colors.textMuted}
               value={wellName}
-              onChangeText={setWellName}
+              onChangeText={handleWellTextChange}
               returnKeyType="next"
-              onBlur={() => {
-                if (wellName.trim()) {
-                  addWellToList(wellName);
-                }
-              }}
+              onSubmitEditing={addWellManual}
             />
-            {(() => {
-              const trimmed = wellName.trim().toLowerCase();
-              const matches = trimmed
-                ? favoriteWells.filter((f) => f.toLowerCase().includes(trimmed) && f.toLowerCase() !== trimmed)
-                : [];
-              return matches.length > 0 ? (
-                <View style={styles.autocompleteDropdown}>
-                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                    {matches.map((fav, index) => (
-                      <TouchableOpacity
-                        key={fav}
-                        style={[styles.dropdownItem, index === matches.length - 1 && { borderBottomWidth: 0 }]}
-                        onPress={() => addWellToList(fav)}
-                        onLongPress={() => {
-                          Alert.alert(
-                            t("Remove Favorite"),
-                            `${t("Remove")} "${fav}"?`,
-                            [
-                              { text: t("Cancel"), style: "cancel" },
-                              {
-                                text: t("Remove"),
-                                style: "destructive",
-                                onPress: () => setFavoriteWells((prev) => prev.filter((w) => w !== fav)),
-                              },
-                            ]
-                          );
-                        }}
-                      >
-                        <Text style={styles.dropdownItemText}>{fav}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              ) : null;
-            })()}
-            {wellName.trim() && !favoriteWells.some(w => w.toLowerCase() === wellName.trim().toLowerCase()) && (
+            {wellSuggestions.length > 0 && (
+              <View style={styles.autocompleteDropdown}>
+                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                  {wellSuggestions.map((well, index) => (
+                    <TouchableOpacity
+                      key={`${well.api_no}-${index}`}
+                      style={[styles.dropdownItem, index === wellSuggestions.length - 1 && { borderBottomWidth: 0 }]}
+                      onPress={() => handleWellSelect(well)}
+                    >
+                      <Text style={styles.dropdownItemText}>{well.well_name}</Text>
+                      <Text style={styles.dropdownItemSub}>{well.operator} • {well.county} Co.</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+            {wellName.trim().length >= 3 && wellSuggestions.length === 0 && !wellDataLoading && (
               <TouchableOpacity
                 style={styles.saveInlineButton}
-                onPress={() => {
-                  const trimmed = wellName.trim();
-                  if (trimmed && !favoriteWells.some(w => w.toLowerCase() === trimmed.toLowerCase())) {
-                    setFavoriteWells((prev) => [...prev, trimmed]);
-                  }
-                }}
+                onPress={addWellManual}
               >
-                <Text style={styles.saveInlineText}>★ {t("Save Favorite")}</Text>
+                <Text style={styles.saveInlineText}>+ {t("Add")} "{wellName.trim()}" {t("manually")}</Text>
               </TouchableOpacity>
             )}
             {addedWells.length > 0 && (
@@ -473,11 +473,16 @@ export default function JsaHomeScreen() {
                 <View style={[styles.favoriteList, { marginTop: 6 }]}>
                   {addedWells.map((well) => (
                     <TouchableOpacity
-                      key={well}
+                      key={well.name}
                       style={styles.favoriteRow}
-                      onPress={() => removeWellFromList(well)}
+                      onPress={() => removeWellFromList(well.name)}
                     >
-                      <Text style={styles.favoriteText}>{well}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.favoriteText}>{well.name}</Text>
+                        {well.operator ? (
+                          <Text style={styles.wellDetailText}>{well.operator} • {well.county} Co.</Text>
+                        ) : null}
+                      </View>
                       <Text style={styles.favoriteAdd}>{t("Remove")}</Text>
                     </TouchableOpacity>
                   ))}
@@ -487,10 +492,10 @@ export default function JsaHomeScreen() {
           </View>
 
           <View style={[styles.field, { zIndex: 10 }]}>
-            <Text style={styles.label}>{t("Location")}</Text>
+            <Text style={styles.label}>{t("Lease / Pad Name")}</Text>
             <TextInput
               style={styles.input}
-              placeholder={t("Lease / site name")}
+              placeholder={t("e.g. Kraken Epping Pad (optional)")}
               placeholderTextColor={colors.textMuted}
               value={locationInput}
               onChangeText={setLocationInput}
@@ -981,5 +986,25 @@ const styles = StyleSheet.create({
   dropdownItemText: {
     fontSize: 14,
     color: colors.textDark,
+  },
+  dropdownItemSub: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  wellDetailText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  loadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  loadingText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginLeft: 6,
   },
 });

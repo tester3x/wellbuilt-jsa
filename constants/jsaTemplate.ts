@@ -337,7 +337,7 @@ export const UNLOADING_JSA = {
     "Other",
   ],
   preparedForWorkChecklist: [
-    "I am proberly trained for the job",
+    "I am properly trained for the job",
     "I have the tools & PPE needed for work",
     "SDS",
   ],
