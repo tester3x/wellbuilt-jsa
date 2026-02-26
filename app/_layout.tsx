@@ -18,23 +18,21 @@ export const unstable_settings = {
 };
 
 /** Renders the main navigation stack with dynamic accent-colored header */
-function AuthenticatedApp({ colorScheme }: { colorScheme: ReturnType<typeof useColorScheme> }) {
+function NavigationStack() {
   const { accent } = useTheme();
   return (
-    <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: accent },
-          headerTintColor: '#FFFFFF',
-          headerTitleStyle: { fontWeight: '600', color: '#FFFFFF' },
-          headerBackTitleStyle: { fontSize: 12 },
-        }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="history" options={{ title: 'Saved JSAs', headerBackTitle: 'Back', headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="light" />
-    </NavThemeProvider>
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: accent },
+        headerTintColor: '#FFFFFF',
+        headerTitleStyle: { fontWeight: '600', color: '#FFFFFF' },
+        headerBackTitleStyle: { fontSize: 12 },
+      }}>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="history" options={{ title: 'Saved JSAs', headerBackTitle: 'Back', headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
+      <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+    </Stack>
   );
 }
 
@@ -43,7 +41,8 @@ function AppContent() {
   const colorScheme = useColorScheme();
   const { mode, isAuthenticated, ssoLogin } = useAuth();
 
-  // Handle SSO deep links: jsaapp://login?hash={hash}&name={name}
+  // Handle SSO deep links while app is running (warm start).
+  // Cold-start deep links are handled by the /login route directly.
   useEffect(() => {
     const handleDeepLink = (event: { url: string }) => {
       try {
@@ -59,34 +58,37 @@ function AppContent() {
       }
     };
 
-    // Check if app was opened via deep link
-    Linking.getInitialURL().then((url) => {
-      if (url) handleDeepLink({ url });
-    });
-
     // Listen for deep links while app is running
     const subscription = Linking.addEventListener('url', handleDeepLink);
     return () => subscription.remove();
   }, [ssoLogin]);
 
-  // While checking initial auth state, show splash
-  if (mode === 'checking') {
-    return (
-      <View style={styles.splash}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
-  // Not authenticated — show login screen
-  if (!isAuthenticated) {
-    return <LoginScreen />;
-  }
-
-  // Authenticated — show the main app
+  // IMPORTANT: Always render the Stack so Expo Router can match deep link routes.
+  // If we return null or a plain View here, deep links like jsaapp://login?hash=...
+  // get "Unmatched Route" because the navigation tree isn't mounted.
+  // Splash/LoginScreen overlay on top when not authenticated.
   return (
     <ThemeProvider>
-      <AuthenticatedApp colorScheme={colorScheme} />
+      <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <View style={{ flex: 1 }}>
+          <NavigationStack />
+
+          {/* Splash overlay while checking auth */}
+          {mode === 'checking' && (
+            <View style={[styles.splash, styles.overlay]}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          )}
+
+          {/* Login overlay when not authenticated */}
+          {mode !== 'checking' && !isAuthenticated && (
+            <View style={styles.overlay}>
+              <LoginScreen />
+            </View>
+          )}
+        </View>
+        <StatusBar style="light" />
+      </NavThemeProvider>
     </ThemeProvider>
   );
 }
@@ -107,5 +109,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.background,
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 10,
   },
 });
