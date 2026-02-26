@@ -20,6 +20,7 @@ import { colors } from "../constants/colors";
 import { PPE_ITEMS, PpeItem } from "../constants/jsaTemplate";
 import { STORAGE_KEYS } from "../constants/storageKeys";
 import { useLanguage } from "./contexts/LanguageContext";
+import { useTheme } from "./contexts/ThemeContext";
 
 type Params = {
   driverName?: string;
@@ -56,6 +57,7 @@ export default function PpeScreen() {
   const resolvedTask = jsaType || task;
   const router = useRouter();
   const { t } = useLanguage();
+  const { accent } = useTheme();
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [otherItems, setOtherItems] = useState<string[]>([]); // List of added "other" PPE items
   const [otherInput, setOtherInput] = useState(""); // Current text input for adding new items
@@ -203,7 +205,7 @@ export default function PpeScreen() {
           headerBackTitle: t("Steps & Hazards"),
           headerRight: () => (
             <TouchableOpacity onPress={() => router.replace("/")} style={{ paddingHorizontal: 10 }}>
-              <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
+              <Text style={{ color: accent, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
             </TouchableOpacity>
           ),
         }}
@@ -235,7 +237,7 @@ export default function PpeScreen() {
                 <View key={item.id} style={styles.listRow}>
                   <TouchableOpacity
                     onPress={() => toggleItem(item)}
-                    style={[styles.checkbox, checked && styles.checkboxChecked]}
+                    style={[styles.checkbox, { borderColor: accent }, checked && [styles.checkboxChecked, { backgroundColor: accent }]]}
                     activeOpacity={0.8}
                   >
                     {checked && <Text style={styles.checkboxMark}>✓</Text>}
@@ -247,7 +249,7 @@ export default function PpeScreen() {
 
             {/* Other PPE input */}
             <View style={styles.listRow}>
-              <View style={[styles.checkbox, styles.checkboxChecked]}>
+              <View style={[styles.checkbox, styles.checkboxChecked, { borderColor: accent, backgroundColor: accent }]}>
                 <Text style={styles.checkboxMark}>+</Text>
               </View>
               <Text style={styles.itemLabel}>{t("Other")}</Text>
@@ -269,7 +271,7 @@ export default function PpeScreen() {
             {/* List of added "other" items */}
             {otherItems.map((item) => (
               <View key={item} style={styles.listRow}>
-                <View style={[styles.checkbox, styles.checkboxChecked]}>
+                <View style={[styles.checkbox, styles.checkboxChecked, { borderColor: accent, backgroundColor: accent }]}>
                   <Text style={styles.checkboxMark}>✓</Text>
                 </View>
                 <Text style={styles.itemLabel}>{item}</Text>
@@ -281,7 +283,7 @@ export default function PpeScreen() {
           </View>
         </View>
 
-          <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
+          <TouchableOpacity style={[styles.nextButton, { backgroundColor: accent }]} onPress={handleNext}>
             <Text style={styles.nextButtonText}>{t("Next")}</Text>
           </TouchableOpacity>
           </Pressable>

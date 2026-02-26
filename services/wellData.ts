@@ -183,6 +183,97 @@ export const loadWellsForOperator = async (operator: string): Promise<WellRecord
   }
 };
 
+// ── Company-scoped loading ──────────────────────────────────────────────────
+// Same pattern as WB T: load only wells for company's assigned operators.
+// Falls back to loadAllWells() if no operators provided.
+
+let companyWellsCache: WellRecord[] = [];
+let companyWellsLoaded = false;
+
+/**
+ * Pre-load wells for the company's assigned operators.
+ * ~200-400 wells instead of 19k. Caches per-operator in AsyncStorage (24hr TTL).
+ */
+export const preloadCompanyWells = async (
+  operatorNames: string[]
+): Promise<WellRecord[]> => {
+  if (companyWellsLoaded && companyWellsCache.length > 0) return companyWellsCache;
+
+  if (!operatorNames || operatorNames.length === 0) {
+    console.log('[wellData-JSA] No assigned operators, falling back to loadAllWells');
+    const all = await loadAllWells();
+    companyWellsCache = all;
+    companyWellsLoaded = true;
+    return companyWellsCache;
+  }
+
+  console.log('[wellData-JSA] Pre-loading wells for operators:', operatorNames);
+  const allWells: WellRecord[] = [];
+
+  // Also resolve aliases — some company configs use DBA names
+  const aliases = await loadAliases();
+  const resolvedOperators = new Set<string>();
+  for (const name of operatorNames) {
+    resolvedOperators.add(name);
+    // Check if this name is an alias
+    for (const alias of aliases) {
+      if (alias.alias.toLowerCase() === name.toLowerCase()) {
+        alias.operators.forEach((op) => resolvedOperators.add(op));
+      }
+    }
+  }
+
+  for (const operator of resolvedOperators) {
+    const cacheKey = `jsa_companyWells_${operator.replace(/\s+/g, '_')}`;
+    try {
+      // Check per-operator cache
+      if (await isCacheFresh(cacheKey)) {
+        const raw = await AsyncStorage.getItem(cacheKey);
+        if (raw) {
+          const wells = JSON.parse(raw) as WellRecord[];
+          allWells.push(...wells);
+          continue;
+        }
+      }
+
+      // Fetch from Firestore
+      const wells = await loadWellsForOperator(operator);
+      allWells.push(...wells);
+
+      // Cache per-operator
+      await AsyncStorage.setItem(cacheKey, JSON.stringify(wells));
+      await setCacheTimestamp(cacheKey);
+    } catch (err) {
+      console.warn(`[wellData-JSA] Failed to load wells for ${operator}:`, err);
+    }
+  }
+
+  companyWellsCache = allWells;
+  companyWellsLoaded = true;
+  // Also populate allWellsCache so searchWells() works
+  if (allWellsCache.length === 0) {
+    allWellsCache = allWells;
+  }
+  console.log(`[wellData-JSA] Pre-loaded ${allWells.length} wells for ${resolvedOperators.size} operators`);
+  return companyWellsCache;
+};
+
+/**
+ * Search across pre-loaded company wells.
+ */
+export const searchCompanyWells = (
+  searchQuery: string,
+  maxResults = 10
+): WellRecord[] => {
+  // searchWells() already searches allWellsCache which we populated
+  return searchWells(searchQuery, maxResults);
+};
+
+/**
+ * Check if company wells have been pre-loaded.
+ */
+export const isCompanyWellsLoaded = (): boolean => companyWellsLoaded;
+
 // ── Search ──────────────────────────────────────────────────────────────────
 
 // Noise words to strip from search queries

@@ -15,6 +15,7 @@ import {
 import { colors } from "../constants/colors";
 import { STORAGE_KEYS } from "../constants/storageKeys";
 import { useLanguage } from "./contexts/LanguageContext";
+import { useTheme } from "./contexts/ThemeContext";
 
 type Params = {
   id?: string;
@@ -43,6 +44,7 @@ export default function ViewJsaScreen() {
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
   const { t } = useLanguage();
+  const { accent } = useTheme();
 
   // Edit mode state - start in edit mode if editMode param is passed
   const [isEditing, setIsEditing] = useState(params.editMode === "true");
@@ -161,7 +163,7 @@ export default function ViewJsaScreen() {
           headerBackTitle: t("Saved JSAs"),
           headerRight: () => (
             <TouchableOpacity onPress={() => router.replace("/")} style={{ paddingHorizontal: 10 }}>
-              <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
+              <Text style={{ color: accent, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
             </TouchableOpacity>
           ),
         }}
@@ -384,7 +386,7 @@ export default function ViewJsaScreen() {
             <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
               <Text style={styles.cancelButtonText}>{t("Cancel")}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+            <TouchableOpacity style={[styles.saveButton, { backgroundColor: accent }]} onPress={handleSave}>
               <Text style={styles.saveButtonText}>{t("Save Changes")}</Text>
             </TouchableOpacity>
           </View>

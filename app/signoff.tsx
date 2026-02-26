@@ -24,6 +24,7 @@ import {
 } from "../constants/jsaTemplate";
 import { STORAGE_KEYS } from "../constants/storageKeys";
 import { useLanguage } from "./contexts/LanguageContext";
+import { useTheme } from "./contexts/ThemeContext";
 
 type Params = {
   driverName?: string;
@@ -45,6 +46,15 @@ export default function SignoffScreen() {
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
   const { t } = useLanguage();
+  const { emergencyContacts: themeEmergencyContacts, companyContacts: themeCompanyContacts, accent } = useTheme();
+
+  // Use company config contacts if available, otherwise fall back to hardcoded defaults
+  const emergencyContacts = themeEmergencyContacts.length > 0
+    ? themeEmergencyContacts.map((c, i) => ({ id: `ec-${i}`, ...c }))
+    : EMERGENCY_CONTACTS;
+  const companyContacts = themeCompanyContacts.length > 0
+    ? themeCompanyContacts.map((c, i) => ({ id: `cc-${i}`, ...c }))
+    : COMPANY_CONTACTS;
 
   const [prepared, setPrepared] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState("");
@@ -242,8 +252,8 @@ export default function SignoffScreen() {
                 <Switch
                   value={!!prepared[item.id]}
                   onValueChange={() => togglePrepared(item.id)}
-                  thumbColor={prepared[item.id] ? colors.primaryDark : "#f4f3f4"}
-                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor={prepared[item.id] ? accent : "#f4f3f4"}
+                  trackColor={{ false: colors.border, true: accent + '40' }}
                 />
                 <Text style={styles.checkLabel}>{t(item.label)}</Text>
               </View>
@@ -252,7 +262,7 @@ export default function SignoffScreen() {
 
           <View style={styles.summaryCard}>
             <Text style={styles.sectionTitle}>{t("Emergency Contacts")}</Text>
-            {EMERGENCY_CONTACTS.map((contact) => (
+            {emergencyContacts.map((contact) => (
               <View key={contact.id} style={styles.contactRow}>
                 <Text style={styles.contactLabel}>{contact.label}</Text>
                 <Text style={styles.contactPhone}>{contact.phone}</Text>
@@ -262,7 +272,7 @@ export default function SignoffScreen() {
 
           <View style={styles.summaryCard}>
             <Text style={styles.sectionTitle}>{t("Company Contacts")}</Text>
-            {COMPANY_CONTACTS.map((contact) => (
+            {companyContacts.map((contact) => (
               <View key={contact.id} style={styles.contactRow}>
                 <Text style={styles.contactLabel}>{contact.label}</Text>
                 <Text style={styles.contactPhone}>{contact.phone}</Text>
@@ -297,7 +307,7 @@ export default function SignoffScreen() {
             />
           </View>
 
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
+        <TouchableOpacity style={[styles.submitButton, { backgroundColor: accent }]} onPress={handleSubmit}>
           <Text style={styles.submitText}>{t("Submit JSA")}</Text>
         </TouchableOpacity>
       </ScrollView>

@@ -16,6 +16,7 @@ import {
 import { colors } from "../../constants/colors";
 import { STORAGE_KEYS } from "../../constants/storageKeys";
 import { useLanguage } from "../contexts/LanguageContext";
+import { useTheme } from "../contexts/ThemeContext";
 
 type HistoryItem = {
   id: string;
@@ -40,6 +41,7 @@ type HistoryItem = {
 export default function HistoryTabScreen() {
   const router = useRouter();
   const { t } = useLanguage();
+  const { accent } = useTheme();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -196,16 +198,16 @@ export default function HistoryTabScreen() {
 
       <View style={styles.cardActions}>
         <TouchableOpacity
-          style={styles.viewButton}
+          style={[styles.viewButton, { backgroundColor: accent }]}
           onPress={() => handleViewDetails(item)}
         >
           <Text style={styles.viewButtonText}>{t("View")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.duplicateButton}
+          style={[styles.duplicateButton, { borderColor: accent }]}
           onPress={() => handleDuplicate(item)}
         >
-          <Text style={styles.duplicateButtonText}>{t("Duplicate")}</Text>
+          <Text style={[styles.duplicateButtonText, { color: accent }]}>{t("Duplicate")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.deleteButton}
@@ -221,7 +223,7 @@ export default function HistoryTabScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={accent} />
           <Text style={styles.loadingText}>{t("Loading history...")}</Text>
         </View>
       </SafeAreaView>
@@ -233,7 +235,7 @@ export default function HistoryTabScreen() {
       {error ? (
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
+          <TouchableOpacity style={[styles.retryButton, { backgroundColor: accent }]} onPress={onRefresh}>
             <Text style={styles.retryButtonText}>{t("Try Again")}</Text>
           </TouchableOpacity>
         </View>
@@ -254,8 +256,8 @@ export default function HistoryTabScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={[colors.primary]}
-              tintColor={colors.primary}
+              colors={[accent]}
+              tintColor={accent}
             />
           }
         />

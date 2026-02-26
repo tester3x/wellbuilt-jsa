@@ -14,10 +14,9 @@ import {
 } from "react-native";
 import { COMPANY_CONTACTS, EMERGENCY_CONTACTS } from "../constants/jsaTemplate";
 import { useLanguage } from "./contexts/LanguageContext";
+import { useTheme } from "./contexts/ThemeContext";
 
-const colors = {
-  gold: "#F5A623",
-  goldDark: "#D68910",
+const pdfColors = {
   background: "#F5F5F5",
   card: "#FFFFFF",
   textDark: "#111111",
@@ -46,6 +45,7 @@ export default function PdfScreen() {
   const params = useLocalSearchParams<any>();
   const router = useRouter();
   const { t } = useLanguage();
+  const { accent, emergencyContacts: themeEmergencyContacts, companyContacts: themeCompanyContacts, logoUrl } = useTheme();
   const [isGenerating, setIsGenerating] = useState(false);
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
 
@@ -82,6 +82,12 @@ export default function PdfScreen() {
   React.useEffect(() => {
     const loadLogo = async () => {
       try {
+        // Prefer company logo from ThemeContext (Firebase Storage URL)
+        if (logoUrl) {
+          setLogoDataUrl(logoUrl);
+          return;
+        }
+        // Fall back to bundled logo
         const asset = Asset.fromModule(require("../assets/images/company-logo-transparent.png"));
         await asset.downloadAsync();
         const fileUri = asset.localUri || asset.uri;
@@ -93,11 +99,15 @@ export default function PdfScreen() {
       }
     };
     loadLogo();
-  }, []);
+  }, [logoUrl]);
 
   const html = useMemo(() => {
-    const emergencyContacts = EMERGENCY_CONTACTS;
-    const companyContacts = COMPANY_CONTACTS;
+    const emergencyContacts = themeEmergencyContacts.length > 0
+      ? themeEmergencyContacts
+      : EMERGENCY_CONTACTS;
+    const companyContacts = themeCompanyContacts.length > 0
+      ? themeCompanyContacts
+      : COMPANY_CONTACTS;
     const driverName = params.driverName || "";
     const truckNumber = params.truckNumber || "";
     const pusher = params.pusher || "";
@@ -191,7 +201,7 @@ export default function PdfScreen() {
     .tag {
       padding: 2px 8px;
       border-radius: 999px;
-      background: #F5A623;
+      background: ${accent};
       color: #111111;
       font-weight: 500;
     }
@@ -232,7 +242,7 @@ export default function PdfScreen() {
     .pill {
       padding: 3px 8px;
       border-radius: 999px;
-      border: 1px solid #F5A623;
+      border: 1px solid ${accent};
       color: #111111;
       background: #fff7d6;
     }
@@ -493,7 +503,7 @@ export default function PdfScreen() {
           headerBackTitle: t("Sign Off"),
           headerRight: () => (
             <TouchableOpacity onPress={() => router.replace("/")} style={{ paddingHorizontal: 10 }}>
-              <Text style={{ color: colors.gold, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
+              <Text style={{ color: accent, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
             </TouchableOpacity>
           ),
         }}
@@ -509,7 +519,7 @@ export default function PdfScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.button, isGenerating && styles.buttonDisabled]}
+          style={[styles.button, { backgroundColor: accent }, isGenerating && styles.buttonDisabled]}
           onPress={handleGeneratePdf}
           disabled={isGenerating}
         >
@@ -518,7 +528,7 @@ export default function PdfScreen() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.button, styles.secondary]}
+          style={[styles.button, styles.secondary, { borderColor: accent }]}
           onPress={() => router.replace("/")}
         >
           <Text style={[styles.buttonText, styles.secondaryText]}>{t("Back to Start")}</Text>
@@ -531,7 +541,7 @@ export default function PdfScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: pdfColors.background,
   },
   container: {
     flex: 1,
@@ -542,25 +552,24 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: pdfColors.card,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: pdfColors.border,
   },
   title: {
     fontSize: 20,
     fontWeight: "700",
-    color: colors.textDark,
+    color: pdfColors.textDark,
     marginBottom: 6,
   },
   muted: {
-    color: colors.textMuted,
+    color: pdfColors.textMuted,
     fontSize: 14,
   },
   button: {
     marginTop: 8,
-    backgroundColor: colors.gold,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
@@ -579,11 +588,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   secondary: {
-    backgroundColor: colors.card,
+    backgroundColor: pdfColors.card,
     borderWidth: 1,
-    borderColor: colors.gold,
   },
   secondaryText: {
-    color: colors.goldDark,
+    color: pdfColors.textDark,
   },
 });

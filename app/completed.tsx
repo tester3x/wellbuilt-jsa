@@ -12,6 +12,7 @@ import {
 import { PrimaryButton, SummaryCard } from "../components/jsa";
 import { colors } from "../constants/colors";
 import { useLanguage } from "./contexts/LanguageContext";
+import { useTheme } from "./contexts/ThemeContext";
 
 type Params = {
   driverName?: string;
@@ -37,6 +38,7 @@ export default function CompletedScreen() {
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
   const { t } = useLanguage();
+  const { accent } = useTheme();
 
   const summaryFields = useMemo(
     () => [
@@ -97,7 +99,7 @@ export default function CompletedScreen() {
           headerBackTitle: t("Sign Off"),
           headerRight: () => (
             <TouchableOpacity onPress={() => router.replace("/")} style={{ paddingHorizontal: 10 }}>
-              <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
+              <Text style={{ color: accent, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
             </TouchableOpacity>
           ),
         }}
@@ -126,6 +128,7 @@ export default function CompletedScreen() {
         <PrimaryButton
           title={t("Add another location")}
           variant="secondary"
+          accent={accent}
           onPress={() => {
             router.push({
               pathname: "/signoff",
@@ -150,6 +153,7 @@ export default function CompletedScreen() {
 
         <PrimaryButton
           title={t("Done")}
+          accent={accent}
           onPress={() => router.push("/")}
           style={{ marginTop: 8 }}
         />

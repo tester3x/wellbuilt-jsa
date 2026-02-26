@@ -26,14 +26,19 @@ import {
   loadOperators,
   loadAliases,
   searchWells,
+  preloadCompanyWells,
   WellRecord,
 } from "../../services/wellData";
 import { useLanguage } from "../contexts/LanguageContext";
+import { useAuth } from "../contexts/AuthContext";
+import { useTheme } from "../contexts/ThemeContext";
 
 export default function JsaHomeScreen() {
   const router = useRouter();
+  const { session, logout } = useAuth();
+  const { accent, logoUrl, companyName: themeCompanyName } = useTheme();
 
-  const [driverName, setDriverName] = useState("");
+  const [driverName, setDriverName] = useState(session?.displayName || "");
   const [truckNumber, setTruckNumber] = useState("");
   const [locationInput, setLocationInput] = useState("");
   const [favoriteLocations, setFavoriteLocations] = useState<string[]>([]);
@@ -51,12 +56,22 @@ export default function JsaHomeScreen() {
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const { t, toggleLang, lang, setLang } = useLanguage();
 
-  // Load NDIC well data on mount (operators, aliases, all wells)
+  const { assignedOperators } = useTheme();
+
+  // Load NDIC well data on mount — company-scoped if operators assigned
   useEffect(() => {
     const loadWellData = async () => {
       setWellDataLoading(true);
       try {
-        await Promise.all([loadOperators(), loadAliases(), loadAllWells()]);
+        await loadOperators();
+        await loadAliases();
+        if (assignedOperators.length > 0) {
+          // Company-scoped: load only assigned operators' wells (~200-400)
+          await preloadCompanyWells(assignedOperators);
+        } else {
+          // No assigned operators (WB admin or unconfigured) — load all
+          await loadAllWells();
+        }
       } catch (err) {
         console.warn('[JSA] Failed to load NDIC well data:', err);
       } finally {
@@ -64,7 +79,7 @@ export default function JsaHomeScreen() {
       }
     };
     loadWellData();
-  }, []);
+  }, [assignedOperators]);
 
   const scrollViewRef = useRef<ScrollView>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -293,29 +308,51 @@ export default function JsaHomeScreen() {
         {/* Header with logo */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Image
-              source={require("../../assets/images/company-logo-transparent.png")}
-              style={styles.logo}
-              resizeMode="contain"
-            />
+            {logoUrl ? (
+              <Image
+                source={{ uri: logoUrl }}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            ) : (
+              <Image
+                source={require("../../assets/images/company-logo-transparent.png")}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            )}
             <View style={styles.headerTextWrapper}>
               <Text style={styles.companyName}>{t("Job Safety Analysis")}</Text>
-              <Text style={styles.subtitle}>{t("Digital JSA")}</Text>
+              <Text style={styles.subtitle}>{themeCompanyName} • {t("Digital JSA")}</Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={styles.menuButton}
-            onPress={() =>
-              Alert.alert(t("Settings"), t("Choose language"), [
-                { text: "English", onPress: () => setLang("en"), style: lang === "en" ? "destructive" : "default" },
-                { text: "Español", onPress: () => setLang("es"), style: lang === "es" ? "destructive" : "default" },
-                { text: t("Cancel"), style: "cancel" },
-              ])
-            }
-            accessibilityLabel="Open settings"
-          >
-            <Text style={styles.menuIcon}>≡</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() =>
+                Alert.alert(t("Settings"), t("Choose language"), [
+                  { text: "English", onPress: () => setLang("en"), style: lang === "en" ? "destructive" : "default" },
+                  { text: "Español", onPress: () => setLang("es"), style: lang === "es" ? "destructive" : "default" },
+                  { text: t("Cancel"), style: "cancel" },
+                ])
+              }
+              accessibilityLabel="Open settings"
+            >
+              <Text style={styles.menuIcon}>≡</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() =>
+                Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+                  { text: t("Cancel"), style: "cancel" },
+                  { text: "Sign Out", style: "destructive", onPress: logout },
+                ])
+              }
+              accessibilityLabel="Sign out"
+            >
+              <Text style={[styles.menuIcon, { fontSize: 16, color: colors.textMuted }]}>⏻</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Card */}
@@ -380,7 +417,7 @@ export default function JsaHomeScreen() {
                 <View
                   style={[
                     styles.segmentItem,
-                    jobActivityName === "Loading" && styles.segmentItemActive,
+                    jobActivityName === "Loading" && [styles.segmentItemActive, { backgroundColor: accent }],
                   ]}
                 >
                   <Text
@@ -398,7 +435,7 @@ export default function JsaHomeScreen() {
                   style={[
                     styles.segmentItem,
                     styles.segmentItemRight,
-                    jobActivityName === "Unloading" && styles.segmentItemActive,
+                    jobActivityName === "Unloading" && [styles.segmentItemActive, { backgroundColor: accent }],
                   ]}
                 >
                   <Text
@@ -430,7 +467,7 @@ export default function JsaHomeScreen() {
             <Text style={styles.label}>{t("Well Name")}</Text>
             {wellDataLoading && (
               <View style={styles.loadingRow}>
-                <ActivityIndicator size="small" color={colors.primary} />
+                <ActivityIndicator size="small" color={accent} />
                 <Text style={styles.loadingText}>{t("Loading NDIC wells...")}</Text>
               </View>
             )}
@@ -597,7 +634,7 @@ export default function JsaHomeScreen() {
                 </Text>
                 <View style={styles.incompleteJsaButtons}>
                   <TouchableOpacity
-                    style={[styles.button, styles.primaryButton]}
+                    style={[styles.button, { backgroundColor: accent }]}
                     onPress={handleContinue}
                   >
                     <Text style={styles.buttonText}>
@@ -620,6 +657,7 @@ export default function JsaHomeScreen() {
               <TouchableOpacity
                 style={[
                   styles.button,
+                  { backgroundColor: accent },
                   isNextDisabled && styles.buttonDisabled,
                 ]}
                 onPress={handleNext}
@@ -894,7 +932,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     borderWidth: 2,
-    borderColor: colors.primary,
+    borderColor: colors.border,
     marginTop: 8,
   },
   incompleteJsaTitle: {

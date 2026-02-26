@@ -12,6 +12,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { colors } from "../constants/colors";
 import { useLanguage } from "./contexts/LanguageContext";
+import { useTheme } from "./contexts/ThemeContext";
 
 type Params = {
   driverName?: string;
@@ -44,6 +45,7 @@ export default function OpenJsasScreen() {
   const { driverName = "", truckNumber = "", date = "" } = useLocalSearchParams<Params>();
   const router = useRouter();
   const { t } = useLanguage();
+  const { accent } = useTheme();
   const [saves, setSaves] = useState<SavedJsa[]>([]);
 
   useEffect(() => {
@@ -125,7 +127,7 @@ export default function OpenJsasScreen() {
           headerBackTitle: t("Back"),
           headerRight: () => (
             <TouchableOpacity onPress={() => router.replace("/")} style={{ paddingHorizontal: 10 }}>
-              <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
+              <Text style={{ color: accent, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
             </TouchableOpacity>
           ),
         }}

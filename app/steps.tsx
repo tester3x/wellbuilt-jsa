@@ -19,6 +19,7 @@ import Animated, {
 import { colors } from "../constants/colors";
 import { JSA_STEPS, JSAStep } from "../constants/jsaTemplate";
 import { useLanguage } from "./contexts/LanguageContext";
+import { useTheme } from "./contexts/ThemeContext";
 
 // Extended colors specific to steps screen
 const stepColors = {
@@ -96,6 +97,7 @@ const locationsList = useMemo(() => {
 
   const router = useRouter();
   const { t } = useLanguage();
+  const { accent } = useTheme();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set()); // Steps that have been navigated away from
   const checkScale = useSharedValue(0);
@@ -167,7 +169,7 @@ const locationsList = useMemo(() => {
           headerBackTitle: t("Job Details"),
           headerRight: () => (
             <TouchableOpacity onPress={() => router.replace("/")} style={{ paddingHorizontal: 10 }}>
-              <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
+              <Text style={{ color: accent, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
             </TouchableOpacity>
           ),
         }}
@@ -236,11 +238,11 @@ const locationsList = useMemo(() => {
                 {currentStepIndex + 1} / {totalSteps}
               </Text>
               {completedSteps.has(currentStepIndex) ? (
-                <View style={styles.progressCheck}>
+                <View style={[styles.progressCheck, { backgroundColor: accent }]}>
                   <Text style={styles.progressCheckText}>✓</Text>
                 </View>
               ) : (
-                <Animated.View style={[styles.progressCheck, checkStyle]}>
+                <Animated.View style={[styles.progressCheck, { backgroundColor: accent }, checkStyle]}>
                   <Text style={styles.progressCheckText}>✓</Text>
                 </Animated.View>
               )}
@@ -249,6 +251,7 @@ const locationsList = useMemo(() => {
               <TouchableOpacity
                 style={[
                   styles.navButton,
+                  { borderColor: accent },
                   isFirst && styles.navButtonDisabled,
                 ]}
                 onPress={() => {
@@ -269,7 +272,7 @@ const locationsList = useMemo(() => {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.navButton}
+                style={[styles.navButton, { borderColor: accent }]}
                 onPress={() => {
                   triggerCheck();
                   const proceed = () => {

@@ -16,6 +16,8 @@ type PrimaryButtonProps = {
   loading?: boolean;
   style?: ViewStyle;
   variant?: "primary" | "secondary" | "danger";
+  /** Dynamic accent color from ThemeContext (overrides colors.primary) */
+  accent?: string;
 };
 
 export function PrimaryButton({
@@ -25,10 +27,14 @@ export function PrimaryButton({
   loading = false,
   style,
   variant = "primary",
+  accent,
 }: PrimaryButtonProps) {
+  const accentColor = accent || colors.primary;
+
   const buttonStyle = [
     styles.button,
-    variant === "secondary" && styles.secondary,
+    { backgroundColor: accentColor },
+    variant === "secondary" && [styles.secondary, { borderColor: colors.border }],
     variant === "danger" && styles.danger,
     disabled && styles.disabled,
     style,
@@ -49,7 +55,7 @@ export function PrimaryButton({
     >
       {loading ? (
         <ActivityIndicator
-          color={variant === "secondary" ? colors.primary : colors.textLight}
+          color={variant === "secondary" ? accentColor : colors.textLight}
         />
       ) : (
         <Text style={textStyle}>{title}</Text>
