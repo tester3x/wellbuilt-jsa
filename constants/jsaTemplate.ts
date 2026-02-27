@@ -353,7 +353,7 @@ export const UNLOADING_JSA = {
 
 /**
  * PPE options listed on the JSA:
- * Required PPE for Liquid Gold Trucking
+ * Required PPE items (company-specific list loaded from config)
  */
 export const PPE_ITEMS: PpeItem[] = [
   { id: "safetyGlasses", label: "Safety Glasses" },
@@ -393,12 +393,12 @@ export const PREPARED_FOR_WORK_ITEMS: PreparedItem[] = [
 ];
 
 /**
- * Emergency contact info for Liquid Gold Trucking.
+ * Emergency contacts — defaults; will be company-specific via Firebase config.
  */
 export const EMERGENCY_CONTACTS: EmergencyContact[] = [
   { id: "travisJohnson", label: "Travis Johnson", phone: "636-573-3822" },
   { id: "phillipNowak", label: "Phillip Nowak", phone: "701-609-2604" },
-  { id: "liquidGoldDispatch", label: "Liquid Gold Dispatch", phone: "701-730-5409" },
+  { id: "companyDispatch", label: "Company Dispatch", phone: "701-730-5409" },
   { id: "emergency911", label: "Emergency", phone: "911" },
   { id: "ndHighwayPatrol", label: "ND Highway Patrol", phone: "701-857-6937" },
   { id: "williamsCountySheriff", label: "Williams County Sheriff", phone: "701-577-7700" },
