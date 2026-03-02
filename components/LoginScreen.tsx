@@ -3,7 +3,7 @@
 // Same auth flow as WB S: name + passcode → SHA-256 → Firebase RTDB lookup
 // Supports: login, register, pending approval, approved, rejected, error states
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -53,6 +53,9 @@ export default function LoginScreen() {
   const [companyName, setCompanyName] = useState("");
   const [showPasscode, setShowPasscode] = useState(false);
   const [passcodeError, setPasscodeError] = useState("");
+
+  const passcodeRef = useRef<TextInput>(null);
+  const companyRef = useRef<TextInput>(null);
 
   // Validate passcode as user types (register mode only)
   useEffect(() => {
@@ -236,6 +239,8 @@ export default function LoginScreen() {
               placeholderTextColor="#999"
               autoCapitalize="words"
               returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => (isRegister ? companyRef : passcodeRef).current?.focus()}
             />
 
             {/* Company Name (register only) */}
@@ -243,6 +248,7 @@ export default function LoginScreen() {
               <>
                 <Text style={styles.label}>Company</Text>
                 <TextInput
+                  ref={companyRef}
                   style={styles.input}
                   value={companyName}
                   onChangeText={setCompanyName}
@@ -250,6 +256,8 @@ export default function LoginScreen() {
                   placeholderTextColor="#999"
                   autoCapitalize="words"
                   returnKeyType="next"
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => passcodeRef.current?.focus()}
                 />
                 <Text style={styles.hint}>Enter the company name your employer gave you</Text>
               </>
@@ -261,6 +269,7 @@ export default function LoginScreen() {
             </Text>
             <View style={styles.passcodeRow}>
               <TextInput
+                ref={passcodeRef}
                 style={[styles.input, { flex: 1 }]}
                 value={passcode}
                 onChangeText={setPasscode}
@@ -269,7 +278,7 @@ export default function LoginScreen() {
                 secureTextEntry={!showPasscode}
                 autoCapitalize="none"
                 autoCorrect={false}
-                returnKeyType="done"
+                returnKeyType="go"
                 onSubmitEditing={isRegister ? handleRegister : handleLogin}
               />
               <TouchableOpacity
