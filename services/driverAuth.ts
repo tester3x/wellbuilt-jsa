@@ -5,8 +5,8 @@
 //
 // How it works:
 // 1. Driver enters name + passcode
-// 2. App SHA-256 hashes the passcode client-side
-// 3. Login: Find driver by passcode hash, verify name matches
+// 2. App SHA-256 hashes (name.toLowerCase() + passcode) client-side
+// 3. Login: Find driver by hash, verify name matches
 // 4. Registration: Post to drivers/pending/, admin approves to drivers/approved/
 //
 // Structure:
@@ -37,6 +37,7 @@ export interface DriverInfo {
 export interface DriverSession {
   driverId: string;
   displayName: string;
+  legalName?: string;
   passcodeHash: string;
   isAdmin: boolean;
   isViewer: boolean;
@@ -131,13 +132,15 @@ const firebasePatch = async (path: string, data: any): Promise<void> => {
 // --- Crypto helpers ---
 
 /**
- * Hash a passcode using SHA-256
- * Returns lowercase hex string
+ * Hash name + passcode using SHA-256.
+ * Same algorithm as WB M, WB T, WB S: SHA-256(name.toLowerCase().trim() + passcode)
+ * Including name allows different drivers to share the same passcode.
  */
-export const hashPasscode = async (passcode: string): Promise<string> => {
+export const hashPasscode = async (passcode: string, name?: string): Promise<string> => {
+  const input = name ? name.toLowerCase().trim() + passcode : passcode;
   const hash = await Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
-    passcode
+    input
   );
   return hash.toLowerCase();
 };
@@ -168,7 +171,7 @@ export const verifyLogin = async (
   console.log("[DriverAuth-JSA] Verifying login for:", displayName);
 
   try {
-    const hash = await hashPasscode(passcode);
+    const hash = await hashPasscode(passcode, displayName);
     console.log("[DriverAuth-JSA] Hash:", hash.slice(0, 8) + "...");
 
     // Look up by passcode hash
@@ -246,7 +249,8 @@ export const saveDriverSession = async (
   isAdmin: boolean = false,
   isViewer: boolean = false,
   companyId?: string,
-  companyName?: string
+  companyName?: string,
+  legalName?: string
 ): Promise<void> => {
   await SecureStore.setItemAsync("jsa_driverId", driverId);
   await SecureStore.setItemAsync("jsa_driverName", displayName);
@@ -264,6 +268,11 @@ export const saveDriverSession = async (
   } else {
     await SecureStore.deleteItemAsync("jsa_companyName");
   }
+  if (legalName) {
+    await SecureStore.setItemAsync("jsa_legalName", legalName);
+  } else {
+    await SecureStore.deleteItemAsync("jsa_legalName");
+  }
 
   // Clear any pending registration data
   await clearPendingRegistration();
@@ -280,11 +289,13 @@ export const getDriverSession = async (): Promise<DriverSession | null> => {
   const isViewerStr = await SecureStore.getItemAsync("jsa_isViewer");
   const companyId = await SecureStore.getItemAsync("jsa_companyId");
   const companyName = await SecureStore.getItemAsync("jsa_companyName");
+  const legalName = await SecureStore.getItemAsync("jsa_legalName");
 
   if (driverId && displayName && passcodeHash) {
     return {
       driverId,
       displayName,
+      legalName: legalName || undefined,
       passcodeHash,
       isAdmin: isAdminStr === "true",
       isViewer: isViewerStr === "true",
@@ -371,6 +382,7 @@ export const clearDriverSession = async (): Promise<void> => {
   await SecureStore.deleteItemAsync("jsa_driverVerifiedAt");
   await SecureStore.deleteItemAsync("jsa_companyId");
   await SecureStore.deleteItemAsync("jsa_companyName");
+  await SecureStore.deleteItemAsync("jsa_legalName");
   await clearPendingRegistration();
 };
 
@@ -380,10 +392,11 @@ export const clearDriverSession = async (): Promise<void> => {
  * Check if a passcode is available (not already in use)
  */
 export const isPasscodeAvailable = async (
-  passcode: string
+  passcode: string,
+  name?: string
 ): Promise<{ available: boolean; reason?: string }> => {
   try {
-    const hash = await hashPasscode(passcode);
+    const hash = await hashPasscode(passcode, name);
 
     // Check if passcode is already approved
     const existingDriver = await firebaseGet(`${DRIVERS_APPROVED}/${hash}`);
@@ -417,19 +430,24 @@ export const submitRegistration = async (params: {
   passcode: string;
   displayName: string;
   companyName?: string;
+  legalName?: string;
 }): Promise<{ success: boolean; error?: string }> => {
   console.log("[DriverAuth-JSA] Submitting registration for:", params.displayName, "company:", params.companyName);
 
   try {
-    const hash = await hashPasscode(params.passcode);
+    const hash = await hashPasscode(params.passcode, params.displayName);
 
     const registrationData: Record<string, string> = {
       displayName: params.displayName,
       passcodeHash: hash,
       requestedAt: new Date().toISOString(),
+      source: 'wbjsa',
     };
     if (params.companyName) {
       registrationData.companyName = params.companyName;
+    }
+    if (params.legalName) {
+      registrationData.legalName = params.legalName;
     }
 
     await firebasePost(DRIVERS_PENDING, registrationData);

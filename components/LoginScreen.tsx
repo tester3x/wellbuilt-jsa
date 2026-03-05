@@ -49,11 +49,13 @@ export default function LoginScreen() {
   } = useAuth();
 
   const [displayName, setDisplayName] = useState("");
+  const [legalName, setLegalName] = useState("");
   const [passcode, setPasscode] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [showPasscode, setShowPasscode] = useState(false);
   const [passcodeError, setPasscodeError] = useState("");
 
+  const legalNameRef = useRef<TextInput>(null);
   const passcodeRef = useRef<TextInput>(null);
   const companyRef = useRef<TextInput>(null);
 
@@ -73,7 +75,7 @@ export default function LoginScreen() {
 
   const canSubmit =
     mode === "register"
-      ? !!(passcode.trim() && displayName.trim() && companyName.trim() && !passcodeError)
+      ? !!(passcode.trim() && displayName.trim() && legalName.trim() && companyName.trim() && !passcodeError)
       : !!(passcode.trim() && displayName.trim() && !passcodeError);
 
   const handleLogin = async () => {
@@ -84,12 +86,13 @@ export default function LoginScreen() {
   const handleRegister = async () => {
     const validation = validatePasscode(passcode);
     if (!validation.valid) return;
-    if (!displayName.trim() || !companyName.trim()) return;
-    await register(displayName, passcode, companyName);
+    if (!displayName.trim() || !legalName.trim() || !companyName.trim()) return;
+    await register(displayName, passcode, companyName, legalName);
   };
 
   const handleSwitchToRegister = () => {
     setPasscode("");
+    setLegalName("");
     setCompanyName("");
     setShowPasscode(false);
     switchToRegister();
@@ -97,6 +100,7 @@ export default function LoginScreen() {
 
   const handleSwitchToLogin = () => {
     setPasscode("");
+    setLegalName("");
     setCompanyName("");
     setShowPasscode(false);
     switchToLogin();
@@ -240,12 +244,27 @@ export default function LoginScreen() {
               autoCapitalize="words"
               returnKeyType="next"
               blurOnSubmit={false}
-              onSubmitEditing={() => (isRegister ? companyRef : passcodeRef).current?.focus()}
+              onSubmitEditing={() => (isRegister ? legalNameRef : passcodeRef).current?.focus()}
             />
 
-            {/* Company Name (register only) */}
+            {/* Legal Name + Company (register only) */}
             {isRegister && (
               <>
+                <Text style={styles.label}>Legal Name</Text>
+                <TextInput
+                  ref={legalNameRef}
+                  style={styles.input}
+                  value={legalName}
+                  onChangeText={setLegalName}
+                  placeholder="Full legal name (for documents)"
+                  placeholderTextColor="#999"
+                  autoCapitalize="words"
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => companyRef.current?.focus()}
+                />
+                <Text style={styles.hint}>Used on printed JSA forms and signatures</Text>
+
                 <Text style={styles.label}>Company</Text>
                 <TextInput
                   ref={companyRef}

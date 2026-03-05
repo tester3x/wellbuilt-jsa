@@ -3,7 +3,9 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
+import * as NavigationBar from 'expo-navigation-bar';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { LanguageProvider } from './contexts/LanguageContext';
@@ -40,6 +42,15 @@ function NavigationStack() {
 function AppContent() {
   const colorScheme = useColorScheme();
   const { mode, isAuthenticated, ssoLogin } = useAuth();
+
+  // Full-screen immersive mode — hide Android navigation bar
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      NavigationBar.setVisibilityAsync('hidden');
+      NavigationBar.setBehaviorAsync('overlay-swipe');
+      NavigationBar.setBackgroundColorAsync('#00000000');
+    }
+  }, []);
 
   // Handle SSO deep links while app is running (warm start).
   // Cold-start deep links are handled by the /login route directly.

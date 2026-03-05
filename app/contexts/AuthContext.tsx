@@ -45,7 +45,7 @@ interface AuthContextValue {
   /** Sign in with name + passcode */
   login: (displayName: string, passcode: string) => Promise<boolean>;
   /** Register a new driver */
-  register: (displayName: string, passcode: string, companyName?: string) => Promise<boolean>;
+  register: (displayName: string, passcode: string, companyName?: string, legalName?: string) => Promise<boolean>;
   /** Complete registration after admin approval */
   completeReg: () => Promise<boolean>;
   /** Cancel pending registration */
@@ -184,12 +184,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const register = useCallback(async (displayName: string, passcode: string, companyName?: string): Promise<boolean> => {
+  const register = useCallback(async (displayName: string, passcode: string, companyName?: string, legalName?: string): Promise<boolean> => {
     setMode("registering");
     setError("");
 
     try {
-      const available = await isPasscodeAvailable(passcode.trim());
+      const available = await isPasscodeAvailable(passcode.trim(), displayName.trim());
       if (!available.available) {
         setMode("register");
         setError(available.reason || "This passcode is not available");
@@ -200,6 +200,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         passcode: passcode.trim(),
         displayName: displayName.trim(),
         companyName: companyName?.trim() || undefined,
+        legalName: legalName?.trim() || undefined,
       });
 
       if (result.success) {
@@ -309,7 +310,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           driverData.isAdmin === true,
           driverData.isViewer === true,
           driverData.companyId,
-          driverData.companyName
+          driverData.companyName,
+          driverData.legalName
         );
         const driverSession = await getDriverSession();
         setSession(driverSession);
@@ -328,7 +330,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             entry.isAdmin === true,
             entry.isViewer === true,
             entry.companyId,
-            entry.companyName
+            entry.companyName,
+            entry.legalName
           );
           const driverSession = await getDriverSession();
           setSession(driverSession);
