@@ -220,7 +220,7 @@ export default function LoginScreen() {
               color={colors.primary}
             />
             <Text style={styles.title}>
-              {isRegister ? "New Driver Registration" : "Job Safety Analysis"}
+              {isRegister ? "New Employee Registration" : "Job Safety Analysis"}
             </Text>
             <Text style={styles.subtitle}>
               {isRegister
@@ -338,7 +338,7 @@ export default function LoginScreen() {
             {/* Toggle login/register */}
             <View style={styles.toggleRow}>
               <Text style={styles.toggleText}>
-                {isRegister ? "Already registered?" : "New driver?"}
+                {isRegister ? "Already registered?" : "New employee?"}
               </Text>
               <TouchableOpacity onPress={isRegister ? handleSwitchToLogin : handleSwitchToRegister}>
                 <Text style={styles.toggleLink}>
