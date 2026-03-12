@@ -3,7 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as NavigationBar from 'expo-navigation-bar';
 
@@ -29,6 +29,7 @@ function NavigationStack() {
         headerTintColor: '#FFFFFF',
         headerTitleStyle: { fontWeight: '600', color: '#FFFFFF' },
         headerBackTitleStyle: { fontSize: 12 },
+        contentStyle: { backgroundColor: colors.background },
       }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
@@ -46,11 +47,19 @@ function AppContent() {
 
   // Full-screen immersive mode — hide Android navigation bar
   useEffect(() => {
-    if (Platform.OS === 'android') {
-      NavigationBar.setVisibilityAsync('hidden');
-      NavigationBar.setBehaviorAsync('overlay-swipe');
-      NavigationBar.setBackgroundColorAsync('#00000000');
-    }
+    const hideNavBar = () => {
+      if (Platform.OS === 'android') {
+        NavigationBar.setVisibilityAsync('hidden');
+        NavigationBar.setBehaviorAsync('overlay-swipe');
+        NavigationBar.setBackgroundColorAsync('#00000000');
+      }
+    };
+    hideNavBar();
+    // Re-hide nav bar when app returns to foreground (deep links from WB S can re-show it)
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') hideNavBar();
+    });
+    return () => appStateSub.remove();
   }, []);
 
   // Handle SSO deep links while app is running (warm start).
