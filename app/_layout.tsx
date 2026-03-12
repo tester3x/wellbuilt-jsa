@@ -32,6 +32,7 @@ function NavigationStack() {
       }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="logout" options={{ headerShown: false }} />
       <Stack.Screen name="history" options={{ title: 'Saved JSAs', headerBackTitle: 'Back', headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
     </Stack>
@@ -41,7 +42,7 @@ function NavigationStack() {
 /** Inner component that gates on auth state + handles SSO deep links */
 function AppContent() {
   const colorScheme = useColorScheme();
-  const { mode, isAuthenticated, ssoLogin } = useAuth();
+  const { mode, isAuthenticated, ssoLogin, logout } = useAuth();
 
   // Full-screen immersive mode — hide Android navigation bar
   useEffect(() => {
@@ -57,6 +58,13 @@ function AppContent() {
   useEffect(() => {
     const handleDeepLink = (event: { url: string }) => {
       try {
+        // Cascade logout from WB S
+        if (event.url?.includes('logout')) {
+          console.log('[JSA] Logout deep link received from WB S');
+          logout();
+          return;
+        }
+
         const parsed = Linking.parse(event.url);
         if (parsed.path === 'login' && parsed.queryParams?.hash && parsed.queryParams?.name) {
           const hash = parsed.queryParams.hash as string;
@@ -71,8 +79,17 @@ function AppContent() {
 
     // Listen for deep links while app is running
     const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    // Cold start: check if launched with logout deep link
+    Linking.getInitialURL().then((url) => {
+      if (url?.includes('logout')) {
+        console.log('[JSA] Cold start logout deep link from WB S');
+        logout();
+      }
+    });
+
     return () => subscription.remove();
-  }, [ssoLogin]);
+  }, [ssoLogin, logout]);
 
   // IMPORTANT: Always render the Stack so Expo Router can match deep link routes.
   // If we return null or a plain View here, deep links like jsaapp://login?hash=...
