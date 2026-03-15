@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as NavigationBar from 'expo-navigation-bar';
+import * as SecureStore from 'expo-secure-store';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { LanguageProvider } from './contexts/LanguageContext';
@@ -13,6 +14,36 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import LoginScreen from '../components/LoginScreen';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
+
+const FIREBASE_DB = 'https://wellbuilt-sync-default-rtdb.firebaseio.com';
+
+/**
+ * Check if WB S wrote a logoutAt signal to RTDB that's newer than our session.
+ */
+async function checkRtdbLogoutSignal(): Promise<boolean> {
+  try {
+    const hash = await SecureStore.getItemAsync('jsa_passcodeHash');
+    const verifiedAt = await SecureStore.getItemAsync('jsa_driverVerifiedAt');
+    if (!hash || !verifiedAt) return false;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const resp = await fetch(`${FIREBASE_DB}/drivers/approved/${hash}/logoutAt.json`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!resp.ok) return false;
+
+    const logoutAt = await resp.json();
+    if (!logoutAt) return false;
+
+    const logoutTime = new Date(logoutAt).getTime();
+    const sessionTime = parseInt(verifiedAt, 10);
+    return logoutTime > sessionTime;
+  } catch {
+    return false;
+  }
+}
 import { colors } from '../constants/colors';
 
 export const unstable_settings = {
@@ -56,11 +87,22 @@ function AppContent() {
     };
     hideNavBar();
     // Re-hide nav bar when app returns to foreground (deep links from WB S can re-show it)
+    // Also check for RTDB logoutAt signal from WB S (silent cascade logout)
     const appStateSub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') hideNavBar();
+      if (state === 'active') {
+        hideNavBar();
+        if (isAuthenticated) {
+          checkRtdbLogoutSignal().then((shouldLogout) => {
+            if (shouldLogout) {
+              console.log('[JSA] RTDB logoutAt signal detected — auto-logging out');
+              logout();
+            }
+          }).catch(() => {});
+        }
+      }
     });
     return () => appStateSub.remove();
-  }, []);
+  }, [isAuthenticated, logout]);
 
   // Handle SSO deep links while app is running (warm start).
   // Cold-start deep links are handled by the /login route directly.
