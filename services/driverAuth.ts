@@ -250,7 +250,8 @@ export const saveDriverSession = async (
   isViewer: boolean = false,
   companyId?: string,
   companyName?: string,
-  legalName?: string
+  legalName?: string,
+  authMethod?: 'sso' | 'manual'
 ): Promise<void> => {
   await SecureStore.setItemAsync("jsa_driverId", driverId);
   await SecureStore.setItemAsync("jsa_driverName", displayName);
@@ -273,6 +274,9 @@ export const saveDriverSession = async (
   } else {
     await SecureStore.deleteItemAsync("jsa_legalName");
   }
+  // Track how driver logged in — SSO sessions are owned by WB S (cascade logout applies),
+  // manual sessions are owned by the driver (WB S logout is ignored).
+  if (authMethod) await SecureStore.setItemAsync("jsa_authMethod", authMethod);
 
   // Clear any pending registration data
   await clearPendingRegistration();
@@ -383,6 +387,7 @@ export const clearDriverSession = async (): Promise<void> => {
   await SecureStore.deleteItemAsync("jsa_companyId");
   await SecureStore.deleteItemAsync("jsa_companyName");
   await SecureStore.deleteItemAsync("jsa_legalName");
+  await SecureStore.deleteItemAsync("jsa_authMethod");
   await clearPendingRegistration();
 };
 

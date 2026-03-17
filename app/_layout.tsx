@@ -19,9 +19,14 @@ const FIREBASE_DB = 'https://wellbuilt-sync-default-rtdb.firebaseio.com';
 
 /**
  * Check if WB S wrote a logoutAt signal to RTDB that's newer than our session.
+ * Only applies to SSO sessions — manual logins are owned by the driver, not WB S.
  */
 async function checkRtdbLogoutSignal(): Promise<boolean> {
   try {
+    // Only SSO sessions respond to WB S cascade logout
+    const authMethod = await SecureStore.getItemAsync('jsa_authMethod');
+    if (authMethod !== 'sso') return false;
+
     const hash = await SecureStore.getItemAsync('jsa_passcodeHash');
     const verifiedAt = await SecureStore.getItemAsync('jsa_driverVerifiedAt');
     if (!hash || !verifiedAt) return false;
@@ -107,11 +112,16 @@ function AppContent() {
   // Handle SSO deep links while app is running (warm start).
   // Cold-start deep links are handled by the /login route directly.
   useEffect(() => {
-    const handleDeepLink = (event: { url: string }) => {
+    const handleDeepLink = async (event: { url: string }) => {
       try {
-        // Cascade logout from WB S
+        // Cascade logout from WB S — only if this session was started via SSO
         if (event.url?.includes('logout')) {
-          console.log('[JSA] Logout deep link received from WB S');
+          const authMethod = await SecureStore.getItemAsync('jsa_authMethod');
+          if (authMethod !== 'sso') {
+            console.log('[JSA] Ignoring logout deep link — session is manual, not SSO');
+            return;
+          }
+          console.log('[JSA] Logout deep link received from WB S — clearing SSO session');
           logout();
           return;
         }
@@ -132,8 +142,13 @@ function AppContent() {
     const subscription = Linking.addEventListener('url', handleDeepLink);
 
     // Cold start: check if launched with logout deep link
-    Linking.getInitialURL().then((url) => {
+    Linking.getInitialURL().then(async (url) => {
       if (url?.includes('logout')) {
+        const authMethod = await SecureStore.getItemAsync('jsa_authMethod');
+        if (authMethod !== 'sso') {
+          console.log('[JSA] Cold start: ignoring logout deep link — session is manual');
+          return;
+        }
         console.log('[JSA] Cold start logout deep link from WB S');
         logout();
       }

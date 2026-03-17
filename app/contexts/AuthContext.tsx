@@ -165,7 +165,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           result.isAdmin || false,
           result.isViewer || false,
           result.companyId,
-          result.companyName
+          result.companyName,
+          undefined, // legalName
+          'manual',
         );
         const driverSession = await getDriverSession();
         setSession(driverSession);
@@ -311,7 +313,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           driverData.isViewer === true,
           driverData.companyId,
           driverData.companyName,
-          driverData.legalName
+          driverData.legalName,
+          'sso',
         );
         const driverSession = await getDriverSession();
         setSession(driverSession);
@@ -331,7 +334,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             entry.isViewer === true,
             entry.companyId,
             entry.companyName,
-            entry.legalName
+            entry.legalName,
+            'sso',
           );
           const driverSession = await getDriverSession();
           setSession(driverSession);
