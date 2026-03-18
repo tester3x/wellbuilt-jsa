@@ -4,7 +4,7 @@
     "slug": "jsa-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/company-logo-transparent.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "jsaapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -18,7 +18,7 @@
     "android": {
       "package": "com.syconik801.jsaapp",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/company-logo-transparent.png",
+        "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#F4B41A"
       },
       "edgeToEdgeEnabled": true,
