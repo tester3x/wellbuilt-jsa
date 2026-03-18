@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.syconik801.jsaapp",
+      "bundleIdentifier": "com.wellbuilt.jsa",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
