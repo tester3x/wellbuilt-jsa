@@ -9,6 +9,8 @@ import {
   View,
 } from "react-native";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Linking from "expo-linking";
 import { PrimaryButton, SummaryCard } from "../components/jsa";
 import { colors } from "../constants/colors";
 import { useLanguage } from "./contexts/LanguageContext";
@@ -154,7 +156,18 @@ export default function CompletedScreen() {
         <PrimaryButton
           title={t("Done")}
           accent={accent}
-          onPress={() => router.push("/")}
+          onPress={async () => {
+            // If launched from WB T, deep link back
+            try {
+              const returnTo = await AsyncStorage.getItem('jsa_returnTo');
+              if (returnTo) {
+                await AsyncStorage.removeItem('jsa_returnTo');
+                await Linking.openURL(`${returnTo}://resume`);
+                return;
+              }
+            } catch {}
+            router.push("/");
+          }}
           style={{ marginTop: 8 }}
         />
       </ScrollView>

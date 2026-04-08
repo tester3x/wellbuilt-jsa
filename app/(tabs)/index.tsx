@@ -58,6 +58,39 @@ export default function JsaHomeScreen() {
 
   const { assignedOperators } = useTheme();
 
+  // Auto-fill from WB T deep link (jsaapp://start?driverName=...&wellName=...)
+  useEffect(() => {
+    AsyncStorage.getItem('jsa_autofill').then(raw => {
+      if (!raw) return;
+      try {
+        const params = JSON.parse(raw);
+        if (params.driverName) setDriverName(params.driverName);
+        if (params.truckNumber) setTruckNumber(params.truckNumber);
+        if (params.wellName) {
+          setWellName(params.wellName);
+          setAddedWells([{
+            name: params.wellName,
+            operator: params.operator || '',
+            county: '',
+          }]);
+        }
+        if (params.jobType) {
+          const jt = params.jobType.toLowerCase();
+          setJobActivityName(jt.includes('loading') ? 'Loading' : jt.includes('unloading') ? 'Unloading' : 'Loading');
+        }
+        if (params.date) setDate(params.date);
+        if (params.disposal) setLocationInput(params.disposal);
+        if (params.returnTo) {
+          // Store return app for deep link back on completion
+          AsyncStorage.setItem('jsa_returnTo', params.returnTo).catch(() => {});
+        }
+        // Clear after reading — one-time auto-fill
+        AsyncStorage.removeItem('jsa_autofill').catch(() => {});
+        console.log('[JSA] Auto-filled from WB T deep link');
+      } catch {}
+    }).catch(() => {});
+  }, []);
+
   // Load NDIC well data on mount — company-scoped if operators assigned
   useEffect(() => {
     const loadWellData = async () => {

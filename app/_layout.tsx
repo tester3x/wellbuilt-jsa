@@ -1,5 +1,5 @@
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { useEffect } from 'react';
@@ -7,6 +7,7 @@ import { AppState, Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { LanguageProvider } from './contexts/LanguageContext';
@@ -80,6 +81,7 @@ function NavigationStack() {
 function AppContent() {
   const colorScheme = useColorScheme();
   const { mode, isAuthenticated, ssoLogin, logout } = useAuth();
+  const router = useRouter();
 
   // Full-screen immersive mode — hide Android navigation bar
   useEffect(() => {
@@ -132,6 +134,20 @@ function AppContent() {
           const name = parsed.queryParams.name as string;
           console.log('[JSA] SSO deep link received for:', name);
           ssoLogin(hash, name);
+        }
+
+        // JSA auto-fill from WB T: jsaapp://start?driverName=...&wellName=...&...
+        if (parsed.path === 'start' && parsed.queryParams) {
+          console.log('[JSA] Start deep link received with params:', Object.keys(parsed.queryParams));
+          // SSO login if hash provided
+          if (parsed.queryParams.hash && parsed.queryParams.name) {
+            await ssoLogin(parsed.queryParams.hash as string, parsed.queryParams.name as string);
+          }
+          // Store params for auto-fill — home screen reads these on mount
+          await AsyncStorage.setItem('jsa_autofill', JSON.stringify(parsed.queryParams));
+          // Navigate to home tab to start the JSA
+          if (router.canDismiss()) router.dismissAll();
+          router.replace('/(tabs)');
         }
       } catch (err) {
         console.error('[JSA] Deep link parse error:', err);
