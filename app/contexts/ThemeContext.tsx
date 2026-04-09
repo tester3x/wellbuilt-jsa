@@ -10,6 +10,15 @@ import { useAuth } from "./AuthContext";
 
 // --- Interfaces ---
 
+// BYOJSA: Company-specific JSA template loaded from Firestore
+export interface JsaTemplateData {
+  name: string;
+  steps: { id: string; title: string; items: { hazard: string; controls: string }[] }[];
+  ppeItems: { id: string; label: string }[];
+  preparedItems: { id: string; label: string }[];
+  version: number;
+}
+
 interface CompanyConfig {
   name?: string;
   address?: string;
@@ -43,6 +52,8 @@ interface ThemeContextValue {
   emergencyContacts: { label: string; phone: string }[];
   /** Company contacts from company config */
   companyContacts: { label: string; phone: string }[];
+  /** Company-specific JSA template (null = use hardcoded default) */
+  jsaTemplate: JsaTemplateData | null;
   /** Whether config is still loading */
   loading: boolean;
   /** Force refresh company config */
@@ -153,16 +164,88 @@ async function fetchCompanyConfig(companyId: string): Promise<CompanyConfig | nu
   }
 }
 
+/**
+ * Fetch company JSA template from Firestore REST API
+ */
+async function fetchJsaTemplate(companyId: string): Promise<JsaTemplateData | null> {
+  try {
+    const url = `${FIRESTORE_BASE}/jsa_templates/${companyId}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return null;
+
+    const doc = await response.json();
+    const fields = doc?.fields;
+    if (!fields) return null;
+
+    // Only use active templates
+    if (fields.status?.stringValue !== 'active') return null;
+
+    // Parse steps array
+    const steps = (fields.steps?.arrayValue?.values || []).map((v: any) => {
+      const m = v.mapValue?.fields;
+      if (!m) return null;
+      const items = (m.items?.arrayValue?.values || []).map((iv: any) => {
+        const im = iv.mapValue?.fields;
+        return im ? {
+          hazard: im.hazard?.stringValue || '',
+          controls: im.controls?.stringValue || '',
+        } : null;
+      }).filter(Boolean);
+      return {
+        id: m.id?.stringValue || '',
+        title: m.title?.stringValue || '',
+        items,
+      };
+    }).filter(Boolean);
+
+    if (steps.length === 0) return null;
+
+    // Parse PPE items
+    const ppeItems = (fields.ppeItems?.arrayValue?.values || []).map((v: any) => {
+      const m = v.mapValue?.fields;
+      return m ? { id: m.id?.stringValue || '', label: m.label?.stringValue || '' } : null;
+    }).filter(Boolean);
+
+    // Parse prepared items
+    const preparedItems = (fields.preparedItems?.arrayValue?.values || []).map((v: any) => {
+      const m = v.mapValue?.fields;
+      return m ? { id: m.id?.stringValue || '', label: m.label?.stringValue || '' } : null;
+    }).filter(Boolean);
+
+    return {
+      name: fields.name?.stringValue || 'Custom JSA',
+      steps,
+      ppeItems,
+      preparedItems,
+      version: parseInt(fields.version?.integerValue || '1', 10),
+    };
+  } catch (err) {
+    console.error("[ThemeContext-JSA] Error fetching JSA template:", err);
+    return null;
+  }
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { session } = useAuth();
   const companyId = session?.companyId;
 
   const [config, setConfig] = useState<CompanyConfig | null>(null);
+  const [jsaTemplate, setJsaTemplate] = useState<JsaTemplateData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadConfig = async () => {
     if (!companyId) {
       setConfig(null);
+      setJsaTemplate(null);
       setLoading(false);
       return;
     }
@@ -176,30 +259,35 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         const parsed = JSON.parse(cached);
         if (parsed.companyId === companyId && Date.now() - parsed.timestamp < CACHE_TTL_MS) {
           setConfig(parsed.config);
+          setJsaTemplate(parsed.jsaTemplate || null);
           setLoading(false);
           // Still fetch fresh in background
-          fetchCompanyConfig(companyId).then((fresh) => {
-            if (fresh) {
-              setConfig(fresh);
-              AsyncStorage.setItem(
-                CACHE_KEY,
-                JSON.stringify({ companyId, config: fresh, timestamp: Date.now() })
-              ).catch(() => {});
-            }
+          Promise.all([
+            fetchCompanyConfig(companyId),
+            fetchJsaTemplate(companyId),
+          ]).then(([freshConfig, freshTemplate]) => {
+            if (freshConfig) setConfig(freshConfig);
+            setJsaTemplate(freshTemplate);
+            AsyncStorage.setItem(
+              CACHE_KEY,
+              JSON.stringify({ companyId, config: freshConfig || parsed.config, jsaTemplate: freshTemplate, timestamp: Date.now() })
+            ).catch(() => {});
           });
           return;
         }
       }
 
       // Fetch fresh
-      const fresh = await fetchCompanyConfig(companyId);
-      if (fresh) {
-        setConfig(fresh);
-        await AsyncStorage.setItem(
-          CACHE_KEY,
-          JSON.stringify({ companyId, config: fresh, timestamp: Date.now() })
-        ).catch(() => {});
-      }
+      const [fresh, freshTemplate] = await Promise.all([
+        fetchCompanyConfig(companyId),
+        fetchJsaTemplate(companyId),
+      ]);
+      if (fresh) setConfig(fresh);
+      setJsaTemplate(freshTemplate);
+      await AsyncStorage.setItem(
+        CACHE_KEY,
+        JSON.stringify({ companyId, config: fresh, jsaTemplate: freshTemplate, timestamp: Date.now() })
+      ).catch(() => {});
     } catch (err) {
       console.error("[ThemeContext-JSA] Error loading config:", err);
     } finally {
@@ -226,10 +314,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       assignedOperators: config?.assignedOperators || [],
       emergencyContacts: config?.emergencyContacts || [],
       companyContacts: config?.companyContacts || [],
+      jsaTemplate,
       loading,
       refresh: loadConfig,
     };
-  }, [config, loading, session?.companyName]);
+  }, [config, jsaTemplate, loading, session?.companyName]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

@@ -12,25 +12,12 @@ export type JSAStep = {
 };
 
 export type PpeItem = {
-  id:
-    | "safetyGlasses"
-    | "safetyShoes"
-    | "frClothing"
-    | "hearingProtection"
-    | "hardHat"
-    | "respirator"
-    | "chemicalGloves"
-    | "fourGasMonitor"
-    | "fallProtection"
-    | "other1"
-    | "other2"
-    | "other3"
-    | "other4";
+  id: string;
   label: string;
 };
 
 export type PreparedItem = {
-  id: "trained" | "toolsAndPpe" | "sds";
+  id: string;
   label: string;
 };
 

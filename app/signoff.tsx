@@ -46,7 +46,8 @@ export default function SignoffScreen() {
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
   const { t } = useLanguage();
-  const { emergencyContacts: themeEmergencyContacts, companyContacts: themeCompanyContacts, accent } = useTheme();
+  const { emergencyContacts: themeEmergencyContacts, companyContacts: themeCompanyContacts, accent, jsaTemplate } = useTheme();
+  const preparedItemsList = jsaTemplate?.preparedItems ?? PREPARED_FOR_WORK_ITEMS;
 
   // Use company config contacts if available, otherwise fall back to hardcoded defaults
   const emergencyContacts = themeEmergencyContacts.length > 0
@@ -247,7 +248,7 @@ export default function SignoffScreen() {
         {/* Prepared checklist */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>{t("I am prepared for work")}</Text>
-          {PREPARED_FOR_WORK_ITEMS.map((item) => (
+          {preparedItemsList.map((item) => (
             <View key={item.id} style={styles.checkRow}>
                 <Switch
                   value={!!prepared[item.id]}

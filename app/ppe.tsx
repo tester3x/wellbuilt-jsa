@@ -17,7 +17,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { SummaryCard } from "../components/jsa";
 import { colors } from "../constants/colors";
-import { PPE_ITEMS, PpeItem } from "../constants/jsaTemplate";
+import { PPE_ITEMS, type PpeItem } from "../constants/jsaTemplate";
 import { STORAGE_KEYS } from "../constants/storageKeys";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
@@ -57,7 +57,8 @@ export default function PpeScreen() {
   const resolvedTask = jsaType || task;
   const router = useRouter();
   const { t } = useLanguage();
-  const { accent } = useTheme();
+  const { accent, jsaTemplate } = useTheme();
+  const ppeItemsList = jsaTemplate?.ppeItems ?? PPE_ITEMS;
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [otherItems, setOtherItems] = useState<string[]>([]); // List of added "other" PPE items
   const [otherInput, setOtherInput] = useState(""); // Current text input for adding new items
@@ -231,7 +232,7 @@ export default function PpeScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>{t("PPE Required")}</Text>
           <View style={styles.list}>
-            {PPE_ITEMS.filter((item) => !item.id.toLowerCase().startsWith("other")).map((item) => {
+            {ppeItemsList.filter((item) => !item.id.toLowerCase().startsWith("other")).map((item) => {
               const checked = isChecked(item.id);
               return (
                 <View key={item.id} style={styles.listRow}>

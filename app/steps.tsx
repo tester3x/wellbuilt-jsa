@@ -17,9 +17,11 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { colors } from "../constants/colors";
-import { JSA_STEPS, JSAStep } from "../constants/jsaTemplate";
+import { JSA_STEPS, type JSAStep } from "../constants/jsaTemplate";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
+
+// BYOJSA: Use company template if available, fall back to hardcoded default
 
 // Extended colors specific to steps screen
 const stepColors = {
@@ -97,7 +99,8 @@ const locationsList = useMemo(() => {
 
   const router = useRouter();
   const { t } = useLanguage();
-  const { accent } = useTheme();
+  const { accent, jsaTemplate } = useTheme();
+  const steps: JSAStep[] = jsaTemplate?.steps ?? JSA_STEPS;
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set()); // Steps that have been navigated away from
   const checkScale = useSharedValue(0);
@@ -113,8 +116,8 @@ const locationsList = useMemo(() => {
     opacity: checkOpacity.value,
   }));
 
-  const currentStep = JSA_STEPS[currentStepIndex];
-  const totalSteps = JSA_STEPS.length;
+  const currentStep = steps[currentStepIndex];
+  const totalSteps = steps.length;
   const isFirst = currentStepIndex === 0;
   const isLast = currentStepIndex === totalSteps - 1;
 
