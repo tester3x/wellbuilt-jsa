@@ -317,7 +317,7 @@ export const searchWells = (searchText: string, maxResults = 10): WellRecord[] =
   }
 
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, maxResults).map((s) => s.well);
+  return (maxResults > 0 ? scored.slice(0, maxResults) : scored).map((s) => s.well);
 };
 
 /**

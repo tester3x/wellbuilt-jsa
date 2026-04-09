@@ -72,6 +72,7 @@ function NavigationStack() {
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="logout" options={{ headerShown: false }} />
       <Stack.Screen name="history" options={{ title: 'Saved JSAs', headerBackTitle: 'Back', headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
+      <Stack.Screen name="start" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
     </Stack>
   );
@@ -174,6 +175,17 @@ function AppContent() {
         if (authMethod === 'sso') {
           console.log('[JSA] Cold start logout deep link from WB S');
           logout();
+        }
+        setSsoInProgress(false);
+        return;
+      }
+      // Start deep link — store params for auto-fill, let start.tsx handle redirect
+      if (url.includes('/start')) {
+        console.log('[JSA] Cold start deep link with params — start.tsx will handle');
+        const parsed = Linking.parse(url);
+        if (parsed.queryParams?.hash && parsed.queryParams?.name) {
+          // SSO login included — suppress login overlay while auth settles
+          await ssoLogin(parsed.queryParams.hash as string, parsed.queryParams.name as string);
         }
         setSsoInProgress(false);
         return;

@@ -149,7 +149,7 @@ export default function JsaHomeScreen() {
   const handleWellTextChange = (text: string) => {
     setWellName(text);
     if (text.trim().length >= 3) {
-      const results = searchWells(text);
+      const results = searchWells(text, 0);
       setWellSuggestions(results);
     } else {
       setWellSuggestions([]);
@@ -514,8 +514,8 @@ export default function JsaHomeScreen() {
               onSubmitEditing={addWellManual}
             />
             {wellSuggestions.length > 0 && (
-              <View style={[styles.autocompleteDropdown, { maxHeight: 250 }]}>
-                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <View style={[styles.autocompleteDropdown, { maxHeight: 400 }]}>
+                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true}>
                   {wellSuggestions.map((well, index) => (
                     <TouchableOpacity
                       key={`${well.api_no}-${index}`}
