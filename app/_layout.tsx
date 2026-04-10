@@ -2,7 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@rea
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -82,6 +82,12 @@ function AppContent() {
   const colorScheme = useColorScheme();
   const { mode, isAuthenticated, ssoLogin, logout } = useAuth();
   const router = useRouter();
+  const [ssoInProgress, setSsoInProgress] = useState(true); // suppress login overlay until we check initial URL
+
+  // Clear SSO suppression once auth succeeds
+  useEffect(() => {
+    if (isAuthenticated && ssoInProgress) setSsoInProgress(false);
+  }, [isAuthenticated, ssoInProgress]);
 
   // Full-screen immersive mode — hide Android navigation bar
   useEffect(() => {
@@ -157,17 +163,30 @@ function AppContent() {
     // Listen for deep links while app is running
     const subscription = Linking.addEventListener('url', handleDeepLink);
 
-    // Cold start: check if launched with logout deep link
+    // Cold start: check initial URL for SSO login or logout
     Linking.getInitialURL().then(async (url) => {
-      if (url?.includes('logout')) {
-        const authMethod = await SecureStore.getItemAsync('jsa_authMethod');
-        if (authMethod !== 'sso') {
-          console.log('[JSA] Cold start: ignoring logout deep link — session is manual');
-          return;
-        }
-        console.log('[JSA] Cold start logout deep link from WB S');
-        logout();
+      if (!url) {
+        setSsoInProgress(false);
+        return;
       }
+      if (url.includes('logout')) {
+        const authMethod = await SecureStore.getItemAsync('jsa_authMethod');
+        if (authMethod === 'sso') {
+          console.log('[JSA] Cold start logout deep link from WB S');
+          logout();
+        }
+        setSsoInProgress(false);
+        return;
+      }
+      // SSO login deep link — login.tsx handles the actual auth,
+      // but we keep the overlay suppressed until auth state settles
+      if (url.includes('login') && url.includes('hash=')) {
+        console.log('[JSA] Cold start SSO deep link detected — suppressing login overlay');
+        // login.tsx route will call ssoLogin; wait for auth state to update
+        setTimeout(() => setSsoInProgress(false), 5000); // safety fallback
+        return;
+      }
+      setSsoInProgress(false);
     });
 
     return () => subscription.remove();
@@ -190,8 +209,8 @@ function AppContent() {
             </View>
           )}
 
-          {/* Login overlay when not authenticated */}
-          {mode !== 'checking' && !isAuthenticated && (
+          {/* Login overlay when not authenticated (suppressed during SSO cold start) */}
+          {mode !== 'checking' && !isAuthenticated && !ssoInProgress && (
             <View style={styles.overlay}>
               <LoginScreen />
             </View>
