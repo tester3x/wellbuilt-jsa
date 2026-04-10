@@ -9,11 +9,12 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './contexts/AuthContext';
 
 export default function SSOLoginRoute() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ hash?: string; name?: string }>();
+  const params = useLocalSearchParams<{ hash?: string; name?: string; truck?: string; trailer?: string }>();
   const { ssoLogin, isAuthenticated } = useAuth();
   const [status, setStatus] = useState<'validating' | 'error'>('validating');
   const [errorMsg, setErrorMsg] = useState('');
@@ -41,6 +42,10 @@ export default function SSOLoginRoute() {
     console.log('[JSA-SSO] Validating SSO for:', name);
 
     try {
+      // Store vehicle info from SSO params for the home screen
+      if (params.truck) await AsyncStorage.setItem('@jsa/ssoTruck', params.truck);
+      if (params.trailer) await AsyncStorage.setItem('@jsa/ssoTrailer', params.trailer);
+
       await ssoLogin(hash, name);
       // ssoLogin will update auth state → the useEffect above handles redirect
     } catch (error: any) {

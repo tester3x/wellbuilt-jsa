@@ -15,7 +15,6 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    TouchableWithoutFeedback,
     View,
 } from "react-native";
 
@@ -36,9 +35,9 @@ import { useTheme } from "../contexts/ThemeContext";
 export default function JsaHomeScreen() {
   const router = useRouter();
   const { session, logout } = useAuth();
-  const { accent, logoUrl, companyName: themeCompanyName } = useTheme();
+  const { accent, logoUrl, companyName: themeCompanyName, jobTypes } = useTheme();
 
-  const [driverName, setDriverName] = useState(session?.displayName || "");
+  const [driverName, setDriverName] = useState(session?.legalName || session?.displayName || "");
   const [truckNumber, setTruckNumber] = useState("");
   const [locationInput, setLocationInput] = useState("");
   const [favoriteLocations, setFavoriteLocations] = useState<string[]>([]);
@@ -48,6 +47,7 @@ export default function JsaHomeScreen() {
   const [addedWells, setAddedWells] = useState<{ name: string; operator: string; county: string }[]>([]);
   const [wellSuggestions, setWellSuggestions] = useState<WellRecord[]>([]);
   const [wellDataLoading, setWellDataLoading] = useState(false);
+  const [jobTypeSuggestions, setJobTypeSuggestions] = useState<string[]>([]);
   const [otherInfo, setOtherInfo] = useState("");
   const [date, setDate] = useState(
     new Date().toISOString().slice(0, 10) // YYYY-MM-DD
@@ -75,8 +75,7 @@ export default function JsaHomeScreen() {
           }]);
         }
         if (params.jobType) {
-          const jt = params.jobType.toLowerCase();
-          setJobActivityName(jt.includes('loading') ? 'Loading' : jt.includes('unloading') ? 'Unloading' : 'Loading');
+          setJobActivityName(params.jobType);
         }
         if (params.date) setDate(params.date);
         if (params.disposal) setLocationInput(params.disposal);
@@ -131,6 +130,21 @@ export default function JsaHomeScreen() {
   const isNextDisabled = !driverName.trim() || !truckNumber.trim();
 
   const [addedLocations, setAddedLocations] = useState<string[]>([]);
+
+  const handleJobTypeTextChange = (text: string) => {
+    setJobActivityName(text);
+    if (text.trim().length >= 1) {
+      const lower = text.toLowerCase();
+      setJobTypeSuggestions(jobTypes.filter(jt => jt.toLowerCase().includes(lower)));
+    } else {
+      setJobTypeSuggestions([]);
+    }
+  };
+
+  const handleJobTypeSelect = (jt: string) => {
+    setJobActivityName(jt);
+    setJobTypeSuggestions([]);
+  };
 
   const handleWellTextChange = (text: string) => {
     setWellName(text);
@@ -213,12 +227,20 @@ export default function JsaHomeScreen() {
   useEffect(() => {
     const loadDriverAndTruck = async () => {
       try {
-        const [storedDriver, storedTruck] = await Promise.all([
+        const [storedDriver, storedTruck, ssoTruck] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.driverName),
           AsyncStorage.getItem(STORAGE_KEYS.truckNumber),
+          AsyncStorage.getItem('@jsa/ssoTruck'),
         ]);
-        if (storedDriver) setDriverName(storedDriver);
-        if (storedTruck) setTruckNumber(storedTruck);
+        // SSO truck takes priority, then saved truck
+        if (ssoTruck) {
+          setTruckNumber(ssoTruck);
+          AsyncStorage.removeItem('@jsa/ssoTruck').catch(() => {}); // one-time
+        } else if (storedTruck) {
+          setTruckNumber(storedTruck);
+        }
+        // Driver name: use session legalName first, then stored
+        if (!driverName && storedDriver) setDriverName(storedDriver);
       } catch (error) {
         console.warn("Failed to load saved driver/truck", error);
       }
@@ -383,7 +405,7 @@ export default function JsaHomeScreen() {
               }
               accessibilityLabel="Sign out"
             >
-              <Text style={[styles.menuIcon, { fontSize: 16, color: colors.textMuted }]}>⏻</Text>
+              <Text style={[styles.menuIcon, { fontSize: 18, color: colors.textDark }]}>⏻</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -435,53 +457,31 @@ export default function JsaHomeScreen() {
             </Text>
           </View>
 
-          <View style={styles.field}>
+          <View style={[styles.field, { zIndex: 30 }]}>
             <Text style={styles.label}>{t("Job/Activity Name")}</Text>
             <TextInput
               style={styles.input}
-              placeholder={t("Job or activity")}
+              placeholder={t("Start typing a job type...")}
               placeholderTextColor={colors.textMuted}
               value={jobActivityName}
-              onChangeText={setJobActivityName}
+              onChangeText={handleJobTypeTextChange}
               returnKeyType="next"
-                                        />
-            <View style={[styles.segment, { marginTop: 8 }]}>
-              <TouchableWithoutFeedback onPress={() => setJobActivityName("Loading")}>
-                <View
-                  style={[
-                    styles.segmentItem,
-                    jobActivityName === "Loading" && [styles.segmentItemActive, { backgroundColor: accent }],
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      jobActivityName === "Loading" && styles.segmentTextActive,
-                    ]}
-                  >
-                    {t("Loading")}
-                  </Text>
-                </View>
-              </TouchableWithoutFeedback>
-              <TouchableWithoutFeedback onPress={() => setJobActivityName("Unloading")}>
-                <View
-                  style={[
-                    styles.segmentItem,
-                    styles.segmentItemRight,
-                    jobActivityName === "Unloading" && [styles.segmentItemActive, { backgroundColor: accent }],
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      jobActivityName === "Unloading" && styles.segmentTextActive,
-                    ]}
-                  >
-                    {t("Unloading")}
-                  </Text>
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
+            />
+            {jobTypeSuggestions.length > 0 && (
+              <View style={styles.autocompleteDropdown}>
+                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                  {jobTypeSuggestions.map((jt, index) => (
+                    <TouchableOpacity
+                      key={jt}
+                      style={[styles.dropdownItem, index === jobTypeSuggestions.length - 1 && { borderBottomWidth: 0 }]}
+                      onPress={() => handleJobTypeSelect(jt)}
+                    >
+                      <Text style={styles.dropdownItemText}>{jt}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
           </View>
 
           <View style={styles.field}>
@@ -514,8 +514,8 @@ export default function JsaHomeScreen() {
               onSubmitEditing={addWellManual}
             />
             {wellSuggestions.length > 0 && (
-              <View style={styles.autocompleteDropdown}>
-                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              <View style={[styles.autocompleteDropdown, { maxHeight: 250 }]}>
+                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                   {wellSuggestions.map((well, index) => (
                     <TouchableOpacity
                       key={`${well.api_no}-${index}`}

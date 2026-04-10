@@ -31,6 +31,8 @@ interface CompanyConfig {
   assignedOperators?: string[];
   emergencyContacts?: { label: string; phone: string }[];
   companyContacts?: { label: string; phone: string }[];
+  activePackages?: string[];
+  customJobTypes?: { label: string; packages: string[] }[];
 }
 
 interface ThemeContextValue {
@@ -54,6 +56,8 @@ interface ThemeContextValue {
   companyContacts: { label: string; phone: string }[];
   /** Company-specific JSA template (null = use hardcoded default) */
   jsaTemplate: JsaTemplateData | null;
+  /** Job types available for this company (standard + custom) */
+  jobTypes: string[];
   /** Whether config is still loading */
   loading: boolean;
   /** Force refresh company config */
@@ -66,6 +70,26 @@ const DEFAULT_COMPANY_NAME = "WellBuilt";
 const FIRESTORE_BASE = "https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents";
 const CACHE_KEY = "@jsa/companyConfig";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+// Standard job types (matches WB T / Dashboard)
+const STANDARD_JOB_TYPES = [
+  'Production Water', 'Fresh Water', 'Flowback Water', 'Pit Water',
+  'Invert', 'Service Work', 'Vac Work', 'Pushers', 'Rig Work',
+  'Fuel Service', 'Other',
+];
+
+/** Build job type list: standard + company custom types */
+function buildJobTypes(config: CompanyConfig | null): string[] {
+  const types = [...STANDARD_JOB_TYPES];
+  if (config?.customJobTypes?.length) {
+    for (const ct of config.customJobTypes) {
+      if (!types.some(t => t.toLowerCase() === ct.label.toLowerCase())) {
+        types.push(ct.label);
+      }
+    }
+  }
+  return types;
+}
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
@@ -126,6 +150,27 @@ function parseFirestoreDoc(doc: any): CompanyConfig {
         const m = v.mapValue?.fields;
         if (m?.label?.stringValue && m?.phone?.stringValue) {
           return { label: m.label.stringValue, phone: m.phone.stringValue };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }
+
+  // Parse activePackages array
+  if (fields.activePackages?.arrayValue?.values) {
+    config.activePackages = fields.activePackages.arrayValue.values
+      .map((v: any) => v.stringValue)
+      .filter(Boolean);
+  }
+
+  // Parse customJobTypes array of maps
+  if (fields.customJobTypes?.arrayValue?.values) {
+    config.customJobTypes = fields.customJobTypes.arrayValue.values
+      .map((v: any) => {
+        const m = v.mapValue?.fields;
+        if (m?.label?.stringValue) {
+          const pkgs = m.packages?.arrayValue?.values?.map((p: any) => p.stringValue).filter(Boolean) || [];
+          return { label: m.label.stringValue, packages: pkgs };
         }
         return null;
       })
@@ -315,6 +360,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       emergencyContacts: config?.emergencyContacts || [],
       companyContacts: config?.companyContacts || [],
       jsaTemplate,
+      jobTypes: buildJobTypes(config),
       loading,
       refresh: loadConfig,
     };
