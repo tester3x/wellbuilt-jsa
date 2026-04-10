@@ -14,6 +14,7 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import LoginScreen from '../components/LoginScreen';
+import AppSwitcher from '../components/AppSwitcher';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 
 const FIREBASE_DB = 'https://wellbuilt-sync-default-rtdb.firebaseio.com';
@@ -213,6 +214,17 @@ function AppContent() {
       <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <View style={{ flex: 1 }}>
           <NavigationStack />
+          {/* AppSwitcher — floating WB ecosystem app launcher */}
+          {isAuthenticated && (
+            <AppSwitcher
+              selfScheme="jsaapp"
+              getIdentity={async () => {
+                const hash = await SecureStore.getItemAsync('jsa_passcodeHash');
+                const name = await SecureStore.getItemAsync('jsa_driverName');
+                return hash && name ? { hash, name } : null;
+              }}
+            />
+          )}
 
           {/* Splash overlay while checking auth */}
           {mode === 'checking' && (
