@@ -60,6 +60,8 @@ interface ThemeContextValue {
   jobTypes: string[];
   /** Whether config is still loading */
   loading: boolean;
+  /** Whether company config has loaded at least once (false on initial render) */
+  configLoaded: boolean;
   /** Force refresh company config */
   refresh: () => Promise<void>;
 }
@@ -362,9 +364,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       jsaTemplate,
       jobTypes: buildJobTypes(config),
       loading,
+      configLoaded: !loading && (config !== null || !companyId),
       refresh: loadConfig,
     };
-  }, [config, jsaTemplate, loading, session?.companyName]);
+  }, [config, jsaTemplate, loading, session?.companyName, companyId]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

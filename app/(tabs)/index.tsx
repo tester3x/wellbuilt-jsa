@@ -90,8 +90,12 @@ export default function JsaHomeScreen() {
     }).catch(() => {});
   }, []);
 
-  // Load NDIC well data on mount — company-scoped if operators assigned
+  // Load NDIC well data — company-scoped if operators assigned.
+  // Wait for ThemeContext to load company config before deciding which wells to fetch.
+  // Without this guard, assignedOperators starts [] → loads all 19k wells → SQLITE_FULL.
+  const { configLoaded } = useTheme();
   useEffect(() => {
+    if (!configLoaded) return; // ThemeContext hasn't loaded company config yet
     const loadWellData = async () => {
       setWellDataLoading(true);
       try {
@@ -111,7 +115,7 @@ export default function JsaHomeScreen() {
       }
     };
     loadWellData();
-  }, [assignedOperators]);
+  }, [assignedOperators, configLoaded]);
 
   const scrollViewRef = useRef<ScrollView>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
