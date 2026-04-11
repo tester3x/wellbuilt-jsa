@@ -3,6 +3,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
     Alert,
+    Image,
     KeyboardAvoidingView,
     Platform,
     SafeAreaView,
@@ -16,6 +17,7 @@ import {
 } from "react-native";
 
 import { SummaryCard } from "../components/jsa";
+import SignatureModal from "../components/SignatureModal";
 import { colors } from "../constants/colors";
 import {
     COMPANY_CONTACTS,
@@ -60,6 +62,8 @@ export default function SignoffScreen() {
   const [prepared, setPrepared] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState("");
   const [signature, setSignature] = useState("");
+  const [signatureImage, setSignatureImage] = useState<string | null>(null);
+  const [showSigModal, setShowSigModal] = useState(false);
   const isLoadedRef = useRef(false);
 
   // Parse wells and locations passed from previous screen
@@ -147,11 +151,11 @@ export default function SignoffScreen() {
   }, [prepared]);
 
   const handleSubmit = () => {
-    // Validation: Signature is required
-    if (!signature.trim()) {
+    // Validation: Drawn signature required
+    if (!signatureImage) {
       Alert.alert(
         t("Signature Required") || "Signature Required",
-        t("Signature is required before submitting."),
+        t("Please sign before submitting. Tap the signature area to draw your signature."),
         [{ text: t("OK") || "OK" }]
       );
       return;
@@ -177,6 +181,7 @@ export default function SignoffScreen() {
         prepared,
         notes,
         signature,
+        signatureImage: signatureImage || '',
       };
       try {
         const existing = await AsyncStorage.getItem(STORAGE_KEYS.saves);
@@ -206,6 +211,7 @@ export default function SignoffScreen() {
           prepared: JSON.stringify(prepared),
           notes,
           signature,
+          signatureImage: signatureImage || '',
         },
       });
     };
@@ -297,16 +303,54 @@ export default function SignoffScreen() {
 
           {/* Signature */}
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>{t("Signature (type your full name)")}</Text>
+            <Text style={styles.sectionTitle}>{t("Driver Signature")}</Text>
+            {signatureImage ? (
+              <View>
+                <View style={{ backgroundColor: '#1a1a1a', borderRadius: 8, padding: 8, alignItems: 'center' }}>
+                  <Image
+                    source={{ uri: `data:image/png;base64,${signatureImage}` }}
+                    style={{ width: '100%', height: 80 }}
+                    resizeMode="contain"
+                  />
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>{signature || params.driverName}</Text>
+                  <TouchableOpacity onPress={() => setShowSigModal(true)}>
+                    <Text style={{ color: accent, fontSize: 13, fontWeight: '600' }}>{t("Re-sign")}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={() => setShowSigModal(true)}
+                style={{ backgroundColor: '#1a1a1a', borderRadius: 8, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: '#333', borderStyle: 'dashed' }}
+              >
+                <Text style={{ color: accent, fontSize: 15, fontWeight: '600' }}>{t("Tap to Sign")}</Text>
+              </TouchableOpacity>
+            )}
+            {/* Typed name fallback — always captured for record */}
             <TextInput
-              style={styles.input}
-              placeholder={t("Full name")}
+              style={[styles.input, { marginTop: 8 }]}
+              placeholder={t("Print full name")}
               placeholderTextColor={colors.textMuted}
               value={signature}
               onChangeText={setSignature}
               returnKeyType="done"
             />
           </View>
+
+          <SignatureModal
+            visible={showSigModal}
+            onClose={() => setShowSigModal(false)}
+            onSave={(base64) => {
+              setSignatureImage(base64);
+              // Auto-fill typed name if empty
+              if (!signature.trim() && params.driverName) {
+                setSignature(params.driverName as string);
+              }
+            }}
+            accent={accent}
+          />
 
         <TouchableOpacity style={[styles.submitButton, { backgroundColor: accent }]} onPress={handleSubmit}>
           <Text style={styles.submitText}>{t("Submit JSA")}</Text>

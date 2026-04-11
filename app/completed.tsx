@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 
+import { Image } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
@@ -36,6 +37,7 @@ type Params = {
   prepared?: string;
   notes?: string;
   signature?: string;
+  signatureImage?: string;
 };
 
 export default function CompletedScreen() {
@@ -133,7 +135,16 @@ export default function CompletedScreen() {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>{t("Signature")}</Text>
-          <Text style={styles.signatureText}>{params.signature || "—"}</Text>
+          {params.signatureImage ? (
+            <View style={{ backgroundColor: '#1a1a1a', borderRadius: 8, padding: 8, alignItems: 'center' }}>
+              <Image
+                source={{ uri: `data:image/png;base64,${params.signatureImage}` }}
+                style={{ width: '100%', height: 72 }}
+                resizeMode="contain"
+              />
+            </View>
+          ) : null}
+          <Text style={[styles.signatureText, params.signatureImage ? { marginTop: 6 } : undefined]}>{params.signature || "—"}</Text>
         </View>
 
         {!!params.notes && (
