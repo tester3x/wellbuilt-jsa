@@ -148,7 +148,7 @@ export default function JsaHomeScreen() {
 
   const handleWellTextChange = (text: string) => {
     setWellName(text);
-    if (text.trim().length >= 3) {
+    if (text.trim().length >= 2) {
       const results = searchWells(text, 0);
       setWellSuggestions(results);
     } else {
@@ -529,7 +529,7 @@ export default function JsaHomeScreen() {
                 </ScrollView>
               </View>
             )}
-            {wellName.trim().length >= 3 && wellSuggestions.length === 0 && !wellDataLoading && (
+            {wellName.trim().length >= 2 && wellSuggestions.length === 0 && !wellDataLoading && (
               <TouchableOpacity
                 style={styles.saveInlineButton}
                 onPress={addWellManual}

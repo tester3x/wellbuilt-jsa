@@ -280,6 +280,23 @@ const locationsList = useMemo(() => {
                   triggerCheck();
                   const proceed = () => {
                     if (isLast) {
+                      // Validate all steps have been visited
+                      const allVisited = completedSteps.size >= totalSteps - 1; // current step not in set yet
+                      if (!allVisited) {
+                        const { Alert } = require('react-native');
+                        const missing = [];
+                        for (let s = 0; s < totalSteps; s++) {
+                          if (s !== currentStepIndex && !completedSteps.has(s)) {
+                            missing.push(`Step ${s + 1}`);
+                          }
+                        }
+                        Alert.alert(
+                          t("Review All Steps"),
+                          t("Please review all steps before continuing.") + (missing.length ? `\n\nSkipped: ${missing.join(', ')}` : ''),
+                          [{ text: t("OK") }],
+                        );
+                        return;
+                      }
                       router.push({
                         pathname: "/ppe",
                         params: {

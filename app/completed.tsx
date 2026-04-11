@@ -11,10 +11,12 @@ import {
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
+import { Ionicons } from "@expo/vector-icons";
 import { PrimaryButton, SummaryCard } from "../components/jsa";
 import { colors } from "../constants/colors";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
+import { syncToCloud } from "../services/sync";
 
 type Params = {
   driverName?: string;
@@ -41,6 +43,11 @@ export default function CompletedScreen() {
   const router = useRouter();
   const { t } = useLanguage();
   const { accent } = useTheme();
+
+  // Auto-sync to Firestore on completion (fire-and-forget)
+  React.useEffect(() => {
+    syncToCloud().catch(() => {});
+  }, []);
 
   const summaryFields = useMemo(
     () => [
@@ -111,7 +118,16 @@ export default function CompletedScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>{t("JSA Completed")}</Text>
+        {/* Success header */}
+        <View style={{ alignItems: 'center', marginBottom: 12 }}>
+          <View style={[styles.checkCircle, { borderColor: accent }]}>
+            <Ionicons name="checkmark" size={36} color={accent} />
+          </View>
+          <Text style={styles.title}>{t("JSA Completed")}</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 2 }}>
+            {params.date} — {params.driverName}
+          </Text>
+        </View>
 
         <SummaryCard fields={summaryFields} />
 
@@ -127,8 +143,37 @@ export default function CompletedScreen() {
           </View>
         )}
 
+        {/* Action buttons */}
         <PrimaryButton
-          title={t("Add another location")}
+          title={t("View / Share PDF")}
+          accent={accent}
+          onPress={() => {
+            router.push({
+              pathname: "/pdf",
+              params: {
+                driverName: params.driverName,
+                truckNumber: params.truckNumber,
+                jobActivityName: params.jobActivityName,
+                pusher: params.pusher,
+                wellName: params.wellName,
+                wells: params.wells,
+                otherInfo: params.otherInfo,
+                location: params.location,
+                locations: params.locations,
+                task: params.task,
+                date: params.date,
+                ppeSelected: params.ppeSelected,
+                prepared: params.prepared,
+                notes: params.notes,
+                signature: params.signature,
+              },
+            });
+          }}
+          style={{ marginTop: 12 }}
+        />
+
+        <PrimaryButton
+          title={t("+ Add Location")}
           variant="secondary"
           accent={accent}
           onPress={() => {
@@ -154,7 +199,8 @@ export default function CompletedScreen() {
         />
 
         <PrimaryButton
-          title={t("Done")}
+          title={t("Done — Return to Work")}
+          variant="secondary"
           accent={accent}
           onPress={async () => {
             // If launched from WB T, deep link back
@@ -188,12 +234,21 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     gap: 12,
   },
+  checkCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 3,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: 8,
+  },
   title: {
     fontSize: 24,
     fontWeight: "800",
     color: colors.textDark,
     textAlign: "center",
-    marginBottom: 8,
+    marginBottom: 0,
   },
   summaryCard: {
     backgroundColor: colors.card,
