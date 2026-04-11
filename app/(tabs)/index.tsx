@@ -142,7 +142,7 @@ export default function JsaHomeScreen() {
     setJobActivityName(text);
     if (text.trim().length >= 1) {
       const lower = text.toLowerCase();
-      setJobTypeSuggestions(jobTypes.filter(jt => jt.toLowerCase().includes(lower)));
+      setJobTypeSuggestions((jobTypes || []).filter(jt => jt.toLowerCase().includes(lower)));
     } else {
       setJobTypeSuggestions([]);
     }
