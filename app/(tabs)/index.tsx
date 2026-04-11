@@ -132,11 +132,11 @@ export default function JsaHomeScreen() {
     };
   }, []);
 
+  const [addedLocations, setAddedLocations] = useState<string[]>([]);
+
   const trimmedLocation = locationInput.trim();
   const hasWellOrLocation = addedWells.length > 0 || wellName.trim().length > 0 || addedLocations.length > 0 || trimmedLocation.length > 0;
   const isNextDisabled = !driverName.trim() || !truckNumber.trim() || !hasWellOrLocation;
-
-  const [addedLocations, setAddedLocations] = useState<string[]>([]);
 
   const handleJobTypeTextChange = (text: string) => {
     setJobActivityName(text);
