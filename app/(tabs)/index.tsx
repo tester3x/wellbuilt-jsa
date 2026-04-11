@@ -8,9 +8,7 @@ import {
     Image,
     Keyboard,
     KeyboardAvoidingView,
-    Modal,
     Platform,
-    Pressable,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -394,7 +392,6 @@ export default function JsaHomeScreen() {
             keyboardVisible && { paddingBottom: 250 }
           ]}
           keyboardShouldPersistTaps="handled"
-          scrollEnabled={jobTypeSuggestions.length === 0}
         >
         {/* Header with logo */}
         <View style={styles.header}>
@@ -542,7 +539,7 @@ export default function JsaHomeScreen() {
             />
           </View>
 
-          <View style={[styles.field, { zIndex: 20 }]}>
+          <View style={styles.field}>
             <Text style={styles.label}>{t("Well Name")}</Text>
             {wellDataLoading && (
               <View style={styles.loadingRow}>
@@ -561,37 +558,27 @@ export default function JsaHomeScreen() {
               autoComplete="off"
               importantForAutofill="no"
             />
-            <Modal
-              visible={wellSuggestions.length > 0}
-              transparent
-              animationType="fade"
-              onRequestClose={() => { setWellSuggestions([]); setWellName(""); }}
-            >
-              <Pressable
-                style={styles.modalBackdrop}
-                onPress={() => { setWellSuggestions([]); }}
-              >
-                <View style={styles.wellDropdownModal}>
-                  <Text style={styles.wellDropdownTitle}>{t("Select Well")} ({wellSuggestions.length})</Text>
-                  <ScrollView
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={true}
-                    style={{ maxHeight: 500 }}
-                  >
-                    {wellSuggestions.map((well, index) => (
-                      <TouchableOpacity
-                        key={`${well.api_no}-${index}`}
-                        style={[styles.dropdownItem, index === wellSuggestions.length - 1 && { borderBottomWidth: 0 }]}
-                        onPress={() => handleWellSelect(well)}
-                      >
-                        <Text style={styles.dropdownItemText}>{well.well_name}</Text>
-                        <Text style={styles.dropdownItemSub}>{well.operator} • {well.county} Co.</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              </Pressable>
-            </Modal>
+            {wellSuggestions.length > 0 && (
+              <View style={styles.wellSuggestionsContainer}>
+                <ScrollView
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                  style={styles.wellSuggestionsList}
+                >
+                  {wellSuggestions.map((well, index) => (
+                    <TouchableOpacity
+                      key={`${well.api_no}-${index}`}
+                      style={[styles.dropdownItem, index === wellSuggestions.length - 1 && { borderBottomWidth: 0 }]}
+                      onPress={() => handleWellSelect(well)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.dropdownItemText}>{well.well_name}</Text>
+                      <Text style={styles.dropdownItemSub}>{well.operator} • {well.county} Co.</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
             {wellName.trim().length >= 2 && wellSuggestions.length === 0 && !wellDataLoading && (
               <TouchableOpacity
                 style={styles.saveInlineButton}
@@ -1145,30 +1132,16 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginLeft: 6,
   },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  wellDropdownModal: {
-    width: "100%",
-    maxWidth: 600,
+  wellSuggestionsContainer: {
     backgroundColor: "#FFF",
-    borderRadius: 12,
-    padding: 16,
-    maxHeight: "70%",
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    marginBottom: 4,
+    maxHeight: 200,
+    overflow: "hidden",
   },
-  wellDropdownTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: colors.textDark,
-    marginBottom: 12,
+  wellSuggestionsList: {
+    maxHeight: 200,
   },
 });
