@@ -392,6 +392,7 @@ export default function JsaHomeScreen() {
             keyboardVisible && { paddingBottom: 250 }
           ]}
           keyboardShouldPersistTaps="handled"
+          scrollEnabled={wellSuggestions.length === 0 && jobTypeSuggestions.length === 0}
         >
         {/* Header with logo */}
         <View style={styles.header}>
@@ -559,11 +560,7 @@ export default function JsaHomeScreen() {
               importantForAutofill="no"
             />
             {wellSuggestions.length > 0 && (
-              <View
-                style={[styles.autocompleteDropdown, { maxHeight: 400 }]}
-                onStartShouldSetResponder={() => true}
-                onMoveShouldSetResponder={() => true}
-              >
+              <View style={[styles.autocompleteDropdown, { maxHeight: 400 }]}>
                 <ScrollView
                   nestedScrollEnabled
                   keyboardShouldPersistTaps="handled"
