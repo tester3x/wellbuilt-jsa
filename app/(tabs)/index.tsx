@@ -5,7 +5,6 @@ import React, { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
-    FlatList,
     Image,
     Keyboard,
     KeyboardAvoidingView,
@@ -565,13 +564,13 @@ export default function JsaHomeScreen() {
                 onStartShouldSetResponder={() => true}
                 onMoveShouldSetResponder={() => true}
               >
-                <FlatList
-                  data={wellSuggestions}
-                  keyExtractor={(item, index) => `${item.api_no}-${index}`}
+                <ScrollView
                   nestedScrollEnabled
                   keyboardShouldPersistTaps="handled"
                   showsVerticalScrollIndicator={true}
-                  renderItem={({ item: well, index }) => (
+                  scrollEventThrottle={16}
+                >
+                  {wellSuggestions.map((well, index) => (
                     <TouchableOpacity
                       key={`${well.api_no}-${index}`}
                       style={[styles.dropdownItem, index === wellSuggestions.length - 1 && { borderBottomWidth: 0 }]}
@@ -580,8 +579,8 @@ export default function JsaHomeScreen() {
                       <Text style={styles.dropdownItemText}>{well.well_name}</Text>
                       <Text style={styles.dropdownItemSub}>{well.operator} • {well.county} Co.</Text>
                     </TouchableOpacity>
-                  )}
-                />
+                  ))}
+                </ScrollView>
               </View>
             )}
             {wellName.trim().length >= 2 && wellSuggestions.length === 0 && !wellDataLoading && (
