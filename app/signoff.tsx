@@ -20,8 +20,6 @@ import { SummaryCard } from "../components/jsa";
 import SignatureModal from "../components/SignatureModal";
 import { colors } from "../constants/colors";
 import {
-    COMPANY_CONTACTS,
-    EMERGENCY_CONTACTS,
     PREPARED_FOR_WORK_ITEMS,
 } from "../constants/jsaTemplate";
 import { STORAGE_KEYS } from "../constants/storageKeys";
@@ -52,13 +50,9 @@ export default function SignoffScreen() {
   const { emergencyContacts: themeEmergencyContacts, companyContacts: themeCompanyContacts, accent, jsaTemplate } = useTheme();
   const preparedItemsList = jsaTemplate?.preparedItems ?? PREPARED_FOR_WORK_ITEMS;
 
-  // Use company config contacts if available, otherwise fall back to hardcoded defaults
-  const emergencyContacts = themeEmergencyContacts.length > 0
-    ? themeEmergencyContacts.map((c, i) => ({ id: `ec-${i}`, ...c }))
-    : EMERGENCY_CONTACTS;
-  const companyContacts = themeCompanyContacts.length > 0
-    ? themeCompanyContacts.map((c, i) => ({ id: `cc-${i}`, ...c }))
-    : COMPANY_CONTACTS;
+  // Contacts from company config (managed in Dashboard Settings > JSA)
+  const emergencyContacts = themeEmergencyContacts.map((c, i) => ({ id: `ec-${i}`, ...c }));
+  const companyContacts = themeCompanyContacts.map((c, i) => ({ id: `cc-${i}`, ...c }));
 
   const [prepared, setPrepared] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState("");
@@ -322,25 +316,29 @@ export default function SignoffScreen() {
             ))}
           </View>
 
-          <View style={styles.summaryCard}>
-            <Text style={styles.sectionTitle}>{t("Emergency Contacts")}</Text>
-            {emergencyContacts.map((contact) => (
-              <View key={contact.id} style={styles.contactRow}>
-                <Text style={styles.contactLabel}>{contact.label}</Text>
-                <Text style={styles.contactPhone}>{contact.phone}</Text>
-              </View>
-            ))}
-          </View>
+          {emergencyContacts.length > 0 && (
+            <View style={styles.summaryCard}>
+              <Text style={styles.sectionTitle}>{t("Emergency Contacts")}</Text>
+              {emergencyContacts.map((contact) => (
+                <View key={contact.id} style={styles.contactRow}>
+                  <Text style={styles.contactLabel}>{contact.label}</Text>
+                  <Text style={styles.contactPhone}>{contact.phone}</Text>
+                </View>
+              ))}
+            </View>
+          )}
 
-          <View style={styles.summaryCard}>
-            <Text style={styles.sectionTitle}>{t("Company Contacts")}</Text>
-            {companyContacts.map((contact) => (
-              <View key={contact.id} style={styles.contactRow}>
-                <Text style={styles.contactLabel}>{contact.label}</Text>
-                <Text style={styles.contactPhone}>{contact.phone}</Text>
-              </View>
-            ))}
-          </View>
+          {companyContacts.length > 0 && (
+            <View style={styles.summaryCard}>
+              <Text style={styles.sectionTitle}>{t("Company Contacts")}</Text>
+              {companyContacts.map((contact) => (
+                <View key={contact.id} style={styles.contactRow}>
+                  <Text style={styles.contactLabel}>{contact.label}</Text>
+                  <Text style={styles.contactPhone}>{contact.phone}</Text>
+                </View>
+              ))}
+            </View>
+          )}
 
           {/* Notes */}
           <View style={styles.card}>
