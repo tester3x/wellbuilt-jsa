@@ -321,7 +321,9 @@ export const isDriverVerified = async (): Promise<boolean> => {
 };
 
 /**
- * Revalidate driver session - verify driver is still approved
+ * Revalidate driver session - verify driver is still approved.
+ * Also refreshes session data (legalName, companyId, etc.) from RTDB
+ * so stale SecureStore values get updated on app resume.
  */
 export const revalidateDriverSession = async (): Promise<boolean> => {
   const session = await getDriverSession();
@@ -350,6 +352,23 @@ export const revalidateDriverSession = async (): Promise<boolean> => {
         await clearDriverSession();
         return false;
       }
+
+      // Refresh session with latest RTDB data (legalName, companyId, etc.)
+      const freshLegalName = driverData.profile?.legalName || driverData.legalName || undefined;
+      const freshCompanyId = driverData.companyId || undefined;
+      const freshCompanyName = driverData.companyName || undefined;
+      const needsUpdate =
+        freshLegalName !== session.legalName ||
+        freshCompanyId !== session.companyId ||
+        freshCompanyName !== session.companyName;
+
+      if (needsUpdate) {
+        console.log("[DriverAuth-JSA] Refreshing session data from RTDB");
+        if (freshLegalName) await SecureStore.setItemAsync("jsa_legalName", freshLegalName);
+        if (freshCompanyId) await SecureStore.setItemAsync("jsa_companyId", freshCompanyId);
+        if (freshCompanyName) await SecureStore.setItemAsync("jsa_companyName", freshCompanyName);
+      }
+
       return true;
     }
 
@@ -391,6 +410,39 @@ export const clearDriverSession = async (): Promise<void> => {
   await SecureStore.deleteItemAsync("jsa_legalName");
   await SecureStore.deleteItemAsync("jsa_authMethod");
   await clearPendingRegistration();
+};
+
+// --- Profile / Vehicle Info ---
+
+/**
+ * Fetch driver's truck# and trailer# from Firebase RTDB.
+ * Reads `drivers/approved/{hash}/profile/truckNumber` (WB S saves here)
+ * and falls back to top-level `truckNumber` field.
+ * Returns null if no session or fetch fails.
+ */
+export const fetchDriverVehicleInfo = async (): Promise<{
+  truckNumber: string;
+  trailerNumber: string;
+  legalName?: string;
+} | null> => {
+  const session = await getDriverSession();
+  if (!session) return null;
+
+  try {
+    const hash = session.passcodeHash;
+    const driverData = await firebaseGet(`${DRIVERS_APPROVED}/${hash}`);
+    if (!driverData) return null;
+
+    const profile = driverData.profile || {};
+    return {
+      truckNumber: profile.truckNumber || driverData.truckNumber || '',
+      trailerNumber: profile.trailerNumber || driverData.trailerNumber || '',
+      legalName: profile.legalName || driverData.legalName || undefined,
+    };
+  } catch (err) {
+    console.warn('[DriverAuth-JSA] Failed to fetch vehicle info:', err);
+    return null;
+  }
 };
 
 // --- Registration ---

@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    FlatList,
     Image,
     Keyboard,
     KeyboardAvoidingView,
@@ -28,6 +29,7 @@ import {
   preloadCompanyWells,
   WellRecord,
 } from "../../services/wellData";
+import { fetchDriverVehicleInfo } from "../../services/driverAuth";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -236,7 +238,8 @@ export default function JsaHomeScreen() {
           AsyncStorage.getItem(STORAGE_KEYS.truckNumber),
           AsyncStorage.getItem('@jsa/ssoTruck'),
         ]);
-        // SSO truck takes priority, then saved truck
+
+        // SSO truck takes priority
         if (ssoTruck) {
           setTruckNumber(ssoTruck);
           AsyncStorage.removeItem('@jsa/ssoTruck').catch(() => {}); // one-time
@@ -245,6 +248,28 @@ export default function JsaHomeScreen() {
         }
         // Driver name: use session legalName first, then stored
         if (!driverName && storedDriver) setDriverName(storedDriver);
+
+        // Fetch fresh profile from RTDB — gets legalName + truck# from Firebase
+        // This fixes stale AsyncStorage values (e.g. "TabletS10" in truck# field)
+        const vehicleInfo = await fetchDriverVehicleInfo();
+        if (vehicleInfo) {
+          // Update legalName if RTDB has it and current value is just displayName
+          if (vehicleInfo.legalName && vehicleInfo.legalName !== driverName) {
+            const sessionDisplay = session?.displayName || '';
+            // Only override if current driverName matches login displayName (stale)
+            if (driverName === sessionDisplay || !driverName) {
+              setDriverName(vehicleInfo.legalName);
+            }
+          }
+          // Update truck# from RTDB if current value is empty or matches displayName (stale)
+          if (vehicleInfo.truckNumber) {
+            const currentTruck = ssoTruck || storedTruck || '';
+            const sessionDisplay = session?.displayName || '';
+            if (!currentTruck || currentTruck === sessionDisplay) {
+              setTruckNumber(vehicleInfo.truckNumber);
+            }
+          }
+        }
       } catch (error) {
         console.warn("Failed to load saved driver/truck", error);
       }
@@ -530,9 +555,18 @@ export default function JsaHomeScreen() {
               importantForAutofill="no"
             />
             {wellSuggestions.length > 0 && (
-              <View style={[styles.autocompleteDropdown, { maxHeight: 400 }]}>
-                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true}>
-                  {wellSuggestions.map((well, index) => (
+              <View
+                style={[styles.autocompleteDropdown, { maxHeight: 400 }]}
+                onStartShouldSetResponder={() => true}
+                onMoveShouldSetResponder={() => true}
+              >
+                <FlatList
+                  data={wellSuggestions}
+                  keyExtractor={(item, index) => `${item.api_no}-${index}`}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={true}
+                  renderItem={({ item: well, index }) => (
                     <TouchableOpacity
                       key={`${well.api_no}-${index}`}
                       style={[styles.dropdownItem, index === wellSuggestions.length - 1 && { borderBottomWidth: 0 }]}
@@ -541,8 +575,8 @@ export default function JsaHomeScreen() {
                       <Text style={styles.dropdownItemText}>{well.well_name}</Text>
                       <Text style={styles.dropdownItemSub}>{well.operator} • {well.county} Co.</Text>
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                  )}
+                />
               </View>
             )}
             {wellName.trim().length >= 2 && wellSuggestions.length === 0 && !wellDataLoading && (

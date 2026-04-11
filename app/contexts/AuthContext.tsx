@@ -119,10 +119,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Check for existing session
       const existingSession = await getDriverSession();
       if (existingSession) {
-        // Revalidate that driver is still active
+        // Revalidate that driver is still active (also refreshes legalName etc.)
         const stillValid = await revalidateDriverSession();
         if (stillValid) {
-          setSession(existingSession);
+          // Re-read session — revalidation may have updated SecureStore with fresh data
+          const freshSession = await getDriverSession();
+          setSession(freshSession || existingSession);
           setMode("authenticated");
           return;
         }

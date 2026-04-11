@@ -295,7 +295,7 @@ const normalizeSearch = (text: string): string[] => {
  */
 export const searchWells = (searchText: string, maxResults = 10): WellRecord[] => {
   const terms = normalizeSearch(searchText);
-  if (terms.length === 0 || searchText.trim().length < 3) return [];
+  if (terms.length === 0 || searchText.trim().length < 2) return [];
 
   const scored: { well: WellRecord; score: number }[] = [];
 
