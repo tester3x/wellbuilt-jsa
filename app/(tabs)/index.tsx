@@ -133,7 +133,8 @@ export default function JsaHomeScreen() {
   }, []);
 
   const trimmedLocation = locationInput.trim();
-  const isNextDisabled = !driverName.trim() || !truckNumber.trim();
+  const hasWellOrLocation = addedWells.length > 0 || wellName.trim().length > 0 || addedLocations.length > 0 || trimmedLocation.length > 0;
+  const isNextDisabled = !driverName.trim() || !truckNumber.trim() || !hasWellOrLocation;
 
   const [addedLocations, setAddedLocations] = useState<string[]>([]);
 
@@ -755,7 +756,7 @@ export default function JsaHomeScreen() {
 
               {isNextDisabled && (
                 <Text style={styles.warningText}>
-                  {t("Fill in driver and truck # to continue.")}
+                  {t("Fill in driver, truck #, and a well or location to continue.")}
                 </Text>
               )}
             </>
