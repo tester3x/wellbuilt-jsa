@@ -25,6 +25,7 @@ import {
     PREPARED_FOR_WORK_ITEMS,
 } from "../constants/jsaTemplate";
 import { STORAGE_KEYS } from "../constants/storageKeys";
+import { fetchDriverProfile } from "../services/driverAuth";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 
@@ -70,18 +71,14 @@ export default function SignoffScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const SecureStore = await import('expo-secure-store');
-        const hash = await SecureStore.getItemAsync('jsa_passcodeHash');
-        if (!hash) return;
-        const url = `https://wellbuilt-sync-default-rtdb.firebaseio.com/drivers/approved/${hash}/profile/signature.json`;
-        const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        if (!resp.ok) return;
-        const sigBase64 = await resp.json();
-        if (sigBase64 && typeof sigBase64 === 'string' && sigBase64.length > 50) {
-          setSignatureImage(sigBase64);
+        const profile = await fetchDriverProfile();
+        if (profile?.signature) {
+          setSignatureImage(profile.signature);
           console.log('[JSA-Signoff] Pre-loaded signature from Firebase profile');
         }
-      } catch {}
+      } catch (err) {
+        console.warn('[JSA-Signoff] Failed to load signature:', err);
+      }
     })();
   }, []);
 

@@ -428,6 +428,7 @@ export const fetchDriverProfile = async (): Promise<{
   truckNumber: string;
   trailerNumber: string;
   legalName?: string;
+  signature?: string;
   assignedCustomers: AssignedCustomer[];
 } | null> => {
   const session = await getDriverSession();
@@ -448,10 +449,14 @@ export const fetchDriverProfile = async (): Promise<{
       }
     }
 
+    // Signature: base64 PNG from profile (same path WB T / WB S use)
+    const sig = profile.signature || undefined;
+
     return {
       truckNumber: profile.truckNumber || driverData.truckNumber || '',
       trailerNumber: profile.trailerNumber || driverData.trailerNumber || '',
       legalName: profile.legalName || driverData.legalName || undefined,
+      signature: sig && typeof sig === 'string' && sig.length > 50 ? sig : undefined,
       assignedCustomers,
     };
   } catch (err) {
