@@ -414,16 +414,21 @@ export const clearDriverSession = async (): Promise<void> => {
 
 // --- Profile / Vehicle Info ---
 
+export interface AssignedCustomer {
+  name: string;
+  companyId: string;
+}
+
 /**
- * Fetch driver's truck# and trailer# from Firebase RTDB.
- * Reads `drivers/approved/{hash}/profile/truckNumber` (WB S saves here)
- * and falls back to top-level `truckNumber` field.
- * Returns null if no session or fetch fails.
+ * Fetch driver's full profile from Firebase RTDB.
+ * Reads truck#, trailer#, legalName, and assignedCustomers.
+ * Same RTDB paths as WB T — profile/ for vehicle info, root for assignedCustomers.
  */
-export const fetchDriverVehicleInfo = async (): Promise<{
+export const fetchDriverProfile = async (): Promise<{
   truckNumber: string;
   trailerNumber: string;
   legalName?: string;
+  assignedCustomers: AssignedCustomer[];
 } | null> => {
   const session = await getDriverSession();
   if (!session) return null;
@@ -434,13 +439,23 @@ export const fetchDriverVehicleInfo = async (): Promise<{
     if (!driverData) return null;
 
     const profile = driverData.profile || {};
+    const assignedCustomers: AssignedCustomer[] = [];
+    if (Array.isArray(driverData.assignedCustomers)) {
+      for (const c of driverData.assignedCustomers) {
+        if (c && typeof c.name === 'string' && typeof c.companyId === 'string') {
+          assignedCustomers.push({ name: c.name, companyId: c.companyId });
+        }
+      }
+    }
+
     return {
       truckNumber: profile.truckNumber || driverData.truckNumber || '',
       trailerNumber: profile.trailerNumber || driverData.trailerNumber || '',
       legalName: profile.legalName || driverData.legalName || undefined,
+      assignedCustomers,
     };
   } catch (err) {
-    console.warn('[DriverAuth-JSA] Failed to fetch vehicle info:', err);
+    console.warn('[DriverAuth-JSA] Failed to fetch driver profile:', err);
     return null;
   }
 };

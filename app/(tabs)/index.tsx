@@ -29,7 +29,7 @@ import {
   preloadCompanyWells,
   WellRecord,
 } from "../../services/wellData";
-import { fetchDriverVehicleInfo } from "../../services/driverAuth";
+import { fetchDriverProfile } from "../../services/driverAuth";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -58,7 +58,8 @@ export default function JsaHomeScreen() {
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const { t, toggleLang, lang, setLang } = useLanguage();
 
-  const { assignedOperators } = useTheme();
+  // Driver's assigned operators — read from RTDB assignedCustomers (same as WB T)
+  const [driverOperators, setDriverOperators] = useState<string[]>([]);
 
   // Auto-fill from WB T deep link (jsaapp://start?driverName=...&wellName=...)
   useEffect(() => {
@@ -92,22 +93,22 @@ export default function JsaHomeScreen() {
     }).catch(() => {});
   }, []);
 
-  // Load NDIC well data — company-scoped if operators assigned.
-  // Wait for ThemeContext to load company config before deciding which wells to fetch.
-  // Without this guard, assignedOperators starts [] → loads all 19k wells → SQLITE_FULL.
+  // Load NDIC well data — scoped by driver's assignedCustomers from RTDB.
+  // Same approach as WB T: driver record has operator names, load only those wells.
   const { configLoaded } = useTheme();
   useEffect(() => {
-    if (!configLoaded) return; // ThemeContext hasn't loaded company config yet
+    if (!configLoaded) return; // ThemeContext hasn't loaded yet
+    if (!session) return;
     const loadWellData = async () => {
       setWellDataLoading(true);
       try {
         await loadOperators();
         await loadAliases();
-        if (assignedOperators.length > 0) {
-          // Company-scoped: load only assigned operators' wells (~200-400)
-          await preloadCompanyWells(assignedOperators);
+        if (driverOperators.length > 0) {
+          // Driver-scoped: load only their assigned operators' wells (~200-400)
+          await preloadCompanyWells(driverOperators);
         } else {
-          // No assigned operators (WB admin or unconfigured) — load all
+          // No assigned operators — load all (WB admin or unconfigured driver)
           await loadAllWells();
         }
       } catch (err) {
@@ -117,7 +118,7 @@ export default function JsaHomeScreen() {
       }
     };
     loadWellData();
-  }, [assignedOperators, configLoaded]);
+  }, [driverOperators, configLoaded, session]);
 
   const scrollViewRef = useRef<ScrollView>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -249,25 +250,29 @@ export default function JsaHomeScreen() {
         // Driver name: use session legalName first, then stored
         if (!driverName && storedDriver) setDriverName(storedDriver);
 
-        // Fetch fresh profile from RTDB — gets legalName + truck# from Firebase
+        // Fetch fresh profile from RTDB — gets legalName, truck#, assignedCustomers
         // This fixes stale AsyncStorage values (e.g. "TabletS10" in truck# field)
-        const vehicleInfo = await fetchDriverVehicleInfo();
-        if (vehicleInfo) {
+        const profileData = await fetchDriverProfile();
+        if (profileData) {
           // Update legalName if RTDB has it and current value is just displayName
-          if (vehicleInfo.legalName && vehicleInfo.legalName !== driverName) {
+          if (profileData.legalName) {
             const sessionDisplay = session?.displayName || '';
             // Only override if current driverName matches login displayName (stale)
             if (driverName === sessionDisplay || !driverName) {
-              setDriverName(vehicleInfo.legalName);
+              setDriverName(profileData.legalName);
             }
           }
           // Update truck# from RTDB if current value is empty or matches displayName (stale)
-          if (vehicleInfo.truckNumber) {
+          if (profileData.truckNumber) {
             const currentTruck = ssoTruck || storedTruck || '';
             const sessionDisplay = session?.displayName || '';
             if (!currentTruck || currentTruck === sessionDisplay) {
-              setTruckNumber(vehicleInfo.truckNumber);
+              setTruckNumber(profileData.truckNumber);
             }
+          }
+          // Set assigned operators for company-scoped well loading
+          if (profileData.assignedCustomers.length > 0) {
+            setDriverOperators(profileData.assignedCustomers.map(c => c.name));
           }
         }
       } catch (error) {
