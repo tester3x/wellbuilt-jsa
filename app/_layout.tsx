@@ -217,6 +217,7 @@ function AppContent() {
           {/* AppSwitcher — floating WB ecosystem app launcher */}
           {isAuthenticated && (
             <AppSwitcher
+              badgeSource={require('../assets/images/app-switcher-badge.png')}
               selfScheme="jsaapp"
               getIdentity={async () => {
                 const hash = await SecureStore.getItemAsync('jsa_passcodeHash');
