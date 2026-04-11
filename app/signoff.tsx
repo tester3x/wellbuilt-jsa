@@ -61,10 +61,29 @@ export default function SignoffScreen() {
 
   const [prepared, setPrepared] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState("");
-  const [signature, setSignature] = useState("");
+  const [signature, setSignature] = useState(params.driverName as string || "");
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [showSigModal, setShowSigModal] = useState(false);
   const isLoadedRef = useRef(false);
+
+  // Pre-load drawn signature from Firebase profile (same as WB T / WB S)
+  useEffect(() => {
+    (async () => {
+      try {
+        const SecureStore = await import('expo-secure-store');
+        const hash = await SecureStore.getItemAsync('jsa_passcodeHash');
+        if (!hash) return;
+        const url = `https://wellbuilt-sync-default-rtdb.firebaseio.com/drivers/approved/${hash}/profile/signature.json`;
+        const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (!resp.ok) return;
+        const sigBase64 = await resp.json();
+        if (sigBase64 && typeof sigBase64 === 'string' && sigBase64.length > 50) {
+          setSignatureImage(sigBase64);
+          console.log('[JSA-Signoff] Pre-loaded signature from Firebase profile');
+        }
+      } catch {}
+    })();
+  }, []);
 
   // Parse wells and locations passed from previous screen
   const wellsList = useMemo(() => {

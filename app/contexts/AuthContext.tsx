@@ -166,7 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           result.isViewer || false,
           result.companyId,
           result.companyName,
-          undefined, // legalName
+          result.legalName,
           'manual',
         );
         const driverSession = await getDriverSession();

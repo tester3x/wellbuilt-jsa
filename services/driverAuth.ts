@@ -161,6 +161,7 @@ export const verifyLogin = async (
   valid: boolean;
   driverId?: string;
   displayName?: string;
+  legalName?: string;
   passcodeHash?: string;
   isAdmin?: boolean;
   isViewer?: boolean;
@@ -199,6 +200,7 @@ export const verifyLogin = async (
         valid: true,
         driverId: hash,
         displayName: driverData.displayName,
+        legalName: driverData.legalName || undefined,
         passcodeHash: hash,
         isAdmin: driverData.isAdmin === true,
         isViewer: driverData.isViewer === true,

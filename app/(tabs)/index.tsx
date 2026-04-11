@@ -426,7 +426,9 @@ export default function JsaHomeScreen() {
               value={driverName}
               onChangeText={setDriverName}
               returnKeyType="next"
-                                        />
+              autoComplete="off"
+              importantForAutofill="no"
+            />
           </View>
 
           <View style={styles.field}>
@@ -439,7 +441,9 @@ export default function JsaHomeScreen() {
               onChangeText={setTruckNumber}
               keyboardType="numeric"
               returnKeyType="next"
-                                        />
+              autoComplete="off"
+              importantForAutofill="no"
+            />
           </View>
 
           <View style={styles.field}>
@@ -451,7 +455,9 @@ export default function JsaHomeScreen() {
               value={date}
               onChangeText={setDate}
               returnKeyType="next"
-                                        />
+              autoComplete="off"
+              importantForAutofill="no"
+            />
             <Text style={styles.helperText}>
               {t("Defaults to today. Edit if needed.")}
             </Text>
@@ -466,6 +472,8 @@ export default function JsaHomeScreen() {
               value={jobActivityName}
               onChangeText={handleJobTypeTextChange}
               returnKeyType="next"
+              autoComplete="off"
+              importantForAutofill="no"
             />
             {jobTypeSuggestions.length > 0 && (
               <View style={styles.autocompleteDropdown}>
@@ -493,6 +501,8 @@ export default function JsaHomeScreen() {
               value={pusher}
               onChangeText={setPusher}
               returnKeyType="next"
+              autoComplete="off"
+              importantForAutofill="no"
             />
           </View>
 
@@ -506,12 +516,14 @@ export default function JsaHomeScreen() {
             )}
             <TextInput
               style={styles.input}
-              placeholder={wellDataLoading ? t("Loading wells...") : t("Search NDIC wells (3+ chars)...")}
+              placeholder={wellDataLoading ? t("Loading wells...") : t("Search NDIC wells...")}
               placeholderTextColor={colors.textMuted}
               value={wellName}
               onChangeText={handleWellTextChange}
               returnKeyType="next"
               onSubmitEditing={addWellManual}
+              autoComplete="off"
+              importantForAutofill="no"
             />
             {wellSuggestions.length > 0 && (
               <View style={[styles.autocompleteDropdown, { maxHeight: 400 }]}>
@@ -570,6 +582,8 @@ export default function JsaHomeScreen() {
               value={locationInput}
               onChangeText={setLocationInput}
               returnKeyType="next"
+              autoComplete="off"
+              importantForAutofill="no"
               onBlur={() => {
                 if (locationInput.trim()) {
                   addLocationToList(locationInput);
@@ -652,7 +666,9 @@ export default function JsaHomeScreen() {
             value={otherInfo}
             onChangeText={setOtherInfo}
             multiline
-                                  />
+            autoComplete="off"
+            importantForAutofill="no"
+          />
         </View>
 
           {continueJsa ? (
