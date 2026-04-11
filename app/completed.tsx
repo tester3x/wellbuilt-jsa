@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   SafeAreaView,
   ScrollView,
@@ -9,12 +9,15 @@ import {
   View,
 } from "react-native";
 
-import { Image } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 import { Ionicons } from "@expo/vector-icons";
-import { PrimaryButton, SummaryCard } from "../components/jsa";
+import { WebView } from "react-native-webview";
+import { PrimaryButton } from "../components/jsa";
 import { colors } from "../constants/colors";
+import { buildJsaPdfHtml } from "../services/jsaPdfHtml";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 import { syncToCloud } from "../services/sync";
@@ -44,63 +47,86 @@ export default function CompletedScreen() {
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
   const { t } = useLanguage();
-  const { accent } = useTheme();
+  const { accent, emergencyContacts: themeEmergencyContacts, companyContacts: themeCompanyContacts, logoUrl } = useTheme();
+  const [isExporting, setIsExporting] = useState(false);
 
   // Auto-sync to Firestore on completion (fire-and-forget)
   React.useEffect(() => {
     syncToCloud().catch(() => {});
   }, []);
 
-  const summaryFields = useMemo(
-    () => [
-      { label: t("Driver Name"), value: params.driverName || "-" },
-      { label: t("Truck #"), value: params.truckNumber || "-" },
-      { label: t("Job/Activity"), value: params.jobActivityName || "-" },
-      { label: t("Pusher"), value: params.pusher || "-" },
-      {
-        label: t("Wells"),
-        value: (() => {
-          try {
-            const parsed = params.wells ? JSON.parse(params.wells as string) : [];
-            if (Array.isArray(parsed) && parsed.length) return parsed.join(", ");
-          } catch {
-            // ignore
-          }
-          return params.wellName || "-";
-        })(),
-      },
-      { label: t("Date"), value: params.date || "-" },
-      {
-        label: t("Locations"),
-        value: (() => {
-          try {
-            const parsed = params.locations ? JSON.parse(params.locations as string) : [];
-            if (Array.isArray(parsed) && parsed.length) return parsed.join(", ");
-          } catch {
-            // ignore
-          }
-          return params.location || "-";
-        })(),
-      },
-      { label: t("Task"), value: params.jsaType || params.task || "-" },
-      { label: t("Other Info"), value: params.otherInfo || "-" },
-    ],
-    [
-      params.driverName,
-      params.truckNumber,
-      params.jobActivityName,
-      params.pusher,
-      params.wellName,
-      params.wells,
-      params.date,
-      params.locations,
-      params.location,
-      params.jsaType,
-      params.task,
-      params.otherInfo,
-      t,
-    ]
-  );
+  // Parse PPE and prepared items for PDF
+  const ppeItems = useMemo(() => {
+    try {
+      const parsed = params.ppeSelected ? JSON.parse(params.ppeSelected as string) : {};
+      if (parsed?.selected) return Object.entries(parsed.selected).filter(([, v]) => v).map(([k]) => k);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+    return [];
+  }, [params.ppeSelected]);
+
+  const preparedItems = useMemo(() => {
+    try {
+      const parsed = params.prepared ? JSON.parse(params.prepared as string) : {};
+      if (parsed && typeof parsed === 'object') return Object.entries(parsed).filter(([, v]) => v).map(([k]) => k);
+    } catch {}
+    return [];
+  }, [params.prepared]);
+
+  const locationsList = useMemo(() => {
+    try {
+      const parsed = params.locations ? JSON.parse(params.locations as string) : [];
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+    return [];
+  }, [params.locations]);
+
+  const locationAcks = useMemo(() => {
+    try {
+      const parsed = params.locationAcks ? JSON.parse(params.locationAcks as string) : {};
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch {}
+    return {};
+  }, [params.locationAcks]);
+
+  // Build PDF HTML for inline preview + export
+  const pdfHtml = useMemo(() => buildJsaPdfHtml({
+    driverName: (params.driverName as string) || '',
+    truckNumber: (params.truckNumber as string) || '',
+    pusher: (params.pusher as string) || '',
+    wellName: (params.wellName as string) || '',
+    jobActivity: (params.jobActivityName as string) || (params.task as string) || '',
+    date: (params.date as string) || '',
+    notes: (params.notes as string) || '',
+    signature: (params.signature as string) || '',
+    signatureImage: (params.signatureImage as string) || undefined,
+    locations: locationsList,
+    locationAcks,
+    ppeItems,
+    preparedItems,
+    emergencyContacts: themeEmergencyContacts,
+    companyContacts: themeCompanyContacts,
+    accent,
+    logoDataUrl: logoUrl,
+  }), [params, ppeItems, preparedItems, locationsList, locationAcks, themeEmergencyContacts, themeCompanyContacts, accent, logoUrl]);
+
+  const handleExportPdf = async () => {
+    setIsExporting(true);
+    try {
+      const { uri } = await Print.printToFileAsync({ html: pdfHtml });
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(uri);
+      } else {
+        await Print.printAsync({ uri });
+      }
+    } catch (err) {
+      console.warn('[JSA] PDF export failed:', err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -115,13 +141,9 @@ export default function CompletedScreen() {
           ),
         }}
       />
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={{ flex: 1 }}>
         {/* Success header */}
-        <View style={{ alignItems: 'center', marginBottom: 12 }}>
+        <View style={{ alignItems: 'center', paddingVertical: 12, backgroundColor: colors.background }}>
           <View style={[styles.checkCircle, { borderColor: accent }]}>
             <Ionicons name="checkmark" size={36} color={accent} />
           </View>
@@ -131,107 +153,47 @@ export default function CompletedScreen() {
           </Text>
         </View>
 
-        <SummaryCard fields={summaryFields} />
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>{t("Signature")}</Text>
-          {params.signatureImage ? (
-            <View style={{ backgroundColor: '#1a1a1a', borderRadius: 8, padding: 8, alignItems: 'center' }}>
-              <Image
-                source={{ uri: `data:image/png;base64,${params.signatureImage}` }}
-                style={{ width: '100%', height: 72 }}
-                resizeMode="contain"
-              />
-            </View>
-          ) : null}
-          <Text style={[styles.signatureText, params.signatureImage ? { marginTop: 6 } : undefined]}>{params.signature || "—"}</Text>
+        {/* Inline PDF preview */}
+        <View style={{ flex: 1, marginHorizontal: 12, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+          <WebView
+            source={{ html: pdfHtml }}
+            style={{ flex: 1, backgroundColor: '#f5f5f5' }}
+            scrollEnabled={true}
+            scalesPageToFit={true}
+          />
         </View>
 
-        {!!params.notes && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>{t("Notes")}</Text>
-            <Text style={styles.notesText}>{params.notes}</Text>
-          </View>
-        )}
-
         {/* Action buttons */}
-        <PrimaryButton
-          title={t("View / Share PDF")}
-          accent={accent}
-          onPress={() => {
-            router.push({
-              pathname: "/pdf",
-              params: {
-                driverName: params.driverName,
-                truckNumber: params.truckNumber,
-                jobActivityName: params.jobActivityName,
-                pusher: params.pusher,
-                wellName: params.wellName,
-                wells: params.wells,
-                otherInfo: params.otherInfo,
-                location: params.location,
-                locations: params.locations,
-                task: params.task,
-                date: params.date,
-                ppeSelected: params.ppeSelected,
-                prepared: params.prepared,
-                notes: params.notes,
-                signature: params.signature,
-              },
-            });
-          }}
-          style={{ marginTop: 12 }}
-        />
+        <View style={{ padding: 12, gap: 8 }}>
+          <PrimaryButton
+            title={isExporting ? t("Exporting...") : t("Export / Share PDF")}
+            accent={accent}
+            onPress={handleExportPdf}
+            disabled={isExporting}
+          />
 
-        <PrimaryButton
-          title={t("+ Add Location")}
-          variant="secondary"
-          accent={accent}
-          onPress={() => {
-            router.push({
-              pathname: "/signoff",
-              params: {
-                driverName: params.driverName,
-                truckNumber: params.truckNumber,
-                jobActivityName: params.jobActivityName,
-                pusher: params.pusher,
-                wellName: params.wellName,
-                otherInfo: params.otherInfo,
-                location: params.location,
-                task: params.task,
-                date: params.date,
-                ppeSelected: params.ppeSelected,
-                locations: params.locations,
-                locationAcks: params.locationAcks,
-              },
-            });
-          }}
-          style={{ marginTop: 8 }}
-        />
-
-        <PrimaryButton
-          title={t("Done — Return to Work")}
-          variant="secondary"
-          accent={accent}
-          onPress={async () => {
-            // If launched from WB T, deep link back with JSA PDF URL
-            try {
-              const returnTo = await AsyncStorage.getItem('jsa_returnTo');
-              if (returnTo) {
-                await AsyncStorage.removeItem('jsa_returnTo');
-                const pdfUrl = await AsyncStorage.getItem('jsa_pdfUrl').catch(() => null);
-                const returnUrl = pdfUrl
-                  ? `${returnTo}://resume?jsaPdfUrl=${encodeURIComponent(pdfUrl)}`
-                  : `${returnTo}://resume`;
-                await Linking.openURL(returnUrl);
-                return;
-              }
-            } catch {}
-            router.push("/");
-          }}
-          style={{ marginTop: 8 }}
-        />
-      </ScrollView>
+          <PrimaryButton
+            title={t("Done — Return to Work")}
+            variant="secondary"
+            accent={accent}
+            onPress={async () => {
+              try {
+                const returnTo = await AsyncStorage.getItem('jsa_returnTo');
+                if (returnTo) {
+                  await AsyncStorage.removeItem('jsa_returnTo');
+                  const pdfUrl = await AsyncStorage.getItem('jsa_pdfUrl').catch(() => null);
+                  const returnUrl = pdfUrl
+                    ? `${returnTo}://resume?jsaPdfUrl=${encodeURIComponent(pdfUrl)}`
+                    : `${returnTo}://resume`;
+                  await Linking.openURL(returnUrl);
+                  return;
+                }
+              } catch {}
+              router.push("/");
+            }}
+          />
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
