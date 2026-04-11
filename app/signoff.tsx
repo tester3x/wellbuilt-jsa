@@ -192,6 +192,45 @@ export default function SignoffScreen() {
         console.warn("Failed to save JSA", error);
       }
 
+      // Auto-generate PDF and upload to Firebase Storage (fire-and-forget)
+      // Stores URL in AsyncStorage so WB T can attach to tickets (per_load mode)
+      (async () => {
+        try {
+          const { generateAndUploadJsaPdf } = await import('../services/jsaPdf');
+          const companyId = await AsyncStorage.getItem('selectedCompanyId') || '';
+          const ppeItems: string[] = [];
+          try {
+            const parsed = params.ppeSelected ? JSON.parse(params.ppeSelected as string) : {};
+            if (parsed?.selected) {
+              Object.entries(parsed.selected).forEach(([k, v]) => { if (v) ppeItems.push(k); });
+            }
+          } catch {}
+          const preparedItems = Object.entries(prepared).filter(([, v]) => v).map(([k]) => k);
+          const pdfUrl = await generateAndUploadJsaPdf({
+            driverName: params.driverName as string || '',
+            truckNumber: params.truckNumber as string || '',
+            date: params.date as string || '',
+            wells: wellsList,
+            locations: locations as string[],
+            jobActivity: params.jobActivityName as string || '',
+            pusher: params.pusher as string || '',
+            ppeItems,
+            preparedItems,
+            notes,
+            signature,
+            signatureImage: signatureImage || undefined,
+            companyName: companyId,
+            accentColor: accent,
+          }, companyId);
+          if (pdfUrl) {
+            await AsyncStorage.setItem('jsa_pdfUrl', pdfUrl);
+            console.log('[JSA] PDF URL stored for WB T:', pdfUrl);
+          }
+        } catch (err) {
+          console.warn('[JSA] PDF auto-generate failed (non-fatal):', err);
+        }
+      })();
+
       router.push({
         pathname: "/completed",
         params: {

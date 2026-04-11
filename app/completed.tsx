@@ -214,12 +214,16 @@ export default function CompletedScreen() {
           variant="secondary"
           accent={accent}
           onPress={async () => {
-            // If launched from WB T, deep link back
+            // If launched from WB T, deep link back with JSA PDF URL
             try {
               const returnTo = await AsyncStorage.getItem('jsa_returnTo');
               if (returnTo) {
                 await AsyncStorage.removeItem('jsa_returnTo');
-                await Linking.openURL(`${returnTo}://resume`);
+                const pdfUrl = await AsyncStorage.getItem('jsa_pdfUrl').catch(() => null);
+                const returnUrl = pdfUrl
+                  ? `${returnTo}://resume?jsaPdfUrl=${encodeURIComponent(pdfUrl)}`
+                  : `${returnTo}://resume`;
+                await Linking.openURL(returnUrl);
                 return;
               }
             } catch {}
