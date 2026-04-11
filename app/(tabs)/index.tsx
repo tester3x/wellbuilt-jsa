@@ -8,7 +8,9 @@ import {
     Image,
     Keyboard,
     KeyboardAvoidingView,
+    Modal,
     Platform,
+    Pressable,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -392,7 +394,7 @@ export default function JsaHomeScreen() {
             keyboardVisible && { paddingBottom: 250 }
           ]}
           keyboardShouldPersistTaps="handled"
-          scrollEnabled={wellSuggestions.length === 0 && jobTypeSuggestions.length === 0}
+          scrollEnabled={jobTypeSuggestions.length === 0}
         >
         {/* Header with logo */}
         <View style={styles.header}>
@@ -559,27 +561,37 @@ export default function JsaHomeScreen() {
               autoComplete="off"
               importantForAutofill="no"
             />
-            {wellSuggestions.length > 0 && (
-              <View style={[styles.autocompleteDropdown, { maxHeight: 400 }]}>
-                <ScrollView
-                  nestedScrollEnabled
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={true}
-                  scrollEventThrottle={16}
-                >
-                  {wellSuggestions.map((well, index) => (
-                    <TouchableOpacity
-                      key={`${well.api_no}-${index}`}
-                      style={[styles.dropdownItem, index === wellSuggestions.length - 1 && { borderBottomWidth: 0 }]}
-                      onPress={() => handleWellSelect(well)}
-                    >
-                      <Text style={styles.dropdownItemText}>{well.well_name}</Text>
-                      <Text style={styles.dropdownItemSub}>{well.operator} • {well.county} Co.</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
+            <Modal
+              visible={wellSuggestions.length > 0}
+              transparent
+              animationType="fade"
+              onRequestClose={() => { setWellSuggestions([]); setWellName(""); }}
+            >
+              <Pressable
+                style={styles.modalBackdrop}
+                onPress={() => { setWellSuggestions([]); }}
+              >
+                <View style={styles.wellDropdownModal}>
+                  <Text style={styles.wellDropdownTitle}>{t("Select Well")} ({wellSuggestions.length})</Text>
+                  <ScrollView
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={true}
+                    style={{ maxHeight: 500 }}
+                  >
+                    {wellSuggestions.map((well, index) => (
+                      <TouchableOpacity
+                        key={`${well.api_no}-${index}`}
+                        style={[styles.dropdownItem, index === wellSuggestions.length - 1 && { borderBottomWidth: 0 }]}
+                        onPress={() => handleWellSelect(well)}
+                      >
+                        <Text style={styles.dropdownItemText}>{well.well_name}</Text>
+                        <Text style={styles.dropdownItemSub}>{well.operator} • {well.county} Co.</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              </Pressable>
+            </Modal>
             {wellName.trim().length >= 2 && wellSuggestions.length === 0 && !wellDataLoading && (
               <TouchableOpacity
                 style={styles.saveInlineButton}
@@ -1132,5 +1144,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
     marginLeft: 6,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  wellDropdownModal: {
+    width: "100%",
+    maxWidth: 600,
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    padding: 16,
+    maxHeight: "70%",
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 10,
+  },
+  wellDropdownTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.textDark,
+    marginBottom: 12,
   },
 });
