@@ -2,6 +2,19 @@
 // Shared HTML builder for JSA PDF — used by completed screen (inline preview)
 // and pdf screen (generate + share).
 
+// PPE ID → human-readable label lookup
+const PPE_LABELS: Record<string, string> = {
+  safetyGlasses: 'Safety Glasses',
+  safetyShoes: 'Safety Shoes',
+  frClothing: 'FR Clothing',
+  hearingProtection: 'Hearing Protection',
+  hardHat: 'Hard Hat',
+  respirator: 'Respirator',
+  chemicalGloves: 'Chemical/Impact Gloves',
+  fourGasMonitor: 'Four Gas Monitor',
+  fallProtection: 'Fall Protection',
+};
+
 interface BuildOptions {
   driverName: string;
   truckNumber: string;
@@ -47,9 +60,10 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
       background: #f5f5f5; color: #111;
     }
     .page { padding: 24px 20px 32px; }
-    .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+    .header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+    .logo { flex-shrink: 0; }
+    .logo img { width: 80px; height: 80px; object-fit: contain; }
     .title-block { flex: 1; }
-    .logo img { width: 72px; height: 72px; object-fit: contain; }
     .title { margin: 0; font-size: 22px; font-weight: 700; }
     .subtitle { margin: 4px 0 0; font-size: 12px; color: #666; }
     .tag-row { margin-top: 6px; font-size: 11px; display: flex; gap: 6px; flex-wrap: wrap; }
@@ -81,6 +95,7 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
 <body>
   <div class="page">
     <div class="header">
+      ${logoDataUrl ? `<div class="logo"><img src="${logoDataUrl}" alt="Logo" /></div>` : ''}
       <div class="title-block">
         <h1 class="title">Job Safety Analysis</h1>
         <div class="tag-row">
@@ -88,7 +103,6 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
           <span class="tag">Field Operations</span>
         </div>
       </div>
-      ${logoDataUrl ? `<div><img src="${logoDataUrl}" alt="Logo" /></div>` : ''}
     </div>
 
     <div class="section">
@@ -110,7 +124,7 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
       <h2 class="section-title">PPE Selected</h2>
       <div class="pill-row">
         ${ppeItems.length > 0
-          ? ppeItems.map(item => `<span class="pill">${item}</span>`).join('')
+          ? ppeItems.map(item => `<span class="pill">${PPE_LABELS[item] || item}</span>`).join('')
           : '<span style="font-size:11px;color:#999">No PPE recorded</span>'}
       </div>
     </div>
