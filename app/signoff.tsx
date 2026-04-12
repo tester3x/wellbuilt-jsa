@@ -23,7 +23,7 @@ import {
     PREPARED_FOR_WORK_ITEMS,
 } from "../constants/jsaTemplate";
 import { STORAGE_KEYS } from "../constants/storageKeys";
-import { fetchDriverProfile } from "../services/driverAuth";
+import { fetchDriverProfile, getDriverSession } from "../services/driverAuth";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 
@@ -238,6 +238,52 @@ export default function SignoffScreen() {
           }
         } catch (err) {
           console.warn('[JSA] PDF auto-generate failed (non-fatal):', err);
+        }
+      })();
+
+      // Write JSA completion to jsa_day_status (fire-and-forget)
+      // This is the signal WB T and WB S use to know JSA is done
+      (async () => {
+        try {
+          const session = await getDriverSession();
+          if (!session?.passcodeHash) return;
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const docId = `${session.passcodeHash}_${todayStr}`;
+          const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
+          const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
+          const pdfUrl = await AsyncStorage.getItem('jsa_pdfUrl') || '';
+
+          const patchUrl = `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`
+            + '&updateMask.fieldPaths=driverHash'
+            + '&updateMask.fieldPaths=driverName'
+            + '&updateMask.fieldPaths=companyId'
+            + '&updateMask.fieldPaths=date'
+            + '&updateMask.fieldPaths=jsaCompleted'
+            + '&updateMask.fieldPaths=jsaCompletedAt'
+            + '&updateMask.fieldPaths=jsaDocId'
+            + '&updateMask.fieldPaths=pdfUrl'
+            + '&updateMask.fieldPaths=updatedAt';
+
+          await fetch(patchUrl, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: {
+                driverHash: { stringValue: session.passcodeHash },
+                driverName: { stringValue: session.legalName || session.displayName || '' },
+                companyId: { stringValue: session.companyId || '' },
+                date: { stringValue: todayStr },
+                jsaCompleted: { booleanValue: true },
+                jsaCompletedAt: { timestampValue: new Date().toISOString() },
+                jsaDocId: { stringValue: payload.id },
+                pdfUrl: { stringValue: pdfUrl },
+                updatedAt: { timestampValue: new Date().toISOString() },
+              },
+            }),
+          });
+          console.log('[JSA] Wrote completion to jsa_day_status');
+        } catch (err) {
+          console.warn('[JSA] jsa_day_status write failed (non-fatal):', err);
         }
       })();
 

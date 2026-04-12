@@ -55,6 +55,37 @@ export default function CompletedScreen() {
     syncToCloud().catch(() => {});
   }, []);
 
+  // Load location stamps from jsa_day_status for the PDF
+  const [locationStamps, setLocationStamps] = useState<any[]>([]);
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const { getDriverSession } = await import('../services/driverAuth');
+        const session = await getDriverSession();
+        if (!session?.passcodeHash) return;
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const docId = `${session.passcodeHash}_${todayStr}`;
+        const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/jsa_day_status/${docId}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
+        const resp = await fetch(url);
+        if (!resp.ok) return;
+        const doc = await resp.json();
+        const vals = doc.fields?.locations?.arrayValue?.values;
+        if (!Array.isArray(vals)) return;
+        const stamps = vals.map((v: any) => {
+          const f = v?.mapValue?.fields;
+          return f ? {
+            name: f.name?.stringValue || '',
+            type: f.type?.stringValue || 'pickup',
+            jobType: f.jobType?.stringValue || '',
+            stampedAt: f.stampedAt?.timestampValue || f.stampedAt?.stringValue || '',
+            dispatchId: f.dispatchId?.stringValue || '',
+          } : null;
+        }).filter(Boolean);
+        if (stamps.length > 0) setLocationStamps(stamps);
+      } catch {}
+    })();
+  }, []);
+
   // Parse PPE and prepared items for PDF
   const ppeItems = useMemo(() => {
     try {
@@ -102,13 +133,14 @@ export default function CompletedScreen() {
     signatureImage: (params.signatureImage as string) || undefined,
     locations: locationsList,
     locationAcks,
+    locationStamps: locationStamps.length > 0 ? locationStamps : undefined,
     ppeItems,
     preparedItems,
     emergencyContacts: themeEmergencyContacts,
     companyContacts: themeCompanyContacts,
     accent,
     logoDataUrl: logoUrl,
-  }), [params, ppeItems, preparedItems, locationsList, locationAcks, themeEmergencyContacts, themeCompanyContacts, accent, logoUrl]);
+  }), [params, ppeItems, preparedItems, locationsList, locationAcks, locationStamps, themeEmergencyContacts, themeCompanyContacts, accent, logoUrl]);
 
   const handleExportPdf = async () => {
     setIsExporting(true);

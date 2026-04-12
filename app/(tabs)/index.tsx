@@ -101,6 +101,70 @@ export default function JsaHomeScreen() {
     }).catch(() => {});
   }, []);
 
+  // Pre-populate locations from jsa_day_status (jobs done before JSA)
+  // If driver deferred JSA and worked jobs, those locations auto-appear here.
+  useEffect(() => {
+    if (!session?.passcodeHash) return;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const docId = `${session.passcodeHash}_${todayStr}`;
+    const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
+    const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
+
+    (async () => {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+        const resp = await fetch(
+          `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`,
+          { signal: controller.signal },
+        );
+        clearTimeout(timer);
+        if (!resp.ok) return;
+
+        const doc = await resp.json();
+        const locValues = doc.fields?.locations?.arrayValue?.values;
+        if (!Array.isArray(locValues) || locValues.length === 0) return;
+
+        // Extract unique location names from stamps
+        const stamped = new Set<string>();
+        for (const v of locValues) {
+          const name = v?.mapValue?.fields?.name?.stringValue;
+          if (name) stamped.add(name);
+        }
+        if (stamped.size === 0) return;
+
+        // Add as wells (if they look like NDIC well names) or locations
+        const existingWellNames = new Set(addedWells.map(w => w.name.toUpperCase()));
+        const existingLocs = new Set(addedLocations.map(l => l.toUpperCase()));
+        const newWells: { name: string; operator: string; county: string }[] = [];
+        const newLocs: string[] = [];
+
+        for (const name of stamped) {
+          const upper = name.toUpperCase();
+          if (existingWellNames.has(upper) || existingLocs.has(upper)) continue;
+          // Heuristic: well names typically have numbers/hyphens (e.g., GABRIEL 1-36-25H)
+          if (/\d/.test(name)) {
+            newWells.push({ name, operator: '', county: '' });
+          } else {
+            newLocs.push(name);
+          }
+        }
+
+        if (newWells.length > 0) {
+          setAddedWells(prev => [...prev, ...newWells]);
+        }
+        if (newLocs.length > 0) {
+          setAddedLocations(prev => [...prev, ...newLocs]);
+        }
+        if (newWells.length + newLocs.length > 0) {
+          console.log(`[JSA] Pre-populated ${newWells.length} wells + ${newLocs.length} locations from jsa_day_status`);
+        }
+      } catch (err) {
+        console.warn('[JSA] Failed to pre-populate from jsa_day_status:', err);
+      }
+    })();
+  }, [session?.passcodeHash]);
+
   // Load NDIC well data — scoped by driver's assignedCustomers from RTDB.
   // Same approach as WB T: driver record has operator names, load only those wells.
   const { configLoaded } = useTheme();

@@ -15,6 +15,14 @@ const PPE_LABELS: Record<string, string> = {
   fallProtection: 'Fall Protection',
 };
 
+export interface LocationStamp {
+  name: string;
+  type: 'pickup' | 'dropoff';
+  jobType: string;
+  stampedAt: string;
+  dispatchId: string;
+}
+
 interface BuildOptions {
   driverName: string;
   truckNumber: string;
@@ -27,6 +35,7 @@ interface BuildOptions {
   signatureImage?: string;
   locations: string[];
   locationAcks: Record<string, string>;
+  locationStamps?: LocationStamp[];
   ppeItems: string[];
   preparedItems: string[];
   emergencyContacts: { label: string; phone: string }[];
@@ -137,14 +146,33 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
     </div>
 
     <div class="section">
-      <h2 class="section-title">Locations</h2>
-      <div class="locations-list">
-        ${locations.length > 0
-          ? locations.map(loc =>
+      <h2 class="section-title">Locations Inspected</h2>
+      ${(opts.locationStamps && opts.locationStamps.length > 0)
+        ? `<table style="width:100%;border-collapse:collapse;font-size:11px">
+            <tr style="border-bottom:1px solid #e0e0e0;color:#666">
+              <th style="text-align:left;padding:4px 0;font-weight:600">Time</th>
+              <th style="text-align:left;padding:4px 0;font-weight:600">Location</th>
+              <th style="text-align:center;padding:4px 0;font-weight:600">Type</th>
+            </tr>
+            ${opts.locationStamps
+              .sort((a, b) => a.stampedAt.localeCompare(b.stampedAt))
+              .map(s => {
+                const time = new Date(s.stampedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                const badge = s.type === 'pickup'
+                  ? '<span style="background:#dcfce7;color:#166534;padding:1px 6px;border-radius:999px;font-size:10px">PICKUP</span>'
+                  : '<span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:999px;font-size:10px">DROP-OFF</span>';
+                return `<tr style="border-bottom:1px solid #f0f0f0">
+                  <td style="padding:3px 0">${time}</td>
+                  <td style="padding:3px 0;font-weight:500">${s.name}</td>
+                  <td style="padding:3px 0;text-align:center">${badge}</td>
+                </tr>`;
+              }).join('')}
+          </table>`
+        : (locations.length > 0
+          ? `<div class="locations-list">${locations.map(loc =>
               `<div>${loc}${locationAcks[loc] ? `<div class="ack">Ack: ${new Date(locationAcks[loc]).toLocaleString()}</div>` : ''}</div>`
-            ).join('')
-          : '<div style="color:#999">No locations recorded.</div>'}
-      </div>
+            ).join('')}</div>`
+          : '<div style="color:#999;font-size:12px">No locations recorded.</div>')}
     </div>
 
     <div class="section">
