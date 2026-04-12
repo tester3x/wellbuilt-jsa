@@ -142,6 +142,8 @@ function AppContent() {
           const name = parsed.queryParams.name as string;
           console.log('[JSA] SSO deep link received for:', name);
           ssoLogin(hash, name);
+          // SSO login comes from WB S — store returnTo so "Return to Work" goes back
+          AsyncStorage.setItem('jsa_returnTo', 'wellbuilt-suite').catch(() => {});
         }
 
         // JSA auto-fill from WB T: jsaapp://start?driverName=...&wellName=...&...
@@ -195,6 +197,8 @@ function AppContent() {
       // but we keep the overlay suppressed until auth state settles
       if (url.includes('login') && url.includes('hash=')) {
         console.log('[JSA] Cold start SSO deep link detected — suppressing login overlay');
+        // SSO login comes from WB S — store returnTo so "Return to Work" goes back
+        AsyncStorage.setItem('jsa_returnTo', 'wellbuilt-suite').catch(() => {});
         // login.tsx route will call ssoLogin; wait for auth state to update
         setTimeout(() => setSsoInProgress(false), 5000); // safety fallback
         return;

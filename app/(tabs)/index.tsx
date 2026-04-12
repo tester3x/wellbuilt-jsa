@@ -60,8 +60,16 @@ export default function JsaHomeScreen() {
   // Driver's assigned operators — read from RTDB assignedCustomers (same as WB T)
   const [driverOperators, setDriverOperators] = useState<string[]>([]);
 
-  // Auto-fill from WB T deep link (jsaapp://start?driverName=...&wellName=...)
+  // Track whether app was opened via deep link (SSO from WB S or WB T)
+  const [deepLinked, setDeepLinked] = useState(false);
+
+  // Auto-fill from deep link (jsaapp://start?driverName=...&wellName=...)
   useEffect(() => {
+    // Check if we have a returnTo stored from a previous deep link (e.g. app was killed and resumed)
+    AsyncStorage.getItem('jsa_returnTo').then(val => {
+      if (val) setDeepLinked(true);
+    }).catch(() => {});
+
     AsyncStorage.getItem('jsa_autofill').then(raw => {
       if (!raw) return;
       try {
@@ -82,12 +90,13 @@ export default function JsaHomeScreen() {
         if (params.date) setDate(params.date);
         if (params.disposal) setLocationInput(params.disposal);
         if (params.returnTo) {
+          setDeepLinked(true);
           // Store return app for deep link back on completion
           AsyncStorage.setItem('jsa_returnTo', params.returnTo).catch(() => {});
         }
         // Clear after reading — one-time auto-fill
         AsyncStorage.removeItem('jsa_autofill').catch(() => {});
-        console.log('[JSA] Auto-filled from WB T deep link');
+        console.log('[JSA] Auto-filled from deep link');
       } catch {}
     }).catch(() => {});
   }, []);
@@ -136,7 +145,8 @@ export default function JsaHomeScreen() {
 
   const trimmedLocation = locationInput.trim();
   const hasWellOrLocation = addedWells.length > 0 || wellName.trim().length > 0 || addedLocations.length > 0 || trimmedLocation.length > 0;
-  const isNextDisabled = !driverName.trim() || !truckNumber.trim() || !hasWellOrLocation;
+  // Deep-linked (pre-shift from WB S): driver may not have a job yet, well/location optional
+  const isNextDisabled = !driverName.trim() || !truckNumber.trim() || (!hasWellOrLocation && !deepLinked);
 
   const handleJobTypeTextChange = (text: string) => {
     setJobActivityName(text);
@@ -756,7 +766,9 @@ export default function JsaHomeScreen() {
 
               {isNextDisabled && (
                 <Text style={styles.warningText}>
-                  {t("Fill in driver, truck #, and a well or location to continue.")}
+                  {deepLinked
+                    ? t("Fill in driver and truck # to continue.")
+                    : t("Fill in driver, truck #, and a well or location to continue.")}
                 </Text>
               )}
             </>
