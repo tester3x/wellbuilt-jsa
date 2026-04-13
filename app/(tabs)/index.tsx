@@ -62,6 +62,10 @@ export default function JsaHomeScreen() {
 
   // Track whether app was opened via deep link (SSO from WB S or WB T)
   const [deepLinked, setDeepLinked] = useState(false);
+  // Track if JSA already completed today (blocks starting a new one)
+  const [jsaCompletedToday, setJsaCompletedToday] = useState(false);
+  const [jsaCompletedTime, setJsaCompletedTime] = useState<string | null>(null);
+  const [jsaPdfUrl, setJsaPdfUrl] = useState<string | null>(null);
 
   // Auto-fill from deep link (jsaapp://start?driverName=...&wellName=...)
   useEffect(() => {
@@ -122,6 +126,15 @@ export default function JsaHomeScreen() {
         if (!resp.ok) return;
 
         const doc = await resp.json();
+
+        // Check if JSA already completed today
+        if (doc.fields?.jsaCompleted?.booleanValue === true) {
+          setJsaCompletedToday(true);
+          const completedAt = doc.fields?.jsaCompletedAt?.timestampValue || doc.fields?.jsaCompletedAt?.stringValue;
+          if (completedAt) setJsaCompletedTime(completedAt);
+          if (doc.fields?.pdfUrl?.stringValue) setJsaPdfUrl(doc.fields.pdfUrl.stringValue);
+        }
+
         const locValues = doc.fields?.locations?.arrayValue?.values;
         if (!Array.isArray(locValues) || locValues.length === 0) return;
 
@@ -210,7 +223,7 @@ export default function JsaHomeScreen() {
   const trimmedLocation = locationInput.trim();
   const hasWellOrLocation = addedWells.length > 0 || wellName.trim().length > 0 || addedLocations.length > 0 || trimmedLocation.length > 0;
   // Deep-linked (pre-shift from WB S): driver may not have a job yet, well/location optional
-  const isNextDisabled = !driverName.trim() || !truckNumber.trim() || (!hasWellOrLocation && !deepLinked);
+  const isNextDisabled = jsaCompletedToday || !driverName.trim() || !truckNumber.trim() || (!hasWellOrLocation && !deepLinked);
 
   const handleJobTypeTextChange = (text: string) => {
     setJobActivityName(text);
@@ -518,8 +531,58 @@ export default function JsaHomeScreen() {
           </View>
         </View>
 
+        {/* JSA Already Completed Banner */}
+        {jsaCompletedToday && (
+          <View style={{ backgroundColor: '#166534', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(34,197,94,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 20 }}>✓</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>{t("JSA Completed Today")}</Text>
+                {jsaCompletedTime && (
+                  <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 2 }}>
+                    {new Date(jsaCompletedTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                  </Text>
+                )}
+              </View>
+            </View>
+            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, marginBottom: 12 }}>
+              {t("Your Job Safety Analysis has been reviewed and signed for today.")}
+            </Text>
+            {jsaPdfUrl ? (
+              <TouchableOpacity
+                onPress={() => {
+                  import('expo-linking').then(({ default: Linking }) => {
+                    Linking.openURL(jsaPdfUrl!).catch(() => {});
+                  });
+                }}
+                style={{ backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
+              >
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>{t("View JSA PDF")}</Text>
+              </TouchableOpacity>
+            ) : null}
+            {deepLinked && (
+              <TouchableOpacity
+                onPress={() => {
+                  AsyncStorage.getItem('jsa_returnTo').then(returnTo => {
+                    if (returnTo) {
+                      import('expo-linking').then(({ default: Linking }) => {
+                        Linking.openURL(`${returnTo}://resume`).catch(() => {});
+                      });
+                    }
+                  }).catch(() => {});
+                }}
+                style={{ backgroundColor: accent, borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginTop: 8 }}
+              >
+                <Text style={{ color: '#000', fontSize: 14, fontWeight: '700' }}>{t("Done — Return to Work")}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         {/* Card */}
-        <View style={styles.card}>
+        <View style={[styles.card, jsaCompletedToday && { opacity: 0.4 }]} pointerEvents={jsaCompletedToday ? 'none' : 'auto'}>
           <Text style={styles.cardTitle}>{t("Job Details")}</Text>
           <Text style={styles.cardSubtitle}>
             {t("Fill out the basic info for this job.")}

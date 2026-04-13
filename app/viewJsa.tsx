@@ -17,6 +17,28 @@ import { STORAGE_KEYS } from "../constants/storageKeys";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 
+const PPE_LABELS: Record<string, string> = {
+  safetyGlasses: "Safety Glasses",
+  safetyShoes: "Safety Shoes",
+  frClothing: "FR Clothing",
+  hardHat: "Hard Hat",
+  chemicalGloves: "Chemical/Impact Gloves",
+  fourGasMonitor: "Four Gas Monitor",
+  hearingProtection: "Hearing Protection",
+  fallProtection: "Fall Protection",
+  respirator: "Respirator",
+  faceShield: "Face Shield",
+  fireExtinguisher: "Fire Extinguisher",
+};
+
+const PREPARED_LABELS: Record<string, string> = {
+  trained: "I am properly trained for the job",
+  toolsAndPpe: "I have the tools and PPE needed for work",
+  sds: "SDS",
+  weatherChecked: "Weather conditions checked",
+  emergencyPlan: "Emergency action plan reviewed",
+};
+
 type Params = {
   id?: string;
   driverName?: string;
@@ -326,7 +348,7 @@ export default function ViewJsaScreen() {
             <View style={styles.list}>
               {ppeList.map((item) => (
                 <Text key={item} style={styles.listItem}>
-                  • {t(item)}
+                  • {PPE_LABELS[item] || item}
                 </Text>
               ))}
             </View>
@@ -341,7 +363,7 @@ export default function ViewJsaScreen() {
             <View style={styles.list}>
               {preparedList.map((item) => (
                 <Text key={item} style={styles.listItem}>
-                  • {t(item)}
+                  • {PREPARED_LABELS[item] || item}
                 </Text>
               ))}
             </View>
