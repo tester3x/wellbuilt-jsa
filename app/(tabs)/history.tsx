@@ -102,6 +102,7 @@ export default function HistoryTabScreen() {
         jobActivityName: item.jobActivityName,
         pusher: item.pusher,
         wellName: item.wellName,
+        wells: JSON.stringify((item as any).wells || []),
         otherInfo: item.otherInfo,
         location: item.location,
         task: item.task,

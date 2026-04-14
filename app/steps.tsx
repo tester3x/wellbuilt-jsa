@@ -194,39 +194,59 @@ const locationsList = useMemo(() => {
               <Text style={styles.summaryValue}>{truckNumber || "-"}</Text>
             </View>
             <View style={styles.separator} />
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{t("Job/Activity")}</Text>
-              <Text style={styles.summaryValue}>{jobActivityName || "-"}</Text>
-            </View>
-            <View style={styles.separator} />
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{t("Pusher")}</Text>
-              <Text style={styles.summaryValue}>{pusher || "-"}</Text>
-            </View>
-            <View style={styles.separator} />
+            {jobActivityName ? (
+              <>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>{t("Job/Activity")}</Text>
+                  <Text style={styles.summaryValue}>{jobActivityName}</Text>
+                </View>
+                <View style={styles.separator} />
+              </>
+            ) : null}
+            {pusher ? (
+              <>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>{t("Pusher")}</Text>
+                  <Text style={styles.summaryValue}>{pusher}</Text>
+                </View>
+                <View style={styles.separator} />
+              </>
+            ) : null}
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>{t("Wells")}</Text>
-              <Text style={styles.summaryValue}>
-                {wellsList.length > 0 ? wellsList.join(", ") : wellName || "-"}
-              </Text>
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                {wellsList.length > 0 ? wellsList.map((w, i) => (
+                  <Text key={i} style={[styles.summaryValue, { marginBottom: i < wellsList.length - 1 ? 2 : 0 }]} numberOfLines={1}>
+                    {w}
+                  </Text>
+                )) : <Text style={styles.summaryValue}>{wellName || "-"}</Text>}
+              </View>
             </View>
             <View style={styles.separator} />
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>{t("Locations")}</Text>
-              <Text style={styles.summaryValue}>
-                {locationsList.length > 0 ? locationsList.join(", ") : location || "-"}
-              </Text>
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                {locationsList.length > 0 ? locationsList.map((l, i) => (
+                  <Text key={i} style={[styles.summaryValue, { marginBottom: i < locationsList.length - 1 ? 2 : 0 }]} numberOfLines={1}>
+                    {l}
+                  </Text>
+                )) : <Text style={styles.summaryValue}>{location || "-"}</Text>}
+              </View>
             </View>
             <View style={styles.separator} />
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>{t("Date")}</Text>
               <Text style={styles.summaryValue}>{date || "-"}</Text>
             </View>
-            <View style={styles.separator} />
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{t("Other Info")}</Text>
-              <Text style={styles.summaryValue}>{otherInfo || "-"}</Text>
-            </View>
+            {otherInfo ? (
+              <>
+                <View style={styles.separator} />
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>{t("Other Info")}</Text>
+                  <Text style={styles.summaryValue}>{otherInfo}</Text>
+                </View>
+              </>
+            ) : null}
           </View>
 
           {/* Step */}

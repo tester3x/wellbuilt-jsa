@@ -47,6 +47,7 @@ type Params = {
   jobActivityName?: string;
   pusher?: string;
   wellName?: string;
+  wells?: string;
   otherInfo?: string;
   task?: string;
   jsaType?: string;
@@ -75,6 +76,9 @@ export default function ViewJsaScreen() {
   const [jobActivityName, setJobActivityName] = useState(params.jobActivityName || "");
   const [pusher, setPusher] = useState(params.pusher || "");
   const [wellName, setWellName] = useState(params.wellName || "");
+  const wellsList: string[] = useMemo(() => {
+    try { return params.wells ? JSON.parse(params.wells) : []; } catch { return []; }
+  }, [params.wells]);
   const [otherInfo, setOtherInfo] = useState(params.otherInfo || "");
   const [notes, setNotes] = useState(params.notes || "");
   const [signature, setSignature] = useState(params.signature || "");
@@ -254,10 +258,12 @@ export default function ViewJsaScreen() {
                 <Text style={styles.label}>{t("Locations")}</Text>
                 <Text style={styles.value}>{allLocationsText}</Text>
               </View>
-              <View style={styles.row}>
-                <Text style={styles.label}>{t("Task")}</Text>
-                <Text style={styles.value}>{params.jsaType || params.task || "-"}</Text>
-              </View>
+              {(params.jsaType || params.task) ? (
+                <View style={styles.row}>
+                  <Text style={styles.label}>{t("Task")}</Text>
+                  <Text style={styles.value}>{params.jsaType || params.task}</Text>
+                </View>
+              ) : null}
               <View style={styles.row}>
                 <Text style={styles.label}>{t("Date")}</Text>
                 <Text style={styles.value}>{params.date || "-"}</Text>
@@ -284,26 +290,38 @@ export default function ViewJsaScreen() {
                 <Text style={styles.label}>{t("Truck #")}</Text>
                 <Text style={styles.value}>{truckNumber || "-"}</Text>
               </View>
+              {jobActivityName ? (
+                <View style={styles.row}>
+                  <Text style={styles.label}>{t("Job/Activity")}</Text>
+                  <Text style={styles.value}>{jobActivityName}</Text>
+                </View>
+              ) : null}
+              {pusher ? (
+                <View style={styles.row}>
+                  <Text style={styles.label}>{t("Pusher")}</Text>
+                  <Text style={styles.value}>{pusher}</Text>
+                </View>
+              ) : null}
               <View style={styles.row}>
-                <Text style={styles.label}>{t("Job/Activity")}</Text>
-                <Text style={styles.value}>{jobActivityName || "-"}</Text>
+                <Text style={styles.label}>{t("Wells")}</Text>
+                <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                  {wellsList.length > 0 ? wellsList.map((w, i) => (
+                    <Text key={i} style={styles.value}>{w}</Text>
+                  )) : <Text style={styles.value}>{wellName || "-"}</Text>}
+                </View>
               </View>
-              <View style={styles.row}>
-                <Text style={styles.label}>{t("Pusher")}</Text>
-                <Text style={styles.value}>{pusher || "-"}</Text>
-              </View>
-              <View style={styles.row}>
-                <Text style={styles.label}>{t("Well")}</Text>
-                <Text style={styles.value}>{wellName || "-"}</Text>
-              </View>
-              <View style={styles.row}>
-                <Text style={styles.label}>{t("Locations")}</Text>
-                <Text style={styles.value}>{allLocationsText}</Text>
-              </View>
-              <View style={styles.row}>
-                <Text style={styles.label}>{t("Task")}</Text>
-                <Text style={styles.value}>{params.jsaType || params.task || "-"}</Text>
-              </View>
+              {allLocationsText && allLocationsText !== '-' ? (
+                <View style={styles.row}>
+                  <Text style={styles.label}>{t("Locations")}</Text>
+                  <Text style={styles.value}>{allLocationsText}</Text>
+                </View>
+              ) : null}
+              {(params.jsaType || params.task) ? (
+                <View style={styles.row}>
+                  <Text style={styles.label}>{t("Task")}</Text>
+                  <Text style={styles.value}>{params.jsaType || params.task}</Text>
+                </View>
+              ) : null}
               <View style={styles.row}>
                 <Text style={styles.label}>{t("Date")}</Text>
                 <Text style={styles.value}>{params.date || "-"}</Text>

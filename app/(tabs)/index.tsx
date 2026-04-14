@@ -223,7 +223,8 @@ export default function JsaHomeScreen() {
   const trimmedLocation = locationInput.trim();
   const hasWellOrLocation = addedWells.length > 0 || wellName.trim().length > 0 || addedLocations.length > 0 || trimmedLocation.length > 0;
   // Deep-linked (pre-shift from WB S): driver may not have a job yet, well/location optional
-  const isNextDisabled = jsaCompletedToday || !driverName.trim() || !truckNumber.trim() || (!hasWellOrLocation && !deepLinked);
+  // Form is hidden when JSA completed, so no need for jsaCompletedToday check here
+  const isNextDisabled = !driverName.trim() || !truckNumber.trim() || (!hasWellOrLocation && !deepLinked);
 
   const handleJobTypeTextChange = (text: string) => {
     setJobActivityName(text);
@@ -581,8 +582,36 @@ export default function JsaHomeScreen() {
           </View>
         )}
 
-        {/* Card */}
-        <View style={[styles.card, jsaCompletedToday && { opacity: 0.4 }]} pointerEvents={jsaCompletedToday ? 'none' : 'auto'}>
+        {/* When JSA completed: show day's wells/locations instead of the form */}
+        {jsaCompletedToday && (addedWells.length > 0 || addedLocations.length > 0) && (
+          <View style={[styles.card, { marginBottom: 16 }]}>
+            <Text style={styles.cardTitle}>{t("Today's Job Sites")}</Text>
+            {addedWells.length > 0 && (
+              <View style={{ marginTop: 8 }}>
+                <Text style={[styles.label, { marginBottom: 4 }]}>{t("Wells")}</Text>
+                {addedWells.map((w, i) => (
+                  <Text key={i} style={{ color: '#333', fontSize: 14, paddingVertical: 2, paddingLeft: 8 }}>
+                    {'\u2022'} {w.name}
+                  </Text>
+                ))}
+              </View>
+            )}
+            {addedLocations.length > 0 && (
+              <View style={{ marginTop: 8 }}>
+                <Text style={[styles.label, { marginBottom: 4 }]}>{t("Locations")}</Text>
+                {addedLocations.map((l, i) => (
+                  <Text key={i} style={{ color: '#333', fontSize: 14, paddingVertical: 2, paddingLeft: 8 }}>
+                    {'\u2022'} {l}
+                  </Text>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Card — hidden when JSA already completed */}
+        {jsaCompletedToday ? null : (
+        <View style={styles.card}>
           <Text style={styles.cardTitle}>{t("Job Details")}</Text>
           <Text style={styles.cardSubtitle}>
             {t("Fill out the basic info for this job.")}
@@ -901,6 +930,7 @@ export default function JsaHomeScreen() {
             </>
           )}
         </View>
+        )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
