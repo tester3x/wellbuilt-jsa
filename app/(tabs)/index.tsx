@@ -418,7 +418,7 @@ export default function JsaHomeScreen() {
   };
 
   const handleWellSelect = (well: WellRecord) => {
-    const entry = { name: well.well_name, operator: well.operator, county: well.county };
+    const entry = { name: well.well_name, operator: well.operator, county: well.county, jobType: jobActivityName || '' };
     if (!addedWells.some(w => w.name === well.well_name && w.operator === well.operator)) {
       setAddedWells((prev) => [...prev, entry]);
     }
@@ -430,7 +430,7 @@ export default function JsaHomeScreen() {
     const trimmed = wellName.trim();
     if (!trimmed) return;
     if (!addedWells.some(w => w.name.toLowerCase() === trimmed.toLowerCase())) {
-      setAddedWells((prev) => [...prev, { name: trimmed, operator: '', county: '' }]);
+      setAddedWells((prev) => [...prev, { name: trimmed, operator: '', county: '', jobType: jobActivityName || '' }]);
     }
     setWellName("");
     setWellSuggestions([]);
@@ -757,103 +757,56 @@ export default function JsaHomeScreen() {
           </>
         )}
 
-        {/* Living JSA Dashboard — shows current tab's JSA */}
+        {/* Living JSA Dashboard — full paper JSA per tab */}
         {jsaCompletedToday && currentJsa && (
           <>
-            {/* Job Sites — growing throughout the day */}
-            <View style={[styles.card, { marginBottom: 12 }]}>
-              <Text style={styles.cardTitle}>{t("Job Sites")}</Text>
-              {currentJsa.wells.length > 0 ? (
-                <View style={{ marginTop: 8 }}>
-                  {currentJsa.wells.map((w: any, i: number) => (
-                    <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, paddingLeft: 8, borderBottomWidth: i < currentJsa.wells.length - 1 ? 1 : 0, borderBottomColor: '#f0f0f0' }}>
-                      <Text style={{ color: '#333', fontSize: 14 }}>{w.name}</Text>
-                      <Text style={{ color: '#888', fontSize: 12 }}>{w.jobType || ''}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <Text style={{ color: '#999', fontSize: 13, marginTop: 8 }}>{t("No wells added yet. Wells will appear as you work.")}</Text>
-              )}
-              {currentJsa.locations.length > 0 && (
-                <View style={{ marginTop: 8 }}>
-                  <Text style={[styles.label, { marginBottom: 4 }]}>{t("Locations")}</Text>
-                  {currentJsa.locations.map((l: string, i: number) => (
-                    <Text key={i} style={{ color: '#333', fontSize: 14, paddingVertical: 2, paddingLeft: 8 }}>
-                      {'\u2022'} {l}
-                    </Text>
-                  ))}
-                </View>
-              )}
-            </View>
+            {/* Full JSA Document — paper-ready WebView */}
+            {currentJsa.savedData && (() => {
+              const sd = currentJsa.savedData;
+              let ppeItems: string[] = [];
+              const rawPpe = sd.ppeSelected;
+              if (typeof rawPpe === 'object' && !Array.isArray(rawPpe)) {
+                ppeItems = Object.entries(rawPpe).filter(([, v]) => v).map(([k]) => k);
+              } else if (typeof rawPpe === 'string') {
+                try { const p = JSON.parse(rawPpe); if (p?.selected) ppeItems = Object.entries(p.selected).filter(([, v]) => v).map(([k]) => k); } catch {}
+              }
+              let preparedItems: string[] = [];
+              const rawPrep = sd.prepared;
+              if (typeof rawPrep === 'object') preparedItems = Object.entries(rawPrep).filter(([, v]) => v).map(([k]) => k);
 
-            {/* JSA Summary — PPE, Hazards, Signature */}
-            {currentJsa.savedData && (
-              <View style={[styles.card, { marginBottom: 12 }]}>
-                <Text style={styles.cardTitle}>{t("Safety Review")}</Text>
+              const jsaHtml = buildJsaPdfHtml({
+                driverName: sd.driverName || '',
+                truckNumber: sd.truckNumber || '',
+                pusher: sd.pusher || '',
+                wellName: currentJsa.wells.map((w: any) => w.name).join(', '),
+                wells: currentJsa.wells,
+                jobActivity: sd.jobActivityName || '',
+                date: sd.date || '',
+                notes: sd.notes || '',
+                signature: sd.signature || '',
+                signatureImage: sd.signatureImage || undefined,
+                locations: currentJsa.locations || [],
+                locationAcks: {},
+                ppeItems,
+                preparedItems,
+                emergencyContacts: [],
+                companyContacts: [],
+                accent,
+                logoDataUrl: null,
+              });
 
-                {/* Hazards */}
-                <View style={{ marginTop: 8 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#166534', marginBottom: 4 }}>
-                    {t("Hazards Reviewed")}
-                  </Text>
-                  <Text style={{ fontSize: 13, color: '#333' }}>
-                    {t("9 steps reviewed and acknowledged")}
-                  </Text>
+              return (
+                <View style={{ borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, marginBottom: 12, height: 500 }}>
+                  <WebView
+                    key={'jsa-doc-' + currentJsa.id}
+                    source={{ html: jsaHtml }}
+                    style={{ flex: 1, backgroundColor: '#f5f5f5' }}
+                    scrollEnabled={true}
+                    scalesPageToFit={true}
+                  />
                 </View>
-
-                {/* PPE */}
-                <View style={{ marginTop: 12 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textDark, marginBottom: 4 }}>
-                    {t("PPE Selected")}
-                  </Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-                    {(() => {
-                      let ppeList: string[] = [];
-                      const raw = currentJsa?.savedData.ppeSelected;
-                      if (typeof raw === 'object' && !Array.isArray(raw)) {
-                        ppeList = Object.entries(raw).filter(([, v]) => v).map(([k]) => k);
-                      } else if (typeof raw === 'string') {
-                        try {
-                          const parsed = JSON.parse(raw);
-                          if (parsed?.selected) ppeList = Object.entries(parsed.selected).filter(([, v]) => v).map(([k]) => k);
-                        } catch {}
-                      }
-                      const labels: Record<string, string> = {
-                        safetyGlasses: 'Safety Glasses', safetyShoes: 'Safety Shoes',
-                        frClothing: 'FR Clothing', hardHat: 'Hard Hat',
-                        chemicalGloves: 'Chemical/Impact Gloves', fourGasMonitor: 'Four Gas Monitor',
-                        hearingProtection: 'Hearing Protection', fallProtection: 'Fall Protection',
-                        respirator: 'Respirator',
-                      };
-                      return ppeList.length > 0 ? ppeList.map((item, i) => (
-                        <View key={i} style={{ backgroundColor: '#f0f9ff', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#bfdbfe' }}>
-                          <Text style={{ fontSize: 11, color: '#1e40af' }}>{labels[item] || item}</Text>
-                        </View>
-                      )) : <Text style={{ color: '#999', fontSize: 12 }}>{t("None recorded")}</Text>;
-                    })()}
-                  </View>
-                </View>
-
-                {/* Signature */}
-                {currentJsa?.savedData.signatureImage && (
-                  <View style={{ marginTop: 12 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textDark, marginBottom: 4 }}>
-                      {t("Signature")}
-                    </Text>
-                    <View style={{ backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: colors.border, height: 60, overflow: 'hidden' }}>
-                      <WebView
-                        key={'dash-sig-' + (currentJsa?.savedData.signatureImage?.length || 0)}
-                        source={{ html: `<html><body style="margin:0;background:#f0f0f0;display:flex;align-items:center;justify-content:center;height:100vh"><img src="${currentJsa?.savedData.signatureImage.startsWith('data:') ? currentJsa?.savedData.signatureImage : `data:image/png;base64,${currentJsa?.savedData.signatureImage}`}" style="max-width:100%;max-height:56px;object-fit:contain" /></body></html>` }}
-                        style={{ flex: 1, backgroundColor: 'transparent' }}
-                        scrollEnabled={false}
-                      />
-                    </View>
-                    <Text style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{currentJsa?.savedData.signature || currentJsa?.savedData.driverName || ''}</Text>
-                  </View>
-                )}
-              </View>
-            )}
+              );
+            })()}
 
             {/* Add Well / Location + New JSA buttons */}
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
@@ -992,7 +945,7 @@ export default function JsaHomeScreen() {
           </View>
 
           <View style={[styles.field, { zIndex: 30 }]}>
-            <Text style={styles.label}>{t("Job/Activity Name")}</Text>
+            <Text style={styles.label}>{t("Job Type")}</Text>
             <TextInput
               style={styles.input}
               placeholder={t("Start typing a job type...")}
@@ -1018,20 +971,6 @@ export default function JsaHomeScreen() {
                 </ScrollView>
               </View>
             )}
-          </View>
-
-          <View style={styles.field}>
-            <Text style={styles.label}>{t("Pusher")}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t("Pusher name")}
-              placeholderTextColor={colors.textMuted}
-              value={pusher}
-              onChangeText={setPusher}
-              returnKeyType="next"
-              autoComplete="off"
-              importantForAutofill="no"
-            />
           </View>
 
           <View style={styles.field}>
@@ -1094,9 +1033,9 @@ export default function JsaHomeScreen() {
                     >
                       <View style={{ flex: 1 }}>
                         <Text style={styles.favoriteText}>{well.name}</Text>
-                        {well.operator ? (
-                          <Text style={styles.wellDetailText}>{well.operator} • {well.county} Co.</Text>
-                        ) : null}
+                        <Text style={styles.wellDetailText}>
+                          {[well.operator, well.county ? `${well.county} Co.` : '', well.jobType].filter(Boolean).join(' • ')}
+                        </Text>
                       </View>
                       <Text style={styles.favoriteAdd}>{t("Remove")}</Text>
                     </TouchableOpacity>
@@ -1188,6 +1127,20 @@ export default function JsaHomeScreen() {
                 </View>
               </View>
             )}
+          </View>
+
+        <View style={styles.field}>
+            <Text style={styles.label}>{t("Pusher")}</Text>
+            <TextInput
+              style={styles.input}
+              placeholder={t("Pusher name")}
+              placeholderTextColor={colors.textMuted}
+              value={pusher}
+              onChangeText={setPusher}
+              returnKeyType="next"
+              autoComplete="off"
+              importantForAutofill="no"
+            />
           </View>
 
         <View style={styles.field}>

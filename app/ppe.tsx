@@ -156,7 +156,11 @@ export default function PpeScreen() {
       { label: t("Pusher"), value: pusher || "-" },
       {
         label: t("Wells"),
-        value: wellsList.length > 0 ? wellsList.map((w: any) => typeof w === 'string' ? w : w?.name || '').join(", ") : wellName || "-",
+        value: wellsList.length > 0 ? wellsList.map((w: any) => {
+          const name = typeof w === 'string' ? w : w?.name || '';
+          const jt = typeof w !== 'string' && w?.jobType ? ` (${w.jobType})` : '';
+          return name + jt;
+        }).join(", ") : wellName || "-",
       },
       {
         label: t("Locations"),

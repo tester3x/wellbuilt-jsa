@@ -216,9 +216,14 @@ const locationsList = useMemo(() => {
               <Text style={styles.summaryLabel}>{t("Wells")}</Text>
               <View style={{ flex: 1, alignItems: 'flex-end' }}>
                 {wellsList.length > 0 ? wellsList.map((w: any, i: number) => (
-                  <Text key={i} style={[styles.summaryValue, { marginBottom: i < wellsList.length - 1 ? 2 : 0 }]} numberOfLines={1}>
-                    {typeof w === 'string' ? w : w?.name || ''}
-                  </Text>
+                  <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: i < wellsList.length - 1 ? 2 : 0 }}>
+                    <Text style={styles.summaryValue} numberOfLines={1}>
+                      {typeof w === 'string' ? w : w?.name || ''}
+                    </Text>
+                    {typeof w !== 'string' && w?.jobType ? (
+                      <Text style={{ fontSize: 12, color: '#888' }}>{w.jobType}</Text>
+                    ) : null}
+                  </View>
                 )) : <Text style={styles.summaryValue}>{wellName || "-"}</Text>}
               </View>
             </View>
