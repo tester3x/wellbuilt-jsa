@@ -67,7 +67,7 @@ interface ThemeContextValue {
 }
 
 // Defaults
-const DEFAULT_ACCENT = "#F5A623"; // WellBuilt gold
+const DEFAULT_ACCENT = "#DAA520"; // WellBuilt brand gold
 const DEFAULT_COMPANY_NAME = "WellBuilt";
 const FIRESTORE_BASE = "https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents";
 const CACHE_KEY = "@jsa/companyConfig";

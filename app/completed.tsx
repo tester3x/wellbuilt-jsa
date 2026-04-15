@@ -120,12 +120,22 @@ export default function CompletedScreen() {
     return {};
   }, [params.locationAcks]);
 
+  // Parse wells array for PDF
+  const wellsArray = useMemo(() => {
+    try {
+      const parsed = params.wells ? JSON.parse(params.wells as string) : [];
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+    return [];
+  }, [params.wells]);
+
   // Build PDF HTML for inline preview + export
   const pdfHtml = useMemo(() => buildJsaPdfHtml({
     driverName: (params.driverName as string) || '',
     truckNumber: (params.truckNumber as string) || '',
     pusher: (params.pusher as string) || '',
     wellName: (params.wellName as string) || '',
+    wells: wellsArray.length > 0 ? wellsArray : undefined,
     jobActivity: (params.jobActivityName as string) || (params.task as string) || '',
     date: (params.date as string) || '',
     notes: (params.notes as string) || '',
@@ -140,7 +150,7 @@ export default function CompletedScreen() {
     companyContacts: themeCompanyContacts,
     accent,
     logoDataUrl: logoUrl,
-  }), [params, ppeItems, preparedItems, locationsList, locationAcks, locationStamps, themeEmergencyContacts, themeCompanyContacts, accent, logoUrl]);
+  }), [params, wellsArray, ppeItems, preparedItems, locationsList, locationAcks, locationStamps, themeEmergencyContacts, themeCompanyContacts, accent, logoUrl]);
 
   const handleExportPdf = async () => {
     setIsExporting(true);
@@ -167,8 +177,8 @@ export default function CompletedScreen() {
           title: t("Completed"),
           headerBackTitle: t("Sign Off"),
           headerRight: () => (
-            <TouchableOpacity onPress={() => router.replace("/")} style={{ paddingHorizontal: 10 }}>
-              <Text style={{ color: accent, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
+            <TouchableOpacity onPress={() => router.replace("/(tabs)")} style={{ paddingHorizontal: 10 }}>
+              <Text style={{ color: '#fff', fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
             </TouchableOpacity>
           ),
         }}
@@ -221,7 +231,7 @@ export default function CompletedScreen() {
                   return;
                 }
               } catch {}
-              router.push("/");
+              router.replace("/(tabs)");
             }}
           />
         </View>

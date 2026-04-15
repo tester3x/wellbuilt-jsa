@@ -60,7 +60,7 @@ export default function SSOLoginRoute() {
     <View style={styles.container}>
       {status === 'validating' && (
         <>
-          <ActivityIndicator size="large" color="#F5A623" />
+          <ActivityIndicator size="large" color="#DAA520" />
           <Text style={styles.text}>Signing in from WellBuilt Suite...</Text>
         </>
       )}

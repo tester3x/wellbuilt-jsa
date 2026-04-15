@@ -3,6 +3,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
     Alert,
+    Image,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -56,6 +57,7 @@ type Params = {
   prepared?: string;
   notes?: string;
   signature?: string;
+  signatureImage?: string;
   savedAt?: string;
   timestamp?: string;
   locations?: string;
@@ -188,8 +190,8 @@ export default function ViewJsaScreen() {
           title: isEditing ? t("Edit JSA") : t("JSA Details"),
           headerBackTitle: t("Saved JSAs"),
           headerRight: () => (
-            <TouchableOpacity onPress={() => router.replace("/")} style={{ paddingHorizontal: 10 }}>
-              <Text style={{ color: accent, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
+            <TouchableOpacity onPress={() => router.replace("/(tabs)")} style={{ paddingHorizontal: 10 }}>
+              <Text style={{ color: '#fff', fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
             </TouchableOpacity>
           ),
         }}
@@ -305,8 +307,11 @@ export default function ViewJsaScreen() {
               <View style={styles.row}>
                 <Text style={styles.label}>{t("Wells")}</Text>
                 <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                  {wellsList.length > 0 ? wellsList.map((w, i) => (
-                    <Text key={i} style={styles.value}>{w}</Text>
+                  {wellsList.length > 0 ? wellsList.map((w: any, i: number) => (
+                    <Text key={i} style={styles.value}>
+                      {typeof w === 'string' ? w : w?.name || ''}
+                      {typeof w !== 'string' && w?.jobType ? ` (${w.jobType})` : ''}
+                    </Text>
                   )) : <Text style={styles.value}>{wellName || "-"}</Text>}
                 </View>
               </View>
@@ -417,7 +422,18 @@ export default function ViewJsaScreen() {
               placeholderTextColor={colors.textMuted}
             />
           ) : (
-            <Text style={styles.value}>{signature || "—"}</Text>
+            <>
+              {params.signatureImage ? (
+                <View style={{ backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 4, height: 80, justifyContent: 'center', marginBottom: 6 }}>
+                  <Image
+                    source={{ uri: (params.signatureImage as string).startsWith('data:') ? params.signatureImage : `data:image/png;base64,${params.signatureImage}` }}
+                    style={{ width: '100%', height: 72 }}
+                    resizeMode="contain"
+                  />
+                </View>
+              ) : null}
+              <Text style={[styles.value, { textAlign: 'left' }]}>{signature || "—"}</Text>
+            </>
           )}
         </View>
 

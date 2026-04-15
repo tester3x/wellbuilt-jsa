@@ -43,6 +43,7 @@ export interface DriverSession {
   isViewer: boolean;
   companyId?: string;
   companyName?: string;
+  tier?: 'free' | 'company';
 }
 
 // --- Firebase helpers ---
@@ -498,6 +499,72 @@ export const isPasscodeAvailable = async (
   } catch (error) {
     console.error("[DriverAuth-JSA] Error checking passcode availability:", error);
     return { available: false, reason: "Connection error" };
+  }
+};
+
+/**
+ * Register as a standalone/free-tier driver — auto-approved, no admin needed.
+ * Writes directly to drivers/approved/{hash} and creates immediate session.
+ * Also notifies WB admin of the new standalone registration.
+ */
+export const registerStandalone = async (params: {
+  passcode: string;
+  displayName: string;
+  legalName?: string;
+}): Promise<{ success: boolean; error?: string }> => {
+  console.log("[DriverAuth-JSA] Standalone registration for:", params.displayName);
+
+  try {
+    const hash = await hashPasscode(params.passcode, params.displayName);
+
+    // Check if hash already exists
+    try {
+      const existing = await firebaseGet(`${DRIVERS_APPROVED}/${hash}`);
+      if (existing) {
+        return { success: false, error: "This name and passcode combination is already registered." };
+      }
+    } catch {
+      // 404 or network error — hash doesn't exist, proceed with registration
+    }
+
+    // Write directly to approved — auto-approve for free tier
+    const approvedData: Record<string, any> = {
+      displayName: params.displayName,
+      legalName: params.legalName || params.displayName,
+      active: true,
+      tier: 'free',
+      source: 'wbjsa-standalone',
+      approvedAt: new Date().toISOString(),
+      registeredAt: new Date().toISOString(),
+    };
+
+    await firebasePatch(`${DRIVERS_APPROVED}/${hash}`, approvedData);
+
+    // Create immediate session
+    await SecureStore.setItemAsync("jsa_passcodeHash", hash);
+    await SecureStore.setItemAsync("jsa_driverName", params.displayName);
+    await SecureStore.setItemAsync("jsa_driverVerifiedAt", Date.now().toString());
+    await SecureStore.setItemAsync("jsa_authMethod", "manual");
+    if (params.legalName) {
+      await SecureStore.setItemAsync("jsa_legalName", params.legalName);
+    }
+
+    // Notify WB admin (fire-and-forget)
+    firebasePost('notifications/standalone_registrations', {
+      displayName: params.displayName,
+      hash,
+      source: 'wbjsa',
+      registeredAt: new Date().toISOString(),
+    }).catch(() => {});
+
+    console.log("[DriverAuth-JSA] Standalone registration complete — auto-approved");
+    return { success: true };
+  } catch (error: any) {
+    console.error("[DriverAuth-JSA] Standalone registration error:", error);
+    if (error?.message?.includes('404')) {
+      // 404 from GET means hash doesn't exist — that's expected, retry
+    }
+    return { success: false, error: "Connection error" };
   }
 };
 

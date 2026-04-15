@@ -3,8 +3,8 @@
 
 export const colors = {
   // Primary brand colors
-  primary: "#F5A623",
-  primaryDark: "#D68910",
+  primary: "#DAA520",      // WellBuilt brand gold
+  primaryDark: "#B8860B",
 
   // Backgrounds
   background: "#F5F5F5",

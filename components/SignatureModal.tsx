@@ -19,7 +19,12 @@ export default function SignatureModal({ visible, onClose, onSave, accent, title
   const sigRef = useRef<SignaturePadRef>(null);
 
   const handleSave = useCallback((base64: string) => {
-    onSave(base64);
+    console.log('[SigModal] handleSave called, data length:', base64?.length || 0);
+    if (base64 && base64.length > 10) {
+      onSave(base64);
+    } else {
+      console.warn('[SigModal] Empty or short signature data, not saving');
+    }
     onClose();
     setHasDrawn(false);
   }, [onSave, onClose]);
@@ -44,10 +49,10 @@ export default function SignatureModal({ visible, onClose, onSave, accent, title
               ref={sigRef}
               onBegin={() => setHasDrawn(true)}
               onSave={handleSave}
-              penColor="#ffffff"
-              backgroundColor="#1a1a1a"
+              penColor="#000000"
+              backgroundColor="#ffffff"
               strokeWidth={5}
-              style={{ width: '100%', height: 300 }}
+              style={{ width: '100%', height: 80 }}
             />
           </View>
           <View style={styles.actions}>
@@ -74,15 +79,15 @@ export default function SignatureModal({ visible, onClose, onSave, accent, title
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     paddingHorizontal: 12,
   },
   box: {
-    backgroundColor: '#111',
+    backgroundColor: '#fff',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#e0e0e0',
     padding: 14,
   },
   title: {
@@ -93,11 +98,11 @@ const styles = StyleSheet.create({
   },
   canvas: {
     width: '100%',
-    height: 300,
+    height: 80,
     borderRadius: 8,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#e0e0e0',
     backgroundColor: '#fff',
   },
   actions: {
@@ -114,7 +119,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   btnText: {
-    color: '#888',
+    color: '#555',
     fontSize: 14,
   },
   saveText: {

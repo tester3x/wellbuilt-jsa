@@ -156,7 +156,7 @@ export default function PpeScreen() {
       { label: t("Pusher"), value: pusher || "-" },
       {
         label: t("Wells"),
-        value: wellsList.length > 0 ? wellsList.join(", ") : wellName || "-",
+        value: wellsList.length > 0 ? wellsList.map((w: any) => typeof w === 'string' ? w : w?.name || '').join(", ") : wellName || "-",
       },
       {
         label: t("Locations"),
@@ -205,7 +205,7 @@ export default function PpeScreen() {
           title: t("PPE Checklist"),
           headerBackTitle: t("Steps & Hazards"),
           headerRight: () => (
-            <TouchableOpacity onPress={() => router.replace("/")} style={{ paddingHorizontal: 10 }}>
+            <TouchableOpacity onPress={() => router.replace("/(tabs)")} style={{ paddingHorizontal: 10 }}>
               <Text style={{ color: accent, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
             </TouchableOpacity>
           ),

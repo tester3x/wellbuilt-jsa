@@ -1,6 +1,6 @@
 // services/jsaPdfHtml.ts
 // Shared HTML builder for JSA PDF — used by completed screen (inline preview)
-// and pdf screen (generate + share).
+// and pdf generation (generate + share).
 
 // PPE ID → human-readable label lookup
 const PPE_LABELS: Record<string, string> = {
@@ -15,6 +15,15 @@ const PPE_LABELS: Record<string, string> = {
   fallProtection: 'Fall Protection',
 };
 
+// Prepared item ID → human-readable label lookup
+const PREPARED_LABELS: Record<string, string> = {
+  trained: 'I am properly trained for the job',
+  toolsAndPpe: 'I have the tools and PPE needed for work',
+  sds: 'SDS',
+  weatherChecked: 'Weather conditions checked',
+  emergencyPlan: 'Emergency action plan reviewed',
+};
+
 export interface LocationStamp {
   name: string;
   type: 'pickup' | 'dropoff';
@@ -23,11 +32,19 @@ export interface LocationStamp {
   dispatchId: string;
 }
 
+export interface WellEntryPdf {
+  name: string;
+  operator?: string;
+  county?: string;
+  jobType?: string;
+}
+
 interface BuildOptions {
   driverName: string;
   truckNumber: string;
   pusher: string;
-  wellName: string;
+  wellName: string;        // legacy single well (fallback)
+  wells?: WellEntryPdf[];  // new: full well objects with job types
   jobActivity: string;
   date: string;
   notes: string;
@@ -46,13 +63,31 @@ interface BuildOptions {
 
 export function buildJsaPdfHtml(opts: BuildOptions): string {
   const {
-    driverName, truckNumber, pusher, wellName, jobActivity, date,
+    driverName, truckNumber, pusher, wellName, wells, jobActivity, date,
     notes, signature, signatureImage, locations, locationAcks,
     ppeItems, preparedItems, emergencyContacts, companyContacts,
     accent, logoDataUrl,
   } = opts;
 
-  const jobLocationsValue = locations.length ? locations.join(', ') : '-';
+  // Build wells display — prefer wells array, fall back to wellName
+  let wellsHtml = '';
+  if (wells && wells.length > 0) {
+    wellsHtml = wells.map(w => {
+      const name = typeof w === 'string' ? w : (w?.name || '');
+      const jt = typeof w !== 'string' && w?.jobType ? w.jobType : '';
+      return `<div class="row">
+        <span class="row-label">${name}</span>
+        <span class="row-value">${jt || jobActivity || '-'}</span>
+      </div>`;
+    }).join('');
+  } else if (wellName && wellName !== '-') {
+    wellsHtml = `<div class="row"><span class="row-label">${wellName}</span><span class="row-value">${jobActivity || '-'}</span></div>`;
+  }
+
+  // Build signature HTML — black on white, full width
+  const sigImgSrc = signatureImage
+    ? (signatureImage.startsWith('data:') ? signatureImage : `data:image/png;base64,${signatureImage}`)
+    : null;
 
   return `
 <!DOCTYPE html>
@@ -86,10 +121,25 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
     .pill { padding: 3px 8px; border-radius: 999px; border: 1px solid ${accent}; color: #111; background: #fff7d6; }
     .checklist-item { font-size: 12px; padding: 2px 0; }
     .notes { font-size: 12px; line-height: 1.4; white-space: pre-wrap; }
-    .signature-row { display: flex; justify-content: space-between; font-size: 12px; margin-top: 8px; }
-    .signature-label { color: #666; }
-    .signature-value { font-weight: 600; border-bottom: 1px solid #ccc; padding-bottom: 2px; min-width: 160px; text-align: right; }
-    .signature-img { max-width: 200px; max-height: 60px; }
+    .signature-block {
+      margin-top: 8px;
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .signature-img {
+      width: 100%;
+      max-height: 80px;
+      object-fit: contain;
+      display: block;
+    }
+    .signature-name {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+      text-align: right;
+    }
     .badge-strip { display: flex; gap: 8px; margin-top: 4px; font-size: 11px; }
     .badge { padding: 2px 8px; border-radius: 999px; border: 1px solid #e0e0e0; background: #fff; }
     .badge-okay { border-color: #e0e0e0; color: #111; background: #fff; font-weight: 500; }
@@ -99,6 +149,9 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
     .locations-list { font-size: 12px; line-height: 1.4; }
     .locations-list div { margin-bottom: 2px; }
     .ack { color: #666; font-size: 10px; }
+    .wells-table { width: 100%; font-size: 12px; }
+    .wells-table .well-header { display: flex; justify-content: space-between; font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; border-bottom: 1px solid #e0e0e0; padding-bottom: 4px; margin-bottom: 4px; }
+    .footer { text-align: center; font-size: 10px; color: #999; margin-top: 16px; padding-top: 12px; border-top: 1px solid #e0e0e0; }
   </style>
 </head>
 <body>
@@ -118,10 +171,7 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
       <h2 class="section-title">Job Details</h2>
       <div class="row"><span class="row-label">Driver</span><span class="row-value">${driverName || '-'}</span></div>
       <div class="row"><span class="row-label">Truck #</span><span class="row-value">${truckNumber || '-'}</span></div>
-      <div class="row"><span class="row-label">Pusher</span><span class="row-value">${pusher || '-'}</span></div>
-      <div class="row"><span class="row-label">Well</span><span class="row-value">${wellName || '-'}</span></div>
-      <div class="row"><span class="row-label">Location</span><span class="row-value">${jobLocationsValue}</span></div>
-      <div class="row"><span class="row-label">Job/Activity</span><span class="row-value">${jobActivity || '-'}</span></div>
+      ${pusher ? `<div class="row"><span class="row-label">Pusher</span><span class="row-value">${pusher}</span></div>` : ''}
       <div class="row"><span class="row-label">Date</span><span class="row-value">${date || '-'}</span></div>
       <div class="badge-strip">
         <div class="badge badge-okay">JSA Reviewed</div>
@@ -129,21 +179,14 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
       </div>
     </div>
 
+    ${wellsHtml ? `
     <div class="section">
-      <h2 class="section-title">PPE Selected</h2>
-      <div class="pill-row">
-        ${ppeItems.length > 0
-          ? ppeItems.map(item => `<span class="pill">${PPE_LABELS[item] || item}</span>`).join('')
-          : '<span style="font-size:11px;color:#999">No PPE recorded</span>'}
+      <h2 class="section-title">Wells / Job Sites</h2>
+      <div class="wells-table">
+        <div class="well-header"><span>Well / Location</span><span>Job Type</span></div>
+        ${wellsHtml}
       </div>
-    </div>
-
-    <div class="section">
-      <h2 class="section-title">Prepared for Work</h2>
-      <div class="checklist-item">${preparedItems.includes('trained') ? '☑' : '☐'} I am properly trained for the job</div>
-      <div class="checklist-item">${preparedItems.includes('toolsAndPpe') ? '☑' : '☐'} I have the tools and PPE needed for work</div>
-      <div class="checklist-item">${preparedItems.includes('sds') ? '☑' : '☐'} SDS</div>
-    </div>
+    </div>` : ''}
 
     <div class="section">
       <h2 class="section-title">Locations Inspected</h2>
@@ -176,18 +219,37 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
     </div>
 
     <div class="section">
+      <h2 class="section-title">PPE Selected</h2>
+      <div class="pill-row">
+        ${ppeItems.length > 0
+          ? ppeItems.map(item => `<span class="pill">${PPE_LABELS[item] || item}</span>`).join('')
+          : '<span style="font-size:11px;color:#999">No PPE recorded</span>'}
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">Prepared for Work</h2>
+      ${preparedItems.map(item =>
+        `<div class="checklist-item">☑ ${PREPARED_LABELS[item] || item}</div>`
+      ).join('')}
+      ${preparedItems.length === 0 ? '<div style="color:#999;font-size:12px">No checklist responses recorded.</div>' : ''}
+    </div>
+
+    <div class="section">
       <h2 class="section-title">Notes & Signature</h2>
       <div>
         <div style="font-size:11px;color:#666;margin-bottom:4px">Additional Notes</div>
         <div class="notes">${notes?.trim() || 'No additional notes provided.'}</div>
       </div>
-      <div class="signature-row">
-        <span class="signature-label">Signature</span>
-        ${signatureImage
-          ? `<img src="data:image/png;base64,${signatureImage}" class="signature-img" />`
-          : `<span class="signature-value">${signature || ''}</span>`}
-      </div>
-      ${signature ? `<div style="font-size:11px;color:#666;text-align:right;margin-top:2px">${signature}</div>` : ''}
+      ${sigImgSrc
+        ? `<div class="signature-block">
+            <img src="${sigImgSrc}" class="signature-img" alt="Signature" />
+          </div>
+          <div class="signature-name">${signature || ''}</div>`
+        : `<div style="margin-top:8px;font-size:12px">
+            <span style="color:#666">Signature:</span>
+            <span style="font-weight:600;border-bottom:1px solid #ccc;padding-bottom:2px;margin-left:8px">${signature || ''}</span>
+          </div>`}
     </div>
 
     ${emergencyContacts.length > 0 ? `
@@ -211,6 +273,10 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
         </div>
       `).join('')}
     </div>` : ''}
+
+    <div class="footer">
+      Generated by WellBuilt JSA
+    </div>
   </div>
 </body>
 </html>`;

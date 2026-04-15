@@ -18,6 +18,7 @@ import { STORAGE_KEYS } from "../../constants/storageKeys";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useTheme } from "../contexts/ThemeContext";
 
+// Supports both old (wellName: string) and new (wells: WellEntry[]) formats
 type HistoryItem = {
   id: string;
   timestamp: string;
@@ -25,18 +26,28 @@ type HistoryItem = {
   truckNumber: string;
   jobActivityName: string;
   pusher: string;
-  wellName: string;
+  wellName?: string;
+  wells?: any[];
   otherInfo: string;
   location: string;
   task: string;
   date: string;
-  ppeSelected: string;
+  ppeSelected: string | Record<string, boolean>;
   locations: string[];
   locationAcks: Record<string, boolean>;
   prepared: Record<string, boolean>;
   notes: string;
   signature: string;
+  signatureImage?: string;
 };
+
+/** Get well names from either old or new format */
+function getWellNames(item: HistoryItem): string {
+  if (item.wells && Array.isArray(item.wells) && item.wells.length > 0) {
+    return item.wells.map((w: any) => typeof w === 'string' ? w : w?.name || '').filter(Boolean).join(', ');
+  }
+  return item.wellName || '-';
+}
 
 export default function HistoryTabScreen() {
   const router = useRouter();
@@ -93,6 +104,11 @@ export default function HistoryTabScreen() {
   };
 
   const handleViewDetails = (item: HistoryItem) => {
+    // Normalize ppeSelected to string for route params
+    const ppeStr = typeof item.ppeSelected === 'string'
+      ? item.ppeSelected
+      : JSON.stringify({ selected: item.ppeSelected });
+
     router.push({
       pathname: "/viewJsa",
       params: {
@@ -101,18 +117,19 @@ export default function HistoryTabScreen() {
         truckNumber: item.truckNumber,
         jobActivityName: item.jobActivityName,
         pusher: item.pusher,
-        wellName: item.wellName,
-        wells: JSON.stringify((item as any).wells || []),
+        wellName: getWellNames(item),
+        wells: JSON.stringify(item.wells || []),
         otherInfo: item.otherInfo,
         location: item.location,
         task: item.task,
         date: item.date,
-        ppeSelected: item.ppeSelected,
-        locations: JSON.stringify(item.locations),
-        locationAcks: JSON.stringify(item.locationAcks),
-        prepared: JSON.stringify(item.prepared),
+        ppeSelected: ppeStr,
+        locations: JSON.stringify(item.locations || []),
+        locationAcks: JSON.stringify(item.locationAcks || {}),
+        prepared: JSON.stringify(item.prepared || {}),
         notes: item.notes,
         signature: item.signature,
+        signatureImage: item.signatureImage || '',
         timestamp: item.timestamp,
       },
     });
@@ -183,7 +200,7 @@ export default function HistoryTabScreen() {
         </View>
         <View style={styles.cardRow}>
           <Text style={styles.cardLabel}>{t("Well")}:</Text>
-          <Text style={styles.cardValue}>{item.wellName || "-"}</Text>
+          <Text style={styles.cardValue}>{getWellNames(item)}</Text>
         </View>
         <View style={styles.cardRow}>
           <Text style={styles.cardLabel}>{t("Location")}:</Text>

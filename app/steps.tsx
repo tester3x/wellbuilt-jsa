@@ -23,9 +23,9 @@ import { useTheme } from "./contexts/ThemeContext";
 
 // BYOJSA: Use company template if available, fall back to hardcoded default
 
-// Extended colors specific to steps screen
+// Extended colors specific to steps screen — derive from accent in render
 const stepColors = {
-  primarySoft: "#FDECC8",
+  primarySoft: "#FFF3D6",    // light gold tint
   borderStrong: "#CFCFCF",
 };
 
@@ -171,7 +171,7 @@ const locationsList = useMemo(() => {
           title: t("Steps & Hazards"),
           headerBackTitle: t("Job Details"),
           headerRight: () => (
-            <TouchableOpacity onPress={() => router.replace("/")} style={{ paddingHorizontal: 10 }}>
+            <TouchableOpacity onPress={() => router.replace("/(tabs)")} style={{ paddingHorizontal: 10 }}>
               <Text style={{ color: accent, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
             </TouchableOpacity>
           ),
@@ -215,9 +215,9 @@ const locationsList = useMemo(() => {
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>{t("Wells")}</Text>
               <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                {wellsList.length > 0 ? wellsList.map((w, i) => (
+                {wellsList.length > 0 ? wellsList.map((w: any, i: number) => (
                   <Text key={i} style={[styles.summaryValue, { marginBottom: i < wellsList.length - 1 ? 2 : 0 }]} numberOfLines={1}>
-                    {w}
+                    {typeof w === 'string' ? w : w?.name || ''}
                   </Text>
                 )) : <Text style={styles.summaryValue}>{wellName || "-"}</Text>}
               </View>

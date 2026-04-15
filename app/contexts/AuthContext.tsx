@@ -10,6 +10,7 @@ import {
   verifyLogin,
   saveDriverSession,
   submitRegistration,
+  registerStandalone as registerStandaloneService,
   isPasscodeAvailable,
   getPendingRegistration,
   checkRegistrationStatus,
@@ -44,8 +45,10 @@ interface AuthContextValue {
 
   /** Sign in with name + passcode */
   login: (displayName: string, passcode: string) => Promise<boolean>;
-  /** Register a new driver */
+  /** Register a new driver (company flow — pending approval) */
   register: (displayName: string, passcode: string, companyName?: string, legalName?: string) => Promise<boolean>;
+  /** Register as standalone/free-tier driver — auto-approved */
+  registerStandalone: (displayName: string, passcode: string, legalName?: string) => Promise<boolean>;
   /** Complete registration after admin approval */
   completeReg: () => Promise<boolean>;
   /** Cancel pending registration */
@@ -224,6 +227,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const registerStandalone = useCallback(async (displayName: string, passcode: string, legalName?: string): Promise<boolean> => {
+    setMode("registering");
+    setError("");
+
+    try {
+      const result = await registerStandaloneService({
+        passcode: passcode.trim(),
+        displayName: displayName.trim(),
+        legalName: legalName?.trim() || undefined,
+      });
+
+      if (result.success) {
+        // Auto-approved — reload session
+        const sess = await getDriverSession();
+        if (sess) {
+          setSession(sess);
+          setMode("authenticated");
+          return true;
+        }
+        // If session load failed, try reloading
+        setMode("login");
+        setError("Registration succeeded but session failed to load. Please sign in.");
+        return false;
+      } else {
+        setMode("register");
+        setError(result.error || "Could not complete registration");
+        return false;
+      }
+    } catch (err) {
+      console.error("[AuthContext-JSA] Standalone registration error:", err);
+      setMode("register");
+      setError("Connection error. Please try again.");
+      return false;
+    }
+  }, []);
+
   const completeReg = useCallback(async (): Promise<boolean> => {
     setMode("verifying");
 
@@ -361,6 +400,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     pendingName,
     login,
     register,
+    registerStandalone,
     completeReg,
     cancelRegistration,
     logout,

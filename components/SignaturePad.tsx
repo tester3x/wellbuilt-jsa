@@ -24,8 +24,8 @@ export interface SignaturePadRef {
 const SignaturePad = forwardRef<SignaturePadRef, SignaturePadProps>(({
   onBegin,
   onSave,
-  penColor = '#ffffff',
-  backgroundColor = '#1a1a1a',
+  penColor = '#000000',
+  backgroundColor = '#ffffff',
   strokeWidth = 5,
   style,
 }, ref) => {
@@ -33,10 +33,24 @@ const SignaturePad = forwardRef<SignaturePadRef, SignaturePadProps>(({
 
   useImperativeHandle(ref, () => ({
     clearSignature: () => {
-      webViewRef.current?.postMessage(JSON.stringify({ type: 'clear' }));
+      webViewRef.current?.injectJavaScript(`try{onMsg({data:JSON.stringify({type:'clear'})})}catch(e){};true;`);
     },
     readSignature: () => {
-      webViewRef.current?.postMessage(JSON.stringify({ type: 'save' }));
+      webViewRef.current?.injectJavaScript(`
+        try{
+          var c=document.getElementById('c');
+          var info='canvas:' + (c?'found':'NULL') + ' w:' + (c?c.width:0) + ' h:' + (c?c.height:0) + ' strokes:' + (typeof strokes!=='undefined'?strokes.length:'undef');
+          if(c && c.width > 0){
+            var raw=c.toDataURL('image/png');
+            var b64=raw.replace('data:image/png;base64,','');
+            window.ReactNativeWebView.postMessage(JSON.stringify({type:'save',data:b64,info:info+' rawLen:'+raw.length+' b64Len:'+b64.length}));
+          } else {
+            window.ReactNativeWebView.postMessage(JSON.stringify({type:'save',data:'',info:info}));
+          }
+        }catch(e){
+          window.ReactNativeWebView.postMessage(JSON.stringify({type:'save',data:'',info:'ERROR:'+e.message}));
+        };true;
+      `);
     },
   }));
 
@@ -136,8 +150,16 @@ resize();window.addEventListener('resize',resize);
     try {
       const msg = JSON.parse(event.nativeEvent.data);
       if (msg.type === 'begin') onBegin?.();
-      if (msg.type === 'save' && msg.data) onSave?.(msg.data);
-    } catch {}
+      if (msg.type === 'error') {
+        console.error('[SignaturePad] WebView error:', msg.msg);
+      }
+      if (msg.type === 'save') {
+        console.log('[SignaturePad] Save received, data length:', msg.data?.length || 0, 'info:', msg.info || '');
+        onSave?.(msg.data || '');
+      }
+    } catch (e) {
+      console.warn('[SignaturePad] Message parse error:', e);
+    }
   };
 
   return (

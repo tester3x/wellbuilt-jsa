@@ -5,9 +5,11 @@ import React, { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    AppState,
     Image,
     Keyboard,
     KeyboardAvoidingView,
+    Modal,
     Platform,
     SafeAreaView,
     ScrollView,
@@ -18,6 +20,8 @@ import {
     View,
 } from "react-native";
 
+import { WebView } from "react-native-webview";
+import { buildJsaPdfHtml } from "../../services/jsaPdfHtml";
 import { colors } from "../../constants/colors";
 import { STORAGE_KEYS } from "../../constants/storageKeys";
 import {
@@ -45,7 +49,7 @@ export default function JsaHomeScreen() {
   const [jobActivityName, setJobActivityName] = useState("");
   const [pusher, setPusher] = useState("");
   const [wellName, setWellName] = useState("");
-  const [addedWells, setAddedWells] = useState<{ name: string; operator: string; county: string }[]>([]);
+  const [addedWells, setAddedWells] = useState<{ name: string; operator: string; county: string; jobType?: string }[]>([]);
   const [wellSuggestions, setWellSuggestions] = useState<WellRecord[]>([]);
   const [wellDataLoading, setWellDataLoading] = useState(false);
   const [jobTypeSuggestions, setJobTypeSuggestions] = useState<string[]>([]);
@@ -62,10 +66,33 @@ export default function JsaHomeScreen() {
 
   // Track whether app was opened via deep link (SSO from WB S or WB T)
   const [deepLinked, setDeepLinked] = useState(false);
-  // Track if JSA already completed today (blocks starting a new one)
-  const [jsaCompletedToday, setJsaCompletedToday] = useState(false);
+
+  // Multi-JSA: array of active JSAs for today
+  type ActiveJsa = {
+    id: string;
+    label: string;           // first well name or job type — tab label
+    signedAt: string;         // ISO timestamp
+    pdfUrl?: string;
+    savedData: any;           // full JSA record from submission
+    wells: { name: string; operator: string; county: string; jobType?: string }[];
+    locations: string[];
+  };
+  const [activeJsas, setActiveJsas] = useState<ActiveJsa[]>([]);
+  const [activeJsaIndex, setActiveJsaIndex] = useState(0);
+
+  // Derived: is there at least one active JSA?
+  const jsaCompletedToday = activeJsas.length > 0;
+  const currentJsa = activeJsas[activeJsaIndex] || null;
+
+  // Legacy compat setters (used by fetchJsaDayStatus)
   const [jsaCompletedTime, setJsaCompletedTime] = useState<string | null>(null);
   const [jsaPdfUrl, setJsaPdfUrl] = useState<string | null>(null);
+
+  // Living document — add well modal
+  const [showAddWellModal, setShowAddWellModal] = useState(false);
+  const [addWellName, setAddWellName] = useState("");
+  const [addWellJobType, setAddWellJobType] = useState("");
+  const [addWellSuggestions, setAddWellSuggestions] = useState<WellRecord[]>([]);
 
   // Auto-fill from deep link (jsaapp://start?driverName=...&wellName=...)
   useEffect(() => {
@@ -105,78 +132,217 @@ export default function JsaHomeScreen() {
     }).catch(() => {});
   }, []);
 
-  // Pre-populate locations from jsa_day_status (jobs done before JSA)
-  // If driver deferred JSA and worked jobs, those locations auto-appear here.
-  useEffect(() => {
+  // Reusable function to fetch jsa_day_status and update wells/locations
+  const fetchJsaDayStatus = React.useCallback(async () => {
     if (!session?.passcodeHash) return;
     const todayStr = new Date().toISOString().slice(0, 10);
     const docId = `${session.passcodeHash}_${todayStr}`;
     const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
     const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
 
-    (async () => {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 10000);
-        const resp = await fetch(
-          `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`,
-          { signal: controller.signal },
-        );
-        clearTimeout(timer);
-        if (!resp.ok) return;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      const resp = await fetch(
+        `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`,
+        { signal: controller.signal },
+      );
+      clearTimeout(timer);
+      if (!resp.ok) return;
 
-        const doc = await resp.json();
+      const doc = await resp.json();
 
-        // Check if JSA already completed today
-        if (doc.fields?.jsaCompleted?.booleanValue === true) {
-          setJsaCompletedToday(true);
-          const completedAt = doc.fields?.jsaCompletedAt?.timestampValue || doc.fields?.jsaCompletedAt?.stringValue;
-          if (completedAt) setJsaCompletedTime(completedAt);
-          if (doc.fields?.pdfUrl?.stringValue) setJsaPdfUrl(doc.fields.pdfUrl.stringValue);
+      // Check completion status — if JSA signed in Firestore but no active JSAs loaded, hydrate from saved data
+      if (doc.fields?.jsaCompleted?.booleanValue === true) {
+        const completedAt = doc.fields?.jsaCompletedAt?.timestampValue || doc.fields?.jsaCompletedAt?.stringValue;
+        if (completedAt) setJsaCompletedTime(completedAt);
+        const pdfUrl = doc.fields?.pdfUrl?.stringValue || '';
+        if (pdfUrl) setJsaPdfUrl(pdfUrl);
+
+        // If no active JSAs in state, hydrate from AsyncStorage saves
+        setActiveJsas(prev => {
+          if (prev.length > 0) return prev; // already loaded
+          // Load from saved JSAs
+          (async () => {
+            try {
+              const stored = await AsyncStorage.getItem(STORAGE_KEYS.saves);
+              if (!stored) return;
+              const list = JSON.parse(stored);
+              if (!Array.isArray(list) || list.length === 0) return;
+              const latest = list[0];
+              const wellsList = Array.isArray(latest.wells) ? latest.wells.map((w: any) =>
+                typeof w === 'string' ? { name: w, operator: '', county: '' } : w
+              ) : [];
+              const jsaEntry: ActiveJsa = {
+                id: latest.id || Date.now().toString(),
+                label: wellsList[0]?.name || latest.jobActivityName || 'JSA',
+                signedAt: completedAt || latest.timestamp || '',
+                pdfUrl: pdfUrl,
+                savedData: latest,
+                wells: wellsList,
+                locations: Array.isArray(latest.locations) ? latest.locations : [],
+              };
+              setActiveJsas([jsaEntry]);
+            } catch {}
+          })();
+          return prev;
+        });
+      }
+
+      // Merge wells/locations from Firestore into the current active JSA
+      const allStamped = new Set<string>();
+
+      // Wells written by JSA app on submit
+      const wellValues = doc.fields?.wells?.arrayValue?.values;
+      if (Array.isArray(wellValues)) {
+        for (const v of wellValues) {
+          const name = v?.mapValue?.fields?.name?.stringValue;
+          if (name) allStamped.add(name);
         }
+      }
 
-        const locValues = doc.fields?.locations?.arrayValue?.values;
-        if (!Array.isArray(locValues) || locValues.length === 0) return;
-
-        // Extract unique location names from stamps
-        const stamped = new Set<string>();
+      // Location stamps from WB T (pickup/dropoff)
+      const locValues = doc.fields?.locations?.arrayValue?.values;
+      if (Array.isArray(locValues)) {
         for (const v of locValues) {
           const name = v?.mapValue?.fields?.name?.stringValue;
-          if (name) stamped.add(name);
+          if (name) allStamped.add(name);
         }
-        if (stamped.size === 0) return;
+      }
 
-        // Add as wells (if they look like NDIC well names) or locations
-        const existingWellNames = new Set(addedWells.map(w => w.name.toUpperCase()));
-        const existingLocs = new Set(addedLocations.map(l => l.toUpperCase()));
-        const newWells: { name: string; operator: string; county: string }[] = [];
-        const newLocs: string[] = [];
+      // Add new stamps to the current active JSA's wells (or to form addedWells if no active JSA)
+      if (allStamped.size > 0) {
+        if (activeJsas.length > 0) {
+          // Add to the most recent active JSA
+          setActiveJsas(prev => {
+            const idx = prev.length - 1; // latest JSA
+            const current = prev[idx];
+            const existingNames = new Set(current.wells.map(w => w.name.toUpperCase()));
+            const newWells = [...allStamped]
+              .filter(name => !existingNames.has(name.toUpperCase()) && /\d/.test(name))
+              .map(name => ({ name, operator: '', county: '' }));
+            if (newWells.length === 0) return prev;
+            const updated = [...prev];
+            updated[idx] = { ...current, wells: [...current.wells, ...newWells] };
+            return updated;
+          });
+        } else {
+          // No active JSA yet — add to form wells for pre-population
+          setAddedWells(prev => {
+            const existingNames = new Set(prev.map(w => w.name.toUpperCase()));
+            const newWells = [...allStamped]
+              .filter(name => !existingNames.has(name.toUpperCase()) && /\d/.test(name))
+              .map(name => ({ name, operator: '', county: '' }));
+            return newWells.length > 0 ? [...prev, ...newWells] : prev;
+          });
+          setAddedLocations(prev => {
+            const existingLocs = new Set(prev.map(l => l.toUpperCase()));
+            const newLocs = [...allStamped]
+              .filter(name => !existingLocs.has(name.toUpperCase()) && !/\d/.test(name));
+            return newLocs.length > 0 ? [...prev, ...newLocs] : prev;
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[JSA] Failed to fetch jsa_day_status:', err);
+    }
+  }, [session?.passcodeHash]);
 
-        for (const name of stamped) {
-          const upper = name.toUpperCase();
-          if (existingWellNames.has(upper) || existingLocs.has(upper)) continue;
-          // Heuristic: well names typically have numbers/hyphens (e.g., GABRIEL 1-36-25H)
-          if (/\d/.test(name)) {
-            newWells.push({ name, operator: '', county: '' });
-          } else {
-            newLocs.push(name);
+  // Pre-populate locations from jsa_day_status (jobs done before JSA)
+  // If driver deferred JSA and worked jobs, those locations auto-appear here.
+  useEffect(() => {
+    fetchJsaDayStatus();
+  }, [fetchJsaDayStatus]);
+
+  // Auto-refresh jsa_day_status when app comes to foreground (picks up WB T stamps)
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        fetchJsaDayStatus();
+        // Also check for new JSA submissions (direct from AsyncStorage, no Firestore delay)
+        hydrateFromSaves();
+      }
+    });
+    return () => sub.remove();
+  }, [fetchJsaDayStatus]);
+
+  // Check AsyncStorage saves for new JSA submissions and hydrate active JSAs
+  const hydrateFromSaves = React.useCallback(async () => {
+    try {
+      const stored = await AsyncStorage.getItem(STORAGE_KEYS.saves);
+      if (!stored) return;
+      const list = JSON.parse(stored);
+      if (!Array.isArray(list) || list.length === 0) return;
+      const today = new Date().toISOString().slice(0, 10);
+
+      // Find today's JSAs that aren't already in activeJsas
+      const todaySaves = list.filter((j: any) => {
+        const jDate = j.date || j.timestamp?.slice(0, 10) || '';
+        return jDate === today || j.timestamp?.startsWith(today);
+      });
+
+      if (todaySaves.length === 0) return;
+
+      setActiveJsas(prev => {
+        const existingIds = new Set(prev.map(j => j.id));
+        const newEntries: ActiveJsa[] = [];
+        for (const save of todaySaves) {
+          if (existingIds.has(save.id)) continue;
+          const wellsList = Array.isArray(save.wells) ? save.wells.map((w: any) =>
+            typeof w === 'string' ? { name: w, operator: '', county: '' } : w
+          ) : [];
+          newEntries.push({
+            id: save.id,
+            label: wellsList[0]?.name || save.jobActivityName || 'JSA',
+            signedAt: save.timestamp || '',
+            pdfUrl: '',
+            savedData: save,
+            wells: wellsList,
+            locations: Array.isArray(save.locations) ? save.locations : [],
+          });
+        }
+        if (newEntries.length === 0) return prev;
+        // If we were in new-JSA mode (index -1), switch to the new one
+        if (activeJsaIndex === -1) setActiveJsaIndex(prev.length + newEntries.length - 1);
+        return [...prev, ...newEntries];
+      });
+    } catch {}
+  }, [activeJsaIndex]);
+
+  // Hydrate on mount too
+  useEffect(() => { hydrateFromSaves(); }, []);
+
+  // Load active JSAs from AsyncStorage on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem('@jsa/activeJsas');
+        if (!stored) return;
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Only load if from today
+          const today = new Date().toISOString().slice(0, 10);
+          const todayJsas = parsed.filter((j: ActiveJsa) => j.signedAt?.startsWith(today));
+          if (todayJsas.length > 0) {
+            setActiveJsas(todayJsas);
+            // Also set legacy compat values from first JSA
+            setJsaCompletedTime(todayJsas[0].signedAt);
+            setJsaPdfUrl(todayJsas[0].pdfUrl || null);
           }
         }
-
-        if (newWells.length > 0) {
-          setAddedWells(prev => [...prev, ...newWells]);
-        }
-        if (newLocs.length > 0) {
-          setAddedLocations(prev => [...prev, ...newLocs]);
-        }
-        if (newWells.length + newLocs.length > 0) {
-          console.log(`[JSA] Pre-populated ${newWells.length} wells + ${newLocs.length} locations from jsa_day_status`);
-        }
-      } catch (err) {
-        console.warn('[JSA] Failed to pre-populate from jsa_day_status:', err);
-      }
+      } catch {}
     })();
-  }, [session?.passcodeHash]);
+  }, []);
+
+  // Persist active JSAs to AsyncStorage whenever they change
+  useEffect(() => {
+    if (activeJsas.length > 0) {
+      AsyncStorage.setItem('@jsa/activeJsas', JSON.stringify(activeJsas)).catch(() => {});
+    } else {
+      AsyncStorage.removeItem('@jsa/activeJsas').catch(() => {});
+    }
+  }, [activeJsas]);
+
 
   // Load NDIC well data — scoped by driver's assignedCustomers from RTDB.
   // Same approach as WB T: driver record has operator names, load only those wells.
@@ -432,7 +598,13 @@ export default function JsaHomeScreen() {
         jobActivityName,
         pusher,
         wellName: addedWells[0]?.name || wellName,
-        wells: JSON.stringify(addedWells.map(w => w.name)),
+        wells: JSON.stringify(addedWells.map(w => ({
+          name: w.name,
+          operator: w.operator || '',
+          county: w.county || '',
+          jobType: w.jobType || jobActivityName,
+          source: 'ndic',
+        }))),
         otherInfo,
         location: addedLocations[0] || locationInput.trim(),
         locations: JSON.stringify(addedLocations),
@@ -503,114 +675,270 @@ export default function JsaHomeScreen() {
               <Text style={styles.subtitle}>{themeCompanyName} • {t("Digital JSA")}</Text>
             </View>
           </View>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <TouchableOpacity
-              style={styles.menuButton}
-              onPress={() =>
-                Alert.alert(t("Settings"), t("Choose language"), [
-                  { text: "English", onPress: () => setLang("en"), style: lang === "en" ? "destructive" : "default" },
-                  { text: "Español", onPress: () => setLang("es"), style: lang === "es" ? "destructive" : "default" },
-                  { text: t("Cancel"), style: "cancel" },
-                ])
-              }
-              accessibilityLabel="Open settings"
-            >
-              <Text style={styles.menuIcon}>≡</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.menuButton}
-              onPress={() =>
-                Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-                  { text: t("Cancel"), style: "cancel" },
-                  { text: "Sign Out", style: "destructive", onPress: logout },
-                ])
-              }
-              accessibilityLabel="Sign out"
-            >
-              <Text style={[styles.menuIcon, { fontSize: 18, color: colors.textDark }]}>⏻</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={() => router.push("/settings" as any)}
+            accessibilityLabel="Open settings"
+          >
+            <Text style={styles.menuIcon}>⚙</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* JSA Already Completed Banner */}
+        {/* JSA Active Banner + Tabs */}
         {jsaCompletedToday && (
-          <View style={{ backgroundColor: '#166534', borderRadius: 12, padding: 16, marginBottom: 16 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(34,197,94,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 20 }}>✓</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>{t("JSA Completed Today")}</Text>
-                {jsaCompletedTime && (
-                  <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 2 }}>
-                    {new Date(jsaCompletedTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                  </Text>
-                )}
+          <>
+            <View style={{ backgroundColor: '#166534', borderRadius: 12, padding: 16, marginBottom: activeJsas.length > 1 ? 0 : 16, borderBottomLeftRadius: activeJsas.length > 1 ? 0 : 12, borderBottomRightRadius: activeJsas.length > 1 ? 0 : 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(34,197,94,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 20 }}>✓</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>{t("JSA Active")}</Text>
+                  {currentJsa?.signedAt && (
+                    <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 2 }}>
+                      {t("Signed")} {new Date(currentJsa.signedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                    </Text>
+                  )}
+                </View>
               </View>
             </View>
-            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, marginBottom: 12 }}>
-              {t("Your Job Safety Analysis has been reviewed and signed for today.")}
-            </Text>
-            {jsaPdfUrl ? (
+
+            {/* JSA Tabs — only show when multiple JSAs */}
+            {activeJsas.length > 1 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', gap: 0 }}>
+                  {activeJsas.map((jsa, i) => (
+                    <TouchableOpacity
+                      key={jsa.id}
+                      onPress={() => setActiveJsaIndex(i)}
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 10,
+                        backgroundColor: i === activeJsaIndex ? '#fff' : '#e5e5e5',
+                        borderBottomLeftRadius: 8,
+                        borderBottomRightRadius: 8,
+                        borderWidth: i === activeJsaIndex ? 0 : 0,
+                        marginRight: 2,
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: i === activeJsaIndex ? '700' : '500', color: i === activeJsaIndex ? '#111' : '#666' }}>
+                        {jsa.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {/* + tab for new JSA */}
+                  <TouchableOpacity
+                    onPress={() => {
+                      // Switch to form mode for new JSA
+                      setAddedWells([]);
+                      setAddedLocations([]);
+                      setJobActivityName('');
+                      setPusher('');
+                      setWellName('');
+                      setOtherInfo('');
+                      setDate(new Date().toISOString().slice(0, 10));
+                      // Temporarily hide active JSAs to show form
+                      setActiveJsaIndex(-1);
+                    }}
+                    style={{
+                      paddingHorizontal: 16,
+                      paddingVertical: 10,
+                      backgroundColor: activeJsaIndex === -1 ? '#fff' : '#e5e5e5',
+                      borderBottomLeftRadius: 8,
+                      borderBottomRightRadius: 8,
+                      marginLeft: 2,
+                    }}
+                  >
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: accent }}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
+          </>
+        )}
+
+        {/* Living JSA Dashboard — shows current tab's JSA */}
+        {jsaCompletedToday && currentJsa && (
+          <>
+            {/* Job Sites — growing throughout the day */}
+            <View style={[styles.card, { marginBottom: 12 }]}>
+              <Text style={styles.cardTitle}>{t("Job Sites")}</Text>
+              {currentJsa.wells.length > 0 ? (
+                <View style={{ marginTop: 8 }}>
+                  {currentJsa.wells.map((w: any, i: number) => (
+                    <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, paddingLeft: 8, borderBottomWidth: i < currentJsa.wells.length - 1 ? 1 : 0, borderBottomColor: '#f0f0f0' }}>
+                      <Text style={{ color: '#333', fontSize: 14 }}>{w.name}</Text>
+                      <Text style={{ color: '#888', fontSize: 12 }}>{w.jobType || ''}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={{ color: '#999', fontSize: 13, marginTop: 8 }}>{t("No wells added yet. Wells will appear as you work.")}</Text>
+              )}
+              {currentJsa.locations.length > 0 && (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={[styles.label, { marginBottom: 4 }]}>{t("Locations")}</Text>
+                  {currentJsa.locations.map((l: string, i: number) => (
+                    <Text key={i} style={{ color: '#333', fontSize: 14, paddingVertical: 2, paddingLeft: 8 }}>
+                      {'\u2022'} {l}
+                    </Text>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* JSA Summary — PPE, Hazards, Signature */}
+            {currentJsa.savedData && (
+              <View style={[styles.card, { marginBottom: 12 }]}>
+                <Text style={styles.cardTitle}>{t("Safety Review")}</Text>
+
+                {/* Hazards */}
+                <View style={{ marginTop: 8 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#166534', marginBottom: 4 }}>
+                    {t("Hazards Reviewed")}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: '#333' }}>
+                    {t("9 steps reviewed and acknowledged")}
+                  </Text>
+                </View>
+
+                {/* PPE */}
+                <View style={{ marginTop: 12 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textDark, marginBottom: 4 }}>
+                    {t("PPE Selected")}
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                    {(() => {
+                      let ppeList: string[] = [];
+                      const raw = currentJsa?.savedData.ppeSelected;
+                      if (typeof raw === 'object' && !Array.isArray(raw)) {
+                        ppeList = Object.entries(raw).filter(([, v]) => v).map(([k]) => k);
+                      } else if (typeof raw === 'string') {
+                        try {
+                          const parsed = JSON.parse(raw);
+                          if (parsed?.selected) ppeList = Object.entries(parsed.selected).filter(([, v]) => v).map(([k]) => k);
+                        } catch {}
+                      }
+                      const labels: Record<string, string> = {
+                        safetyGlasses: 'Safety Glasses', safetyShoes: 'Safety Shoes',
+                        frClothing: 'FR Clothing', hardHat: 'Hard Hat',
+                        chemicalGloves: 'Chemical/Impact Gloves', fourGasMonitor: 'Four Gas Monitor',
+                        hearingProtection: 'Hearing Protection', fallProtection: 'Fall Protection',
+                        respirator: 'Respirator',
+                      };
+                      return ppeList.length > 0 ? ppeList.map((item, i) => (
+                        <View key={i} style={{ backgroundColor: '#f0f9ff', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#bfdbfe' }}>
+                          <Text style={{ fontSize: 11, color: '#1e40af' }}>{labels[item] || item}</Text>
+                        </View>
+                      )) : <Text style={{ color: '#999', fontSize: 12 }}>{t("None recorded")}</Text>;
+                    })()}
+                  </View>
+                </View>
+
+                {/* Signature */}
+                {currentJsa?.savedData.signatureImage && (
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textDark, marginBottom: 4 }}>
+                      {t("Signature")}
+                    </Text>
+                    <View style={{ backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: colors.border, height: 60, overflow: 'hidden' }}>
+                      <WebView
+                        key={'dash-sig-' + (currentJsa?.savedData.signatureImage?.length || 0)}
+                        source={{ html: `<html><body style="margin:0;background:#f0f0f0;display:flex;align-items:center;justify-content:center;height:100vh"><img src="${currentJsa?.savedData.signatureImage.startsWith('data:') ? currentJsa?.savedData.signatureImage : `data:image/png;base64,${currentJsa?.savedData.signatureImage}`}" style="max-width:100%;max-height:56px;object-fit:contain" /></body></html>` }}
+                        style={{ flex: 1, backgroundColor: 'transparent' }}
+                        scrollEnabled={false}
+                      />
+                    </View>
+                    <Text style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{currentJsa?.savedData.signature || currentJsa?.savedData.driverName || ''}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Add Well / Location + New JSA buttons */}
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
               <TouchableOpacity
+                style={[styles.button, { backgroundColor: accent, flex: 1, marginBottom: 0 }]}
+                onPress={() => setShowAddWellModal(true)}
+              >
+                <Text style={styles.buttonText}>{t("+ Add Well")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, { backgroundColor: '#fff', borderWidth: 1.5, borderColor: accent, flex: 1, marginBottom: 0 }]}
+                onPress={() => {
+                  setAddedWells([]);
+                  setAddedLocations([]);
+                  setJobActivityName('');
+                  setPusher('');
+                  setWellName('');
+                  setOtherInfo('');
+                  setDate(new Date().toISOString().slice(0, 10));
+                  setActiveJsaIndex(-1); // show form
+                }}
+              >
+                <Text style={[styles.buttonText, { color: accent }]}>{t("+ New JSA")}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* View / Regenerate PDF */}
+            {jsaPdfUrl && (
+              <TouchableOpacity
+                style={[styles.button, { backgroundColor: '#fff', borderWidth: 1.5, borderColor: accent, marginBottom: 12 }]}
                 onPress={() => {
                   import('expo-linking').then(({ default: Linking }) => {
                     Linking.openURL(jsaPdfUrl!).catch(() => {});
                   });
                 }}
-                style={{ backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
               >
-                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>{t("View JSA PDF")}</Text>
-              </TouchableOpacity>
-            ) : null}
-            {deepLinked && (
-              <TouchableOpacity
-                onPress={() => {
-                  AsyncStorage.getItem('jsa_returnTo').then(returnTo => {
-                    if (returnTo) {
-                      import('expo-linking').then(({ default: Linking }) => {
-                        Linking.openURL(`${returnTo}://resume`).catch(() => {});
-                      });
-                    }
-                  }).catch(() => {});
-                }}
-                style={{ backgroundColor: accent, borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginTop: 8 }}
-              >
-                <Text style={{ color: '#000', fontSize: 14, fontWeight: '700' }}>{t("Done — Return to Work")}</Text>
+                <Text style={[styles.buttonText, { color: accent }]}>{t("View Current JSA PDF")}</Text>
               </TouchableOpacity>
             )}
-          </View>
+
+            {/* Close & Save this JSA */}
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#dc2626', marginBottom: 16 }]}
+              onPress={() => {
+                Alert.alert(
+                  t("Close JSA"),
+                  t("This will finalize this JSA with all job sites visited. A final PDF will be saved."),
+                  [
+                    { text: t("Cancel"), style: "cancel" },
+                    {
+                      text: t("Close & Save"),
+                      style: "destructive",
+                      onPress: () => {
+                        // Remove this JSA from active list
+                        setActiveJsas(prev => {
+                          const updated = prev.filter((_, i) => i !== activeJsaIndex);
+                          return updated;
+                        });
+                        // Reset index to 0 (or -1 if none left)
+                        setActiveJsaIndex(0);
+                        // If no JSAs left, reset form
+                        if (activeJsas.length <= 1) {
+                          setJsaCompletedTime(null);
+                          setJsaPdfUrl(null);
+                          setAddedWells([]);
+                          setAddedLocations([]);
+                          setJobActivityName('');
+                          setPusher('');
+                          setWellName('');
+                          setOtherInfo('');
+                          setDate(new Date().toISOString().slice(0, 10));
+                        }
+                      },
+                    },
+                  ]
+                );
+              }}
+            >
+              <Text style={[styles.buttonText, { color: '#dc2626' }]}>{t("Close & Save JSA")}</Text>
+            </TouchableOpacity>
+          </>
         )}
 
-        {/* When JSA completed: show day's wells/locations instead of the form */}
-        {jsaCompletedToday && (addedWells.length > 0 || addedLocations.length > 0) && (
-          <View style={[styles.card, { marginBottom: 16 }]}>
-            <Text style={styles.cardTitle}>{t("Today's Job Sites")}</Text>
-            {addedWells.length > 0 && (
-              <View style={{ marginTop: 8 }}>
-                <Text style={[styles.label, { marginBottom: 4 }]}>{t("Wells")}</Text>
-                {addedWells.map((w, i) => (
-                  <Text key={i} style={{ color: '#333', fontSize: 14, paddingVertical: 2, paddingLeft: 8 }}>
-                    {'\u2022'} {w.name}
-                  </Text>
-                ))}
-              </View>
-            )}
-            {addedLocations.length > 0 && (
-              <View style={{ marginTop: 8 }}>
-                <Text style={[styles.label, { marginBottom: 4 }]}>{t("Locations")}</Text>
-                {addedLocations.map((l, i) => (
-                  <Text key={i} style={{ color: '#333', fontSize: 14, paddingVertical: 2, paddingLeft: 8 }}>
-                    {'\u2022'} {l}
-                  </Text>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Card — hidden when JSA already completed */}
-        {jsaCompletedToday ? null : (
+        {/* Card — hidden when JSA active (unless adding new via + tab) */}
+        {(jsaCompletedToday && activeJsaIndex >= 0) ? null : (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t("Job Details")}</Text>
           <Text style={styles.cardSubtitle}>
@@ -933,6 +1261,119 @@ export default function JsaHomeScreen() {
         )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Add Well / Location Modal — living document */}
+      <Modal visible={showAddWellModal} animationType="slide" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '70%' }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textDark, marginBottom: 12 }}>{t("Add Well / Location")}</Text>
+
+            <Text style={styles.label}>{t("Well or Location Name")}</Text>
+            <TextInput
+              style={styles.input}
+              placeholder={t("Search NDIC wells or enter manually...")}
+              placeholderTextColor={colors.textMuted}
+              value={addWellName}
+              onChangeText={(text) => {
+                setAddWellName(text);
+                if (text.length >= 2) {
+                  setAddWellSuggestions(searchWells(text, 10));
+                } else {
+                  setAddWellSuggestions([]);
+                }
+              }}
+              autoComplete="off"
+            />
+
+            {/* NDIC suggestions */}
+            {addWellSuggestions.length > 0 && (
+              <ScrollView style={{ maxHeight: 120, marginTop: 4, borderWidth: 1, borderColor: colors.border, borderRadius: 8 }} nestedScrollEnabled>
+                {addWellSuggestions.slice(0, 10).map((w, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={{ padding: 8, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' }}
+                    onPress={() => {
+                      setAddWellName(w.well_name);
+                      setAddWellSuggestions([]);
+                    }}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '500' }}>{w.well_name}</Text>
+                    <Text style={{ fontSize: 11, color: '#888' }}>{w.operator} • {w.county} Co.</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
+            <View style={{ marginTop: 12 }}>
+              <Text style={styles.label}>{t("Job Type")}</Text>
+              <TextInput
+                style={styles.input}
+                placeholder={t("e.g. Production Water, Service Work...")}
+                placeholderTextColor={colors.textMuted}
+                value={addWellJobType}
+                onChangeText={setAddWellJobType}
+                autoComplete="off"
+              />
+            </View>
+
+            {/* Quick hazard confirm */}
+            <View style={{ marginTop: 16, backgroundColor: '#fffbeb', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#fbbf24' }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#92400e', marginBottom: 4 }}>{t("Hazard Review")}</Text>
+              <Text style={{ fontSize: 12, color: '#78350f', lineHeight: 18 }}>
+                {t("By adding this location, I confirm that I have reviewed the hazards and controls for this job site.")}
+              </Text>
+            </View>
+
+            {/* Action buttons */}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 8, borderWidth: 1.5, borderColor: colors.border, alignItems: 'center' }}
+                onPress={() => {
+                  setShowAddWellModal(false);
+                  setAddWellName('');
+                  setAddWellJobType('');
+                  setAddWellSuggestions([]);
+                }}
+              >
+                <Text style={{ color: colors.textDark, fontWeight: '600' }}>{t("Cancel")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: accent, alignItems: 'center', opacity: addWellName.trim() ? 1 : 0.5 }}
+                disabled={!addWellName.trim()}
+                onPress={() => {
+                  const name = addWellName.trim();
+                  if (!name) return;
+                  const newWell = { name, operator: '', county: '', jobType: addWellJobType.trim() || jobActivityName };
+                  if (currentJsa) {
+                    // Add to current active JSA
+                    if (!currentJsa.wells.some((w: any) => w.name.toLowerCase() === name.toLowerCase())) {
+                      setActiveJsas(prev => {
+                        const updated = [...prev];
+                        updated[activeJsaIndex] = {
+                          ...updated[activeJsaIndex],
+                          wells: [...updated[activeJsaIndex].wells, newWell],
+                        };
+                        return updated;
+                      });
+                    }
+                  } else {
+                    // Add to form (pre-JSA)
+                    if (!addedWells.some(w => w.name.toLowerCase() === name.toLowerCase())) {
+                      setAddedWells(prev => [...prev, newWell]);
+                    }
+                  }
+                  setShowAddWellModal(false);
+                  setAddWellName('');
+                  setAddWellJobType('');
+                  setAddWellSuggestions([]);
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>{t("Add & Confirm Hazards")}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

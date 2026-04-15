@@ -77,6 +77,7 @@ export default function SignoffScreen() {
   }, []);
 
   // Parse wells and locations passed from previous screen
+  // Parse wells — supports both old (string[]) and new (WellEntry[]) formats
   const wellsList = useMemo(() => {
     try {
       const parsed = params.wells ? JSON.parse(params.wells) : [];
@@ -86,6 +87,11 @@ export default function SignoffScreen() {
     }
     return [];
   }, [params.wells]);
+
+  // Well names for display
+  const wellNames = useMemo(() => {
+    return wellsList.map((w: any) => typeof w === 'string' ? w : w?.name || '');
+  }, [wellsList]);
 
   const locations = useMemo(() => {
     try {
@@ -115,7 +121,7 @@ export default function SignoffScreen() {
       { label: t("Pusher"), value: params.pusher || "-" },
       {
         label: t("Wells"),
-        value: wellsList.length > 0 ? wellsList.join(", ") : params.wellName || "-",
+        value: wellNames.length > 0 ? wellNames.join(", ") : params.wellName || "-",
       },
       {
         label: t("Locations"),
@@ -172,6 +178,15 @@ export default function SignoffScreen() {
     }
 
     const saveAndGo = async () => {
+      // Parse PPE into structured format for JSARecord
+      let ppeObj: Record<string, boolean> = {};
+      let ppeOtherItems: string[] = [];
+      try {
+        const parsed = params.ppeSelected ? JSON.parse(params.ppeSelected as string) : {};
+        if (parsed?.selected) { ppeObj = parsed.selected; ppeOtherItems = parsed.otherItems || []; }
+        else if (typeof parsed === 'object' && !Array.isArray(parsed)) ppeObj = parsed;
+      } catch {}
+
       const payload = {
         id: Date.now().toString(),
         timestamp: new Date().toISOString(),
@@ -180,12 +195,14 @@ export default function SignoffScreen() {
         jobActivityName: params.jobActivityName ?? "",
         pusher: params.pusher ?? "",
         wellName: params.wellName ?? "",
-        wells: wellsList,
+        wells: wellsList, // full WellEntry[] objects now
         otherInfo: params.otherInfo ?? "",
         location: params.location ?? "",
         task: params.task ?? "",
         date: params.date ?? "",
-        ppeSelected: params.ppeSelected ?? "",
+        ppeSelected: ppeObj,
+        ppeOtherItems,
+        ppeSelectedRaw: params.ppeSelected ?? "", // keep for completed screen params
         locations,
         locationAcks,
         prepared,
@@ -253,6 +270,18 @@ export default function SignoffScreen() {
           const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
           const pdfUrl = await AsyncStorage.getItem('jsa_pdfUrl') || '';
 
+          // Build wells array for Firestore
+          const wellsForFirestore = wellsList.map((w: any) => ({
+            mapValue: {
+              fields: {
+                name: { stringValue: typeof w === 'string' ? w : (w?.name || '') },
+                type: { stringValue: 'pickup' },
+                jobType: { stringValue: typeof w === 'string' ? (params.jobActivityName || '') : (w?.jobType || params.jobActivityName || '') },
+                stampedAt: { timestampValue: new Date().toISOString() },
+              },
+            },
+          }));
+
           const patchUrl = `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`
             + '&updateMask.fieldPaths=driverHash'
             + '&updateMask.fieldPaths=driverName'
@@ -262,6 +291,7 @@ export default function SignoffScreen() {
             + '&updateMask.fieldPaths=jsaCompletedAt'
             + '&updateMask.fieldPaths=jsaDocId'
             + '&updateMask.fieldPaths=pdfUrl'
+            + '&updateMask.fieldPaths=wells'
             + '&updateMask.fieldPaths=updatedAt';
 
           await fetch(patchUrl, {
@@ -277,6 +307,9 @@ export default function SignoffScreen() {
                 jsaCompletedAt: { timestampValue: new Date().toISOString() },
                 jsaDocId: { stringValue: payload.id },
                 pdfUrl: { stringValue: pdfUrl },
+                wells: wellsForFirestore.length > 0
+                  ? { arrayValue: { values: wellsForFirestore } }
+                  : { arrayValue: { values: [] } },
                 updatedAt: { timestampValue: new Date().toISOString() },
               },
             }),
@@ -287,28 +320,9 @@ export default function SignoffScreen() {
         }
       })();
 
-      router.push({
-        pathname: "/completed",
-        params: {
-          driverName: params.driverName ?? "",
-          truckNumber: params.truckNumber ?? "",
-          jobActivityName: params.jobActivityName ?? "",
-          pusher: params.pusher ?? "",
-          wellName: params.wellName ?? "",
-          wells: JSON.stringify(wellsList),
-          otherInfo: params.otherInfo ?? "",
-          location: params.location ?? "",
-          task: params.task ?? "",
-          date: params.date ?? "",
-          ppeSelected: params.ppeSelected ?? "",
-          locations: JSON.stringify(locations),
-          locationAcks: JSON.stringify(locationAcks),
-          prepared: JSON.stringify(prepared),
-          notes,
-          signature,
-          signatureImage: signatureImage || '',
-        },
-      });
+      // Go straight to home — JSA Active dashboard with tabs
+      // The completed screen is skipped; home screen hydrates the new JSA from AsyncStorage
+      router.replace("/(tabs)");
     };
 
     void saveAndGo();
@@ -321,10 +335,10 @@ export default function SignoffScreen() {
           title: t("Sign Off"),
           headerRight: () => (
             <View style={{ flexDirection: "row", gap: 12 }}>
-              <TouchableOpacity onPress={() => router.replace("/")}>
+              <TouchableOpacity onPress={() => router.replace("/(tabs)")}>
                 <Text style={styles.headerLink}>{t("Home")}</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.push("/history")}>
+              <TouchableOpacity onPress={() => router.replace("/(tabs)/history")}>
                 <Text style={styles.headerLink}>{t("History")}</Text>
               </TouchableOpacity>
             </View>
@@ -405,10 +419,10 @@ export default function SignoffScreen() {
             <Text style={styles.sectionTitle}>{t("Driver Signature")}</Text>
             {signatureImage ? (
               <View>
-                <View style={{ backgroundColor: '#1a1a1a', borderRadius: 8, padding: 8, alignItems: 'center' }}>
+                <View style={{ backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 4, height: 80, justifyContent: 'center' }}>
                   <Image
-                    source={{ uri: `data:image/png;base64,${signatureImage}` }}
-                    style={{ width: '100%', height: 80 }}
+                    source={{ uri: signatureImage.startsWith('data:') ? signatureImage : `data:image/png;base64,${signatureImage}` }}
+                    style={{ width: '100%', height: 72 }}
                     resizeMode="contain"
                   />
                 </View>
@@ -422,7 +436,7 @@ export default function SignoffScreen() {
             ) : (
               <TouchableOpacity
                 onPress={() => setShowSigModal(true)}
-                style={{ backgroundColor: '#1a1a1a', borderRadius: 8, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: '#333', borderStyle: 'dashed' }}
+                style={{ backgroundColor: '#f5f5f5', borderRadius: 8, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' }}
               >
                 <Text style={{ color: accent, fontSize: 15, fontWeight: '600' }}>{t("Tap to Sign")}</Text>
               </TouchableOpacity>
