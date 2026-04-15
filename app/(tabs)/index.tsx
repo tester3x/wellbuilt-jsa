@@ -1,11 +1,12 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import { useRouter, useFocusEffect } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
     AppState,
+    Dimensions,
     Image,
     Keyboard,
     KeyboardAvoidingView,
@@ -79,6 +80,7 @@ export default function JsaHomeScreen() {
   };
   const [activeJsas, setActiveJsas] = useState<ActiveJsa[]>([]);
   const [activeJsaIndex, setActiveJsaIndex] = useState(0);
+  const dismissedIdsRef = useRef<Set<string>>(new Set());
 
   // Derived: is there at least one active JSA?
   const jsaCompletedToday = activeJsas.length > 0;
@@ -259,39 +261,44 @@ export default function JsaHomeScreen() {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         fetchJsaDayStatus();
-        // Also check for new JSA submissions (direct from AsyncStorage, no Firestore delay)
-        hydrateFromSaves();
+        hydrateAllJsas();
       }
     });
     return () => sub.remove();
-  }, [fetchJsaDayStatus]);
+  }, [fetchJsaDayStatus, hydrateAllJsas]);
 
-  // Check AsyncStorage saves for new JSA submissions and hydrate active JSAs
-  const hydrateFromSaves = React.useCallback(async () => {
+  // Unified JSA hydration — loads persisted tabs + merges new saves
+  const hydrateAllJsas = React.useCallback(async () => {
     try {
-      const stored = await AsyncStorage.getItem(STORAGE_KEYS.saves);
-      if (!stored) return;
-      const list = JSON.parse(stored);
-      if (!Array.isArray(list) || list.length === 0) return;
-      const today = new Date().toISOString().slice(0, 10);
+      // Load dismissed IDs
+      const dismissedRaw = await AsyncStorage.getItem('@jsa/dismissedIds');
+      if (dismissedRaw) {
+        try {
+          const parsed = JSON.parse(dismissedRaw);
+          if (Array.isArray(parsed)) parsed.forEach((id: string) => dismissedIdsRef.current.add(id));
+        } catch {}
+      }
 
-      // Find today's JSAs that aren't already in activeJsas
-      const todaySaves = list.filter((j: any) => {
-        const jDate = j.date || j.timestamp?.slice(0, 10) || '';
-        return jDate === today || j.timestamp?.startsWith(today);
-      });
+      // 1. Load persisted active JSA tabs
+      let existing: ActiveJsa[] = [];
+      const persistedRaw = await AsyncStorage.getItem('@jsa/activeJsas');
+      if (persistedRaw) {
+        const parsed = JSON.parse(persistedRaw);
+        if (Array.isArray(parsed)) existing = parsed;
+      }
 
-      if (todaySaves.length === 0) return;
-
-      setActiveJsas(prev => {
-        const existingIds = new Set(prev.map(j => j.id));
-        const newEntries: ActiveJsa[] = [];
-        for (const save of todaySaves) {
+      // 2. Load saves and merge any new ones (skip dismissed)
+      const savesRaw = await AsyncStorage.getItem(STORAGE_KEYS.saves);
+      const saves = savesRaw ? JSON.parse(savesRaw) : [];
+      if (Array.isArray(saves)) {
+        const existingIds = new Set(existing.map(j => j.id));
+        for (const save of saves) {
           if (existingIds.has(save.id)) continue;
+          if (dismissedIdsRef.current.has(save.id)) continue;
           const wellsList = Array.isArray(save.wells) ? save.wells.map((w: any) =>
             typeof w === 'string' ? { name: w, operator: '', county: '' } : w
           ) : [];
-          newEntries.push({
+          existing.push({
             id: save.id,
             label: wellsList[0]?.name || save.jobActivityName || 'JSA',
             signedAt: save.timestamp || '',
@@ -301,38 +308,22 @@ export default function JsaHomeScreen() {
             locations: Array.isArray(save.locations) ? save.locations : [],
           });
         }
-        if (newEntries.length === 0) return prev;
-        // If we were in new-JSA mode (index -1), switch to the new one
-        if (activeJsaIndex === -1) setActiveJsaIndex(prev.length + newEntries.length - 1);
-        return [...prev, ...newEntries];
-      });
+      }
+
+      if (existing.length > 0) {
+        setActiveJsas(existing);
+        setJsaCompletedTime(existing[0].signedAt);
+        setJsaPdfUrl(existing[0].pdfUrl || null);
+        // If we were in new-JSA mode, switch to the newest
+        if (activeJsaIndex === -1) setActiveJsaIndex(existing.length - 1);
+      }
     } catch {}
   }, [activeJsaIndex]);
 
-  // Hydrate on mount too
-  useEffect(() => { hydrateFromSaves(); }, []);
-
-  // Load active JSAs from AsyncStorage on mount
-  useEffect(() => {
-    (async () => {
-      try {
-        const stored = await AsyncStorage.getItem('@jsa/activeJsas');
-        if (!stored) return;
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Only load if from today
-          const today = new Date().toISOString().slice(0, 10);
-          const todayJsas = parsed.filter((j: ActiveJsa) => j.signedAt?.startsWith(today));
-          if (todayJsas.length > 0) {
-            setActiveJsas(todayJsas);
-            // Also set legacy compat values from first JSA
-            setJsaCompletedTime(todayJsas[0].signedAt);
-            setJsaPdfUrl(todayJsas[0].pdfUrl || null);
-          }
-        }
-      } catch {}
-    })();
-  }, []);
+  // Hydrate on mount AND when screen gains focus (e.g. returning from submit)
+  useFocusEffect(
+    useCallback(() => { hydrateAllJsas(); }, [hydrateAllJsas])
+  );
 
   // Persist active JSAs to AsyncStorage whenever they change
   useEffect(() => {
@@ -424,6 +415,8 @@ export default function JsaHomeScreen() {
     }
     setWellName("");
     setWellSuggestions([]);
+    setJobActivityName("");
+    setJobTypeSuggestions([]);
   };
 
   const addWellManual = () => {
@@ -434,6 +427,8 @@ export default function JsaHomeScreen() {
     }
     setWellName("");
     setWellSuggestions([]);
+    setJobActivityName("");
+    setJobTypeSuggestions([]);
   };
 
   const removeWellFromList = (name: string) => {
@@ -645,16 +640,7 @@ export default function JsaHomeScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
-        <ScrollView
-          ref={scrollViewRef}
-          style={styles.container}
-          contentContainerStyle={[
-            styles.scrollContent,
-            keyboardVisible && { paddingBottom: 250 }
-          ]}
-          keyboardShouldPersistTaps="handled"
-        >
-        {/* Header with logo */}
+        {/* === PINNED HEADER (outside ScrollView) === */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             {logoUrl ? (
@@ -705,7 +691,7 @@ export default function JsaHomeScreen() {
 
             {/* JSA Tabs — only show when multiple JSAs */}
             {activeJsas.length > 1 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8, maxHeight: 40 }}>
                 <View style={{ flexDirection: 'row', gap: 0 }}>
                   {activeJsas.map((jsa, i) => (
                     <TouchableOpacity
@@ -757,6 +743,16 @@ export default function JsaHomeScreen() {
           </>
         )}
 
+        {/* === SCROLLABLE CONTENT (ScrollView starts here) === */}
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.container}
+          contentContainerStyle={[
+            styles.scrollContent,
+            keyboardVisible && { paddingBottom: 250 }
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* Living JSA Dashboard — full paper JSA per tab */}
         {jsaCompletedToday && currentJsa && (
           <>
@@ -795,8 +791,10 @@ export default function JsaHomeScreen() {
                 logoDataUrl: null,
               });
 
+              // Calculate available height: screen - header(80) - banner(80) - tabs(45) - footer(120) - tabBar(60) - padding(32)
+              const jsaViewHeight = Dimensions.get('window').height - (activeJsas.length > 1 ? 417 : 372);
               return (
-                <View style={{ borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, marginBottom: 12, height: 500 }}>
+                <View style={{ height: Math.max(jsaViewHeight, 300), borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, marginBottom: 0 }}>
                   <WebView
                     key={'jsa-doc-' + currentJsa.id}
                     source={{ html: jsaHtml }}
@@ -808,85 +806,6 @@ export default function JsaHomeScreen() {
               );
             })()}
 
-            {/* Add Well / Location + New JSA buttons */}
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: accent, flex: 1, marginBottom: 0 }]}
-                onPress={() => setShowAddWellModal(true)}
-              >
-                <Text style={styles.buttonText}>{t("+ Add Well")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: '#fff', borderWidth: 1.5, borderColor: accent, flex: 1, marginBottom: 0 }]}
-                onPress={() => {
-                  setAddedWells([]);
-                  setAddedLocations([]);
-                  setJobActivityName('');
-                  setPusher('');
-                  setWellName('');
-                  setOtherInfo('');
-                  setDate(new Date().toISOString().slice(0, 10));
-                  setActiveJsaIndex(-1); // show form
-                }}
-              >
-                <Text style={[styles.buttonText, { color: accent }]}>{t("+ New JSA")}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* View / Regenerate PDF */}
-            {jsaPdfUrl && (
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: '#fff', borderWidth: 1.5, borderColor: accent, marginBottom: 12 }]}
-                onPress={() => {
-                  import('expo-linking').then(({ default: Linking }) => {
-                    Linking.openURL(jsaPdfUrl!).catch(() => {});
-                  });
-                }}
-              >
-                <Text style={[styles.buttonText, { color: accent }]}>{t("View Current JSA PDF")}</Text>
-              </TouchableOpacity>
-            )}
-
-            {/* Close & Save this JSA */}
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#dc2626', marginBottom: 16 }]}
-              onPress={() => {
-                Alert.alert(
-                  t("Close JSA"),
-                  t("This will finalize this JSA with all job sites visited. A final PDF will be saved."),
-                  [
-                    { text: t("Cancel"), style: "cancel" },
-                    {
-                      text: t("Close & Save"),
-                      style: "destructive",
-                      onPress: () => {
-                        // Remove this JSA from active list
-                        setActiveJsas(prev => {
-                          const updated = prev.filter((_, i) => i !== activeJsaIndex);
-                          return updated;
-                        });
-                        // Reset index to 0 (or -1 if none left)
-                        setActiveJsaIndex(0);
-                        // If no JSAs left, reset form
-                        if (activeJsas.length <= 1) {
-                          setJsaCompletedTime(null);
-                          setJsaPdfUrl(null);
-                          setAddedWells([]);
-                          setAddedLocations([]);
-                          setJobActivityName('');
-                          setPusher('');
-                          setWellName('');
-                          setOtherInfo('');
-                          setDate(new Date().toISOString().slice(0, 10));
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-            >
-              <Text style={[styles.buttonText, { color: '#dc2626' }]}>{t("Close & Save JSA")}</Text>
-            </TouchableOpacity>
           </>
         )}
 
@@ -944,11 +863,13 @@ export default function JsaHomeScreen() {
             </Text>
           </View>
 
-          <View style={[styles.field, { zIndex: 30 }]}>
+          {/* — Well / Location + Job Type (single section) — */}
+          <View style={[styles.field, { zIndex: 20 }]}>
+            {/* Job Type first — driver picks job type, then well */}
             <Text style={styles.label}>{t("Job Type")}</Text>
             <TextInput
               style={styles.input}
-              placeholder={t("Start typing a job type...")}
+              placeholder={t("e.g. Production Water, Service Work...")}
               placeholderTextColor={colors.textMuted}
               value={jobActivityName}
               onChangeText={handleJobTypeTextChange}
@@ -958,12 +879,13 @@ export default function JsaHomeScreen() {
             />
             {jobTypeSuggestions.length > 0 && (
               <View style={styles.autocompleteDropdown}>
-                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
                   {jobTypeSuggestions.map((jt, index) => (
                     <TouchableOpacity
                       key={jt}
                       style={[styles.dropdownItem, index === jobTypeSuggestions.length - 1 && { borderBottomWidth: 0 }]}
                       onPress={() => handleJobTypeSelect(jt)}
+                      activeOpacity={0.7}
                     >
                       <Text style={styles.dropdownItemText}>{jt}</Text>
                     </TouchableOpacity>
@@ -971,10 +893,8 @@ export default function JsaHomeScreen() {
                 </ScrollView>
               </View>
             )}
-          </View>
 
-          <View style={styles.field}>
-            <Text style={styles.label}>{t("Well Name")}</Text>
+            <Text style={[styles.label, { marginTop: 14 }]}>{t("Well / Location")}</Text>
             {wellDataLoading && (
               <View style={styles.loadingRow}>
                 <ActivityIndicator size="small" color={accent} />
@@ -983,15 +903,19 @@ export default function JsaHomeScreen() {
             )}
             <TextInput
               style={styles.input}
-              placeholder={wellDataLoading ? t("Loading wells...") : t("Search NDIC wells...")}
+              placeholder={wellDataLoading ? t("Loading wells...") : t("Search wells or enter location...")}
               placeholderTextColor={colors.textMuted}
               value={wellName}
-              onChangeText={handleWellTextChange}
+              onChangeText={(text) => {
+                handleWellTextChange(text);
+                setLocationInput(text);
+              }}
               returnKeyType="next"
               onSubmitEditing={addWellManual}
               autoComplete="off"
               importantForAutofill="no"
             />
+            {/* NDIC well suggestions */}
             {wellSuggestions.length > 0 && (
               <View style={styles.wellSuggestionsContainer}>
                 <ScrollView
@@ -1003,7 +927,10 @@ export default function JsaHomeScreen() {
                     <TouchableOpacity
                       key={`${well.api_no}-${index}`}
                       style={[styles.dropdownItem, index === wellSuggestions.length - 1 && { borderBottomWidth: 0 }]}
-                      onPress={() => handleWellSelect(well)}
+                      onPress={() => {
+                        handleWellSelect(well);
+                        setLocationInput("");
+                      }}
                       activeOpacity={0.7}
                     >
                       <Text style={styles.dropdownItemText}>{well.well_name}</Text>
@@ -1013,58 +940,10 @@ export default function JsaHomeScreen() {
                 </ScrollView>
               </View>
             )}
-            {wellName.trim().length >= 2 && wellSuggestions.length === 0 && !wellDataLoading && (
-              <TouchableOpacity
-                style={styles.saveInlineButton}
-                onPress={addWellManual}
-              >
-                <Text style={styles.saveInlineText}>+ {t("Add")} "{wellName.trim()}" {t("manually")}</Text>
-              </TouchableOpacity>
-            )}
-            {addedWells.length > 0 && (
-              <View style={{ marginTop: 12 }}>
-                <Text style={styles.label}>{t("Added Wells")}</Text>
-                <View style={[styles.favoriteList, { marginTop: 6 }]}>
-                  {addedWells.map((well) => (
-                    <TouchableOpacity
-                      key={well.name}
-                      style={styles.favoriteRow}
-                      onPress={() => removeWellFromList(well.name)}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.favoriteText}>{well.name}</Text>
-                        <Text style={styles.wellDetailText}>
-                          {[well.operator, well.county ? `${well.county} Co.` : '', well.jobType].filter(Boolean).join(' • ')}
-                        </Text>
-                      </View>
-                      <Text style={styles.favoriteAdd}>{t("Remove")}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
-          </View>
-
-          <View style={[styles.field, { zIndex: 10 }]}>
-            <Text style={styles.label}>{t("Lease / Pad Name")}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t("e.g. Kraken Epping Pad (optional)")}
-              placeholderTextColor={colors.textMuted}
-              value={locationInput}
-              onChangeText={setLocationInput}
-              returnKeyType="next"
-              autoComplete="off"
-              importantForAutofill="no"
-              onBlur={() => {
-                if (locationInput.trim()) {
-                  addLocationToList(locationInput);
-                }
-              }}
-            />
-            {(() => {
-              const trimmed = locationInput.trim().toLowerCase();
-              const matches = trimmed
+            {/* Favorite location suggestions (when no NDIC matches) */}
+            {wellSuggestions.length === 0 && (() => {
+              const trimmed = wellName.trim().toLowerCase();
+              const matches = trimmed && trimmed.length >= 2
                 ? favoriteLocations.filter((f) => f.toLowerCase().includes(trimmed) && f.toLowerCase() !== trimmed)
                 : [];
               return matches.length > 0 ? (
@@ -1074,7 +953,11 @@ export default function JsaHomeScreen() {
                       <TouchableOpacity
                         key={fav}
                         style={[styles.dropdownItem, index === matches.length - 1 && { borderBottomWidth: 0 }]}
-                        onPress={() => addLocationToList(fav)}
+                        onPress={() => {
+                          addLocationToList(fav);
+                          setWellName("");
+                          setWellSuggestions([]);
+                        }}
                         onLongPress={() => {
                           Alert.alert(
                             t("Remove Favorite"),
@@ -1091,45 +974,70 @@ export default function JsaHomeScreen() {
                         }}
                       >
                         <Text style={styles.dropdownItemText}>{fav}</Text>
+                        <Text style={styles.dropdownItemSub}>{t("Saved location")}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
                 </View>
               ) : null;
             })()}
-            {locationInput.trim() && !favoriteLocations.some(l => l.toLowerCase() === locationInput.trim().toLowerCase()) && (
+            {/* Manual add button (no NDIC matches) */}
+            {wellName.trim().length >= 2 && wellSuggestions.length === 0 && !wellDataLoading && (
               <TouchableOpacity
                 style={styles.saveInlineButton}
                 onPress={() => {
-                  const trimmed = locationInput.trim();
-                  if (trimmed && !favoriteLocations.some(l => l.toLowerCase() === trimmed.toLowerCase())) {
-                    setFavoriteLocations((prev) => [...prev, trimmed]);
-                  }
+                  addWellManual();
+                  setLocationInput("");
                 }}
               >
-                <Text style={styles.saveInlineText}>★ {t("Save Favorite")}</Text>
+                <Text style={styles.saveInlineText}>+ {t("Add")} "{wellName.trim()}"</Text>
               </TouchableOpacity>
             )}
-            {addedLocations.length > 0 && (
+
+            {/* Combined list: Added Wells / Locations */}
+            {(addedWells.length > 0 || addedLocations.length > 0) && (
               <View style={{ marginTop: 12 }}>
-                <Text style={styles.label}>{t("Added Locations")}</Text>
+                <Text style={styles.label}>{t("Added Wells / Locations")}</Text>
                 <View style={[styles.favoriteList, { marginTop: 6 }]}>
-                  {addedLocations.map((loc) => (
-                    <TouchableOpacity
-                      key={loc}
-                      style={styles.favoriteRow}
-                      onPress={() => removeLocationFromList(loc)}
+                  {addedWells.map((well) => (
+                    <View
+                      key={`well-${well.name}`}
+                      style={[styles.favoriteRow, { flexDirection: 'column', alignItems: 'stretch' }]}
                     >
-                      <Text style={styles.favoriteText}>{loc}</Text>
-                      <Text style={styles.favoriteAdd}>{t("Remove")}</Text>
-                    </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={styles.favoriteText} numberOfLines={1}>{well.name}</Text>
+                        {well.jobType ? <Text style={[styles.wellDetailText, { marginLeft: 8 }]} numberOfLines={1}>{well.jobType}</Text> : null}
+                        <View style={{ flex: 1 }} />
+                        <TouchableOpacity onPress={() => removeWellFromList(well.name)} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
+                          <Text style={styles.favoriteAdd}>{t("Remove")}</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {(well.operator || well.county) && (
+                        <Text style={[styles.wellDetailText, { marginTop: 2 }]} numberOfLines={1}>
+                          {[well.operator, well.county ? `${well.county} Co.` : ''].filter(Boolean).join(' • ')}
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+                  {addedLocations.map((loc) => (
+                    <View
+                      key={`loc-${loc}`}
+                      style={styles.favoriteRow}
+                    >
+                      <Text style={styles.favoriteText} numberOfLines={1}>{loc}</Text>
+                      <View style={{ flex: 1 }} />
+                      <TouchableOpacity onPress={() => removeLocationFromList(loc)} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
+                        <Text style={styles.favoriteAdd}>{t("Remove")}</Text>
+                      </TouchableOpacity>
+                    </View>
                   ))}
                 </View>
               </View>
             )}
           </View>
 
-        <View style={styles.field}>
+          {/* — Pusher — */}
+          <View style={styles.field}>
             <Text style={styles.label}>{t("Pusher")}</Text>
             <TextInput
               style={styles.input}
@@ -1143,19 +1051,20 @@ export default function JsaHomeScreen() {
             />
           </View>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>{t("Other Information")}</Text>
-          <TextInput
-            style={[styles.input, styles.multiline]}
-            placeholder={t("Notes or other info")}
-            placeholderTextColor={colors.textMuted}
-            value={otherInfo}
-            onChangeText={setOtherInfo}
-            multiline
-            autoComplete="off"
-            importantForAutofill="no"
-          />
-        </View>
+          {/* — Notes — */}
+          <View style={styles.field}>
+            <Text style={styles.label}>{t("Notes")}</Text>
+            <TextInput
+              style={[styles.input, styles.multiline]}
+              placeholder={t("Notes")}
+              placeholderTextColor={colors.textMuted}
+              value={otherInfo}
+              onChangeText={setOtherInfo}
+              multiline
+              autoComplete="off"
+              importantForAutofill="no"
+            />
+          </View>
 
           {continueJsa ? (
             <>
@@ -1213,6 +1122,61 @@ export default function JsaHomeScreen() {
         </View>
         )}
         </ScrollView>
+
+        {/* Fixed footer buttons — outside ScrollView, pinned to bottom */}
+        {jsaCompletedToday && currentJsa && (
+          <View style={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: accent, marginBottom: 0 }]}
+              onPress={() => setShowAddWellModal(true)}
+            >
+              <Text style={styles.buttonText}>{t("+ Add Well / Location")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#dc2626', marginBottom: 0 }]}
+              onPress={() => {
+                Alert.alert(
+                  t("Close JSA"),
+                  t("This will finalize this JSA with all job sites visited. A final PDF will be saved."),
+                  [
+                    { text: t("Cancel"), style: "cancel" },
+                    {
+                      text: t("Close & Save"),
+                      style: "destructive",
+                      onPress: () => {
+                        // Track dismissed ID so hydration doesn't re-add it
+                        const dismissedJsa = activeJsas[activeJsaIndex];
+                        if (dismissedJsa?.id) {
+                          dismissedIdsRef.current.add(dismissedJsa.id);
+                          AsyncStorage.getItem('@jsa/dismissedIds').then(raw => {
+                            const list = raw ? JSON.parse(raw) : [];
+                            list.push(dismissedJsa.id);
+                            AsyncStorage.setItem('@jsa/dismissedIds', JSON.stringify(list)).catch(() => {});
+                          }).catch(() => {});
+                        }
+                        setActiveJsas(prev => prev.filter((_, i) => i !== activeJsaIndex));
+                        setActiveJsaIndex(0);
+                        if (activeJsas.length <= 1) {
+                          setJsaCompletedTime(null);
+                          setJsaPdfUrl(null);
+                          setAddedWells([]);
+                          setAddedLocations([]);
+                          setJobActivityName('');
+                          setPusher('');
+                          setWellName('');
+                          setOtherInfo('');
+                          setDate(new Date().toISOString().slice(0, 10));
+                        }
+                      },
+                    },
+                  ]
+                );
+              }}
+            >
+              <Text style={[styles.buttonText, { color: '#dc2626' }]}>{t("Close & Save JSA")}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </KeyboardAvoidingView>
 
       {/* Add Well / Location Modal — living document */}

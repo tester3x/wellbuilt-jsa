@@ -187,7 +187,7 @@ export default function ViewJsaScreen() {
     <SafeAreaView style={styles.safeArea}>
       <Stack.Screen
         options={{
-          title: isEditing ? t("Edit JSA") : t("JSA Details"),
+          title: isEditing ? t("Edit JSA") : t("Job Safety Analysis"),
           headerBackTitle: t("Saved JSAs"),
           headerRight: () => (
             <TouchableOpacity onPress={() => router.replace("/(tabs)")} style={{ paddingHorizontal: 10 }}>
@@ -247,19 +247,21 @@ export default function ViewJsaScreen() {
                 />
               </View>
               <View style={styles.fieldRow}>
-                <Text style={styles.label}>{t("Well")}</Text>
+                <Text style={styles.label}>{t("Well / Location")}</Text>
                 <TextInput
                   style={styles.input}
                   value={wellName}
                   onChangeText={setWellName}
-                  placeholder={t("Well name")}
+                  placeholder={t("Well or location name")}
                   placeholderTextColor={colors.textMuted}
                 />
               </View>
-              <View style={styles.row}>
-                <Text style={styles.label}>{t("Locations")}</Text>
-                <Text style={styles.value}>{allLocationsText}</Text>
-              </View>
+              {allLocationsText && allLocationsText !== '-' ? (
+                <View style={styles.row}>
+                  <Text style={styles.label}>{t("Locations")}</Text>
+                  <Text style={styles.value}>{allLocationsText}</Text>
+                </View>
+              ) : null}
               {(params.jsaType || params.task) ? (
                 <View style={styles.row}>
                   <Text style={styles.label}>{t("Task")}</Text>
@@ -271,12 +273,12 @@ export default function ViewJsaScreen() {
                 <Text style={styles.value}>{params.date || "-"}</Text>
               </View>
               <View style={styles.fieldRow}>
-                <Text style={styles.label}>{t("Other Info")}</Text>
+                <Text style={styles.label}>{t("Notes")}</Text>
                 <TextInput
                   style={[styles.input, styles.multiline]}
                   value={otherInfo}
                   onChangeText={setOtherInfo}
-                  placeholder={t("Other information")}
+                  placeholder={t("Notes")}
                   placeholderTextColor={colors.textMuted}
                   multiline
                 />
@@ -305,22 +307,22 @@ export default function ViewJsaScreen() {
                 </View>
               ) : null}
               <View style={styles.row}>
-                <Text style={styles.label}>{t("Wells")}</Text>
+                <Text style={styles.label}>{t("Wells / Locations")}</Text>
                 <View style={{ flex: 1, alignItems: 'flex-end' }}>
                   {wellsList.length > 0 ? wellsList.map((w: any, i: number) => (
-                    <Text key={i} style={styles.value}>
+                    <Text key={`w-${i}`} style={styles.value}>
                       {typeof w === 'string' ? w : w?.name || ''}
                       {typeof w !== 'string' && w?.jobType ? ` (${w.jobType})` : ''}
                     </Text>
-                  )) : <Text style={styles.value}>{wellName || "-"}</Text>}
+                  )) : null}
+                  {allLocationsText && allLocationsText !== '-' ? (
+                    <Text style={styles.value}>{allLocationsText}</Text>
+                  ) : null}
+                  {wellsList.length === 0 && (!allLocationsText || allLocationsText === '-') && (
+                    <Text style={styles.value}>{wellName || "-"}</Text>
+                  )}
                 </View>
               </View>
-              {allLocationsText && allLocationsText !== '-' ? (
-                <View style={styles.row}>
-                  <Text style={styles.label}>{t("Locations")}</Text>
-                  <Text style={styles.value}>{allLocationsText}</Text>
-                </View>
-              ) : null}
               {(params.jsaType || params.task) ? (
                 <View style={styles.row}>
                   <Text style={styles.label}>{t("Task")}</Text>
@@ -331,12 +333,6 @@ export default function ViewJsaScreen() {
                 <Text style={styles.label}>{t("Date")}</Text>
                 <Text style={styles.value}>{params.date || "-"}</Text>
               </View>
-              {otherInfo ? (
-                <View style={styles.row}>
-                  <Text style={styles.label}>{t("Other Info")}</Text>
-                  <Text style={styles.value}>{otherInfo}</Text>
-                </View>
-              ) : null}
               {(params.timestamp || params.savedAt) && (
                 <View style={styles.row}>
                   <Text style={styles.label}>{t("Saved")}</Text>
@@ -347,23 +343,7 @@ export default function ViewJsaScreen() {
           )}
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.title}>{t("Locations")}</Text>
-          {locationsList.length ? (
-            <View style={styles.list}>
-              {locationsList.map((loc) => (
-                <View key={loc} style={styles.listRow}>
-                  <Text style={styles.listItem}>• {loc}</Text>
-                  {locationAcks[loc] && (
-                    <Text style={styles.mutedSmall}>{t("Ack")}: {new Date(locationAcks[loc]).toLocaleString()}</Text>
-                  )}
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.muted}>{t("No locations recorded.")}</Text>
-          )}
-        </View>
+        {/* Locations section removed — merged with Wells / Locations above */}
 
         <View style={styles.card}>
           <Text style={styles.title}>{t("PPE Selected")}</Text>
@@ -407,7 +387,7 @@ export default function ViewJsaScreen() {
               multiline
             />
           ) : (
-            <Text style={styles.value}>{notes || "—"}</Text>
+            <Text style={styles.value}>{[otherInfo, notes].filter(Boolean).join('\n') || "—"}</Text>
           )}
         </View>
 

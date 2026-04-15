@@ -213,10 +213,10 @@ const locationsList = useMemo(() => {
               </>
             ) : null}
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{t("Wells")}</Text>
+              <Text style={styles.summaryLabel}>{t("Wells / Locations")}</Text>
               <View style={{ flex: 1, alignItems: 'flex-end' }}>
                 {wellsList.length > 0 ? wellsList.map((w: any, i: number) => (
-                  <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: i < wellsList.length - 1 ? 2 : 0 }}>
+                  <View key={`w-${i}`} style={{ flexDirection: 'row', gap: 8, marginBottom: 2 }}>
                     <Text style={styles.summaryValue} numberOfLines={1}>
                       {typeof w === 'string' ? w : w?.name || ''}
                     </Text>
@@ -224,18 +224,15 @@ const locationsList = useMemo(() => {
                       <Text style={{ fontSize: 12, color: '#888' }}>{w.jobType}</Text>
                     ) : null}
                   </View>
-                )) : <Text style={styles.summaryValue}>{wellName || "-"}</Text>}
-              </View>
-            </View>
-            <View style={styles.separator} />
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{t("Locations")}</Text>
-              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                )) : null}
                 {locationsList.length > 0 ? locationsList.map((l, i) => (
-                  <Text key={i} style={[styles.summaryValue, { marginBottom: i < locationsList.length - 1 ? 2 : 0 }]} numberOfLines={1}>
+                  <Text key={`l-${i}`} style={[styles.summaryValue, { marginBottom: 2 }]} numberOfLines={1}>
                     {l}
                   </Text>
-                )) : <Text style={styles.summaryValue}>{location || "-"}</Text>}
+                )) : null}
+                {wellsList.length === 0 && locationsList.length === 0 && (
+                  <Text style={styles.summaryValue}>{wellName || location || "-"}</Text>
+                )}
               </View>
             </View>
             <View style={styles.separator} />
@@ -247,7 +244,7 @@ const locationsList = useMemo(() => {
               <>
                 <View style={styles.separator} />
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>{t("Other Info")}</Text>
+                  <Text style={styles.summaryLabel}>{t("Notes")}</Text>
                   <Text style={styles.summaryValue}>{otherInfo}</Text>
                 </View>
               </>

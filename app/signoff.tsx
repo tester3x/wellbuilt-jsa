@@ -120,15 +120,15 @@ export default function SignoffScreen() {
       { label: t("Job/Activity"), value: params.jobActivityName || params.task || "-" },
       { label: t("Pusher"), value: params.pusher || "-" },
       {
-        label: t("Wells"),
-        value: wellNames.length > 0 ? wellNames.join(", ") : params.wellName || "-",
-      },
-      {
-        label: t("Locations"),
-        value: locations.length > 0 ? locations.join(", ") : params.location || "-",
+        label: t("Wells / Locations"),
+        value: (() => {
+          const parts: string[] = [...wellNames];
+          if (locations.length > 0) parts.push(...locations);
+          return parts.length > 0 ? parts.join(", ") : params.wellName || params.location || "-";
+        })(),
       },
       { label: t("Date"), value: params.date || "-" },
-      { label: t("Other Info"), value: params.otherInfo || "-" },
+      { label: t("Notes"), value: params.otherInfo || "-" },
     ],
     [params.driverName, params.truckNumber, params.jobActivityName, params.pusher, params.wellName, wellsList, params.location, locations, params.date, params.otherInfo, params.task, t]
   );
@@ -332,7 +332,7 @@ export default function SignoffScreen() {
     <SafeAreaView style={styles.safeArea}>
       <Stack.Screen
         options={{
-          title: t("Sign Off"),
+          title: t("Review & Submit"),
           headerRight: () => (
             <View style={{ flexDirection: "row", gap: 12 }}>
               <TouchableOpacity onPress={() => router.replace("/(tabs)")}>

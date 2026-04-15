@@ -155,19 +155,24 @@ export default function PpeScreen() {
       { label: t("Job/Activity"), value: jobActivityName || "-" },
       { label: t("Pusher"), value: pusher || "-" },
       {
-        label: t("Wells"),
-        value: wellsList.length > 0 ? wellsList.map((w: any) => {
-          const name = typeof w === 'string' ? w : w?.name || '';
-          const jt = typeof w !== 'string' && w?.jobType ? ` (${w.jobType})` : '';
-          return name + jt;
-        }).join(", ") : wellName || "-",
-      },
-      {
-        label: t("Locations"),
-        value: locationsList.length > 0 ? locationsList.join(", ") : location || "-",
+        label: t("Wells / Locations"),
+        value: (() => {
+          const parts: string[] = [];
+          if (wellsList.length > 0) {
+            wellsList.forEach((w: any) => {
+              const name = typeof w === 'string' ? w : w?.name || '';
+              const jt = typeof w !== 'string' && w?.jobType ? ` (${w.jobType})` : '';
+              parts.push(name + jt);
+            });
+          }
+          if (locationsList.length > 0) {
+            parts.push(...locationsList);
+          }
+          return parts.length > 0 ? parts.join(", ") : wellName || location || "-";
+        })(),
       },
       { label: t("Date"), value: date || "-" },
-      { label: t("Other Info"), value: otherInfo || "-" },
+      { label: t("Notes"), value: otherInfo || "-" },
     ],
     [driverName, truckNumber, jobActivityName, pusher, wellName, wellsList, location, locationsList, date, otherInfo, t]
   );

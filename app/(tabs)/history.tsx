@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   RefreshControl,
   SafeAreaView,
   StyleSheet,
@@ -13,7 +14,7 @@ import {
   View,
 } from "react-native";
 
-import { colors } from "../../constants/colors";
+import { colors, cardShadow } from "../../constants/colors";
 import { STORAGE_KEYS } from "../../constants/storageKeys";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -49,10 +50,39 @@ function getWellNames(item: HistoryItem): string {
   return item.wellName || '-';
 }
 
+/** Get first well's job type or fallback */
+function getJobType(item: HistoryItem): string {
+  if (item.wells && Array.isArray(item.wells) && item.wells.length > 0) {
+    const first = item.wells[0];
+    if (typeof first !== 'string' && first?.jobType) return first.jobType;
+  }
+  return item.jobActivityName || item.task || '';
+}
+
+/** Format date concisely */
+function formatDate(isoString: string): string {
+  try {
+    const d = new Date(isoString);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+
+    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    if (isToday) return `Today, ${time}`;
+    if (isYesterday) return `Yesterday, ${time}`;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + `, ${time}`;
+  } catch {
+    return isoString;
+  }
+}
+
 export default function HistoryTabScreen() {
   const router = useRouter();
   const { t } = useLanguage();
-  const { accent } = useTheme();
+  const { accent, logoUrl } = useTheme();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -88,23 +118,7 @@ export default function HistoryTabScreen() {
     loadHistory();
   }, [loadHistory]);
 
-  const formatDate = (isoString: string) => {
-    try {
-      const date = new Date(isoString);
-      return date.toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return isoString;
-    }
-  };
-
   const handleViewDetails = (item: HistoryItem) => {
-    // Normalize ppeSelected to string for route params
     const ppeStr = typeof item.ppeSelected === 'string'
       ? item.ppeSelected
       : JSON.stringify({ selected: item.ppeSelected });
@@ -160,7 +174,6 @@ export default function HistoryTabScreen() {
   };
 
   const handleDuplicate = (item: HistoryItem) => {
-    // Navigate to steps with all the JSA data pre-filled, but with today's date and no signature
     const today = new Date().toISOString().slice(0, 10);
     router.push({
       pathname: "/steps",
@@ -170,79 +183,66 @@ export default function HistoryTabScreen() {
         jobActivityName: item.jobActivityName,
         pusher: item.pusher,
         wellName: item.wellName,
+        wells: JSON.stringify(item.wells || []),
         otherInfo: item.otherInfo,
         location: item.location,
         locations: JSON.stringify(item.locations || []),
-        locationAcks: JSON.stringify({}), // Reset acknowledgments
+        locationAcks: JSON.stringify({}),
         date: today,
         jsaSessionId: Date.now().toString(),
       },
     });
   };
 
-  const renderItem = ({ item }: { item: HistoryItem }) => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>
-          {item.jobActivityName || item.task || t("JSA")}
-        </Text>
-        <Text style={styles.cardDate}>{formatDate(item.timestamp)}</Text>
-      </View>
+  const renderItem = ({ item }: { item: HistoryItem }) => {
+    const wellNames = getWellNames(item);
+    const jobType = getJobType(item);
 
-      <View style={styles.cardBody}>
-        <View style={styles.cardRow}>
-          <Text style={styles.cardLabel}>{t("Driver")}:</Text>
-          <Text style={styles.cardValue}>{item.driverName || "-"}</Text>
-        </View>
-        <View style={styles.cardRow}>
-          <Text style={styles.cardLabel}>{t("Truck #")}:</Text>
-          <Text style={styles.cardValue}>{item.truckNumber || "-"}</Text>
-        </View>
-        <View style={styles.cardRow}>
-          <Text style={styles.cardLabel}>{t("Well")}:</Text>
-          <Text style={styles.cardValue}>{getWellNames(item)}</Text>
-        </View>
-        <View style={styles.cardRow}>
-          <Text style={styles.cardLabel}>{t("Location")}:</Text>
-          <Text style={styles.cardValue}>{item.location || "-"}</Text>
-        </View>
-        {item.signature && (
-          <View style={styles.cardRow}>
-            <Text style={styles.cardLabel}>{t("Signed by")}:</Text>
-            <Text style={styles.cardValue}>{item.signature}</Text>
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => handleViewDetails(item)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.cardTop}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardWells} numberOfLines={2}>{wellNames}</Text>
+            {jobType ? <Text style={styles.cardJobType}>{jobType}</Text> : null}
           </View>
-        )}
-      </View>
-
-      <View style={styles.cardActions}>
-        <TouchableOpacity
-          style={[styles.viewButton, { backgroundColor: accent }]}
-          onPress={() => handleViewDetails(item)}
-        >
-          <Text style={styles.viewButtonText}>{t("View")}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.duplicateButton, { borderColor: accent }]}
-          onPress={() => handleDuplicate(item)}
-        >
-          <Text style={[styles.duplicateButtonText, { color: accent }]}>{t("Duplicate")}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => handleDeleteItem(item)}
-        >
-          <Text style={styles.deleteButtonText}>{t("Delete")}</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+          <Text style={styles.cardDate}>{formatDate(item.timestamp)}</Text>
+        </View>
+        <View style={styles.cardBottom}>
+          <Text style={styles.cardDriver}>{item.driverName} • {t("Truck")} #{item.truckNumber}</Text>
+          <View style={styles.cardActions}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={(e) => { e.stopPropagation(); handleDuplicate(item); }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={[styles.actionText, { color: accent }]}>{t("Duplicate")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={(e) => { e.stopPropagation(); handleDeleteItem(item); }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={[styles.actionText, { color: colors.error }]}>{t("Delete")}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          {logoUrl ? <Image source={{ uri: logoUrl }} style={styles.headerLogo} /> : null}
+          <Text style={styles.headerTitle}>{t("Saved JSAs")}</Text>
+        </View>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={accent} />
-          <Text style={styles.loadingText}>{t("Loading history...")}</Text>
         </View>
       </SafeAreaView>
     );
@@ -250,6 +250,16 @@ export default function HistoryTabScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <View style={styles.header}>
+        {logoUrl ? <Image source={{ uri: logoUrl }} style={styles.headerLogo} /> : null}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>{t("Saved JSAs")}</Text>
+          <Text style={styles.headerSubtitle}>
+            {history.length} {history.length === 1 ? t("record") : t("records")}
+          </Text>
+        </View>
+      </View>
+
       {error ? (
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
@@ -259,9 +269,9 @@ export default function HistoryTabScreen() {
         </View>
       ) : history.length === 0 ? (
         <View style={styles.centered}>
-          <Text style={styles.emptyText}>{t("No completed JSAs yet")}</Text>
+          <Text style={styles.emptyText}>{t("No saved JSAs")}</Text>
           <Text style={styles.emptySubtext}>
-            {t("Complete a JSA to see it here")}
+            {t("Completed JSAs will appear here")}
           </Text>
         </View>
       ) : (
@@ -289,16 +299,35 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a6b3c',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
+    gap: 12,
+  },
+  headerLogo: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 1,
+  },
   centered: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: colors.textMuted,
   },
   errorText: {
     fontSize: 16,
@@ -307,7 +336,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   retryButton: {
-    backgroundColor: colors.primary,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
@@ -328,99 +356,61 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   listContent: {
-    padding: 16,
-    gap: 12,
+    padding: 12,
+    gap: 8,
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 10,
+    padding: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    ...cardShadow,
   },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 12,
+  cardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
+  cardWells: {
+    fontSize: 15,
+    fontWeight: '600',
     color: colors.textDark,
     flex: 1,
+    marginRight: 8,
   },
-  cardDate: {
+  cardJobType: {
     fontSize: 12,
     color: colors.textMuted,
-    marginLeft: 8,
+    marginTop: 2,
   },
-  cardBody: {
-    gap: 6,
-    marginBottom: 12,
-  },
-  cardRow: {
-    flexDirection: "row",
-  },
-  cardLabel: {
-    fontSize: 14,
+  cardDate: {
+    fontSize: 11,
     color: colors.textMuted,
-    width: 80,
   },
-  cardValue: {
-    fontSize: 14,
-    color: colors.textDark,
+  cardBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 8,
+  },
+  cardDriver: {
+    fontSize: 12,
+    color: colors.textMuted,
     flex: 1,
   },
   cardActions: {
-    flexDirection: "row",
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 12,
+    flexDirection: 'row',
+    gap: 16,
   },
-  viewButton: {
-    flex: 1,
-    backgroundColor: colors.primary,
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: "center",
+  actionButton: {
+    paddingVertical: 2,
   },
-  viewButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  duplicateButton: {
-    flex: 1,
-    backgroundColor: colors.card,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    alignItems: "center",
-  },
-  duplicateButtonText: {
-    color: colors.primaryDark,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  deleteButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.error,
-    alignItems: "center",
-  },
-  deleteButtonText: {
-    color: colors.error,
-    fontSize: 14,
-    fontWeight: "600",
+  actionText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
