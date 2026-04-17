@@ -3,7 +3,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './contexts/AuthContext';
-import { colors } from '../constants/theme';
+import { colors } from '../constants/colors';
 
 /**
  * Deep link landing screen for jsaapp://start?driverName=...&wellName=...&...
