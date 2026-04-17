@@ -1,13 +1,13 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
@@ -69,7 +69,7 @@ export default function CompletedScreen() {
         const resp = await fetch(url);
         if (!resp.ok) return;
         const doc = await resp.json();
-        const vals = doc.fields?.locations?.arrayValue?.values;
+        const vals = doc.fields?.wells?.arrayValue?.values;
         if (!Array.isArray(vals)) return;
         const stamps = vals.map((v: any) => {
           const f = v?.mapValue?.fields;
@@ -78,7 +78,6 @@ export default function CompletedScreen() {
             type: f.type?.stringValue || 'pickup',
             jobType: f.jobType?.stringValue || '',
             stampedAt: f.stampedAt?.timestampValue || f.stampedAt?.stringValue || '',
-            dispatchId: f.dispatchId?.stringValue || '',
           } : null;
         }).filter(Boolean);
         if (stamps.length > 0) setLocationStamps(stamps);

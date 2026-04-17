@@ -6,7 +6,6 @@ import {
     Image,
     KeyboardAvoidingView,
     Platform,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Switch,
@@ -15,6 +14,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { SummaryCard } from "../components/jsa";
 import SignatureModal from "../components/SignatureModal";
@@ -219,6 +219,24 @@ export default function SignoffScreen() {
         console.warn("Failed to save JSA", error);
       }
 
+      // Mark this JSA as dismissed from the home-screen active tabs.
+      // Submitted JSAs live in Saved JSAs; they shouldn't auto-rehydrate as tabs.
+      try {
+        const raw = await AsyncStorage.getItem('@jsa/dismissedIds');
+        const ids: string[] = raw ? JSON.parse(raw) : [];
+        if (!ids.includes(payload.id)) ids.push(payload.id);
+        await AsyncStorage.setItem('@jsa/dismissedIds', JSON.stringify(ids));
+        // Also drop any active tab matching this id so this session clears it instantly
+        const activeRaw = await AsyncStorage.getItem('@jsa/activeJsas');
+        if (activeRaw) {
+          const active = JSON.parse(activeRaw);
+          if (Array.isArray(active)) {
+            const filtered = active.filter((j: any) => j?.id !== payload.id);
+            await AsyncStorage.setItem('@jsa/activeJsas', JSON.stringify(filtered));
+          }
+        }
+      } catch {}
+
       // Auto-generate PDF and upload to Firebase Storage (fire-and-forget)
       // Stores URL in AsyncStorage so WB T can attach to tickets (per_load mode)
       (async () => {
@@ -270,17 +288,42 @@ export default function SignoffScreen() {
           const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
           const pdfUrl = await AsyncStorage.getItem('jsa_pdfUrl') || '';
 
-          // Build wells array for Firestore
-          const wellsForFirestore = wellsList.map((w: any) => ({
-            mapValue: {
-              fields: {
-                name: { stringValue: typeof w === 'string' ? w : (w?.name || '') },
-                type: { stringValue: 'pickup' },
-                jobType: { stringValue: typeof w === 'string' ? (params.jobActivityName || '') : (w?.jobType || params.jobActivityName || '') },
-                stampedAt: { timestampValue: new Date().toISOString() },
+          // Read existing wells[] so WB T-stamped entries aren't clobbered
+          let existingWells: any[] = [];
+          try {
+            const getResp = await fetch(`${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`);
+            if (getResp.ok) {
+              const doc = await getResp.json();
+              existingWells = doc.fields?.wells?.arrayValue?.values || [];
+            }
+          } catch {}
+          const existingNames = new Set(
+            existingWells
+              .map((v: any) => v?.mapValue?.fields?.name?.stringValue?.trim().toUpperCase())
+              .filter(Boolean)
+          );
+
+          // Build wells array from the form, skipping any names already present
+          const formWells = wellsList
+            .map((w: any) => {
+              const name = typeof w === 'string' ? w : (w?.name || '');
+              const jobType = typeof w === 'string'
+                ? (params.jobActivityName || '')
+                : (w?.jobType || params.jobActivityName || '');
+              return { name, jobType };
+            })
+            .filter(w => w.name && !existingNames.has(w.name.trim().toUpperCase()))
+            .map(w => ({
+              mapValue: {
+                fields: {
+                  name: { stringValue: w.name },
+                  type: { stringValue: 'pickup' },
+                  jobType: { stringValue: w.jobType },
+                  stampedAt: { timestampValue: new Date().toISOString() },
+                },
               },
-            },
-          }));
+            }));
+          const wellsForFirestore = [...existingWells, ...formWells];
 
           const patchUrl = `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`
             + '&updateMask.fieldPaths=driverHash'
@@ -320,8 +363,9 @@ export default function SignoffScreen() {
         }
       })();
 
-      // Go straight to home — JSA Active dashboard with tabs
-      // The completed screen is skipped; home screen hydrates the new JSA from AsyncStorage
+      // Clear the whole stack (steps → ppe → signoff) so Android back can't
+      // rewind to the just-submitted JSA; then land on the home tabs.
+      if (router.canDismiss()) router.dismissAll();
       router.replace("/(tabs)");
     };
 

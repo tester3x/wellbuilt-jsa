@@ -200,9 +200,11 @@ export const preloadCompanyWells = async (
   if (companyWellsLoaded && companyWellsCache.length > 0) return companyWellsCache;
 
   if (!operatorNames || operatorNames.length === 0) {
-    console.log('[wellData-JSA] No assigned operators, falling back to loadAllWells');
-    const all = await loadAllWells();
-    companyWellsCache = all;
+    // No operators assigned — return empty. Driver types well names manually or
+    // picks oil companies in Settings to enable autocomplete. We never load the
+    // full 19k well list (3–4 minute wait, terrible UX).
+    console.log('[wellData-JSA] No assigned operators — autocomplete disabled until driver picks oil companies');
+    companyWellsCache = [];
     companyWellsLoaded = true;
     return companyWellsCache;
   }

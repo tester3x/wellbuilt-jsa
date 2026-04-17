@@ -4,7 +4,6 @@ import React, { useMemo, useState } from "react";
 import {
     Alert,
     Image,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
@@ -12,6 +11,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors } from "../constants/colors";
 import { STORAGE_KEYS } from "../constants/storageKeys";

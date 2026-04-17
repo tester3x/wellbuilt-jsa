@@ -12,7 +12,6 @@ import {
     KeyboardAvoidingView,
     Modal,
     Platform,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
@@ -20,13 +19,13 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { WebView } from "react-native-webview";
 import { buildJsaPdfHtml } from "../../services/jsaPdfHtml";
 import { colors } from "../../constants/colors";
 import { STORAGE_KEYS } from "../../constants/storageKeys";
 import {
-  loadAllWells,
   loadOperators,
   loadAliases,
   searchWells,
@@ -349,10 +348,10 @@ export default function JsaHomeScreen() {
         if (driverOperators.length > 0) {
           // Driver-scoped: load only their assigned operators' wells (~200-400)
           await preloadCompanyWells(driverOperators);
-        } else {
-          // No assigned operators — load all (WB admin or unconfigured driver)
-          await loadAllWells();
         }
+        // No operators assigned: skip loading entirely. Driver types well names
+        // manually or picks oil companies in Settings. Loading 19k wells is a
+        // 3–4 minute wait and unacceptable UX.
       } catch (err) {
         console.warn('[JSA] Failed to load NDIC well data:', err);
       } finally {
