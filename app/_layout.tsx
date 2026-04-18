@@ -20,6 +20,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getDriverSession } from '../services/driverAuth';
 import { getUnfinishedJsas, discardJsa, type UnfinishedJsa } from '../services/jsaStatus';
 import UnfinishedJsasModal from '../components/UnfinishedJsasModal';
+import WelcomeModal from '../components/WelcomeModal';
 
 const FIREBASE_DB = 'https://wellbuilt-sync-default-rtdb.firebaseio.com';
 
@@ -99,6 +100,11 @@ function AppContent() {
   // with wells stamped but never signed off.
   const [unfinished, setUnfinished] = useState<UnfinishedJsa[]>([]);
   const [showUnfinished, setShowUnfinished] = useState(false);
+  // Welcome modal — friendly greeting, shown once per calendar day on first
+  // auth/foreground. Suppressed when the unfinished-JSA nag is showing.
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [welcomeName, setWelcomeName] = useState('');
+
   const checkUnfinishedJsas = async () => {
     try {
       const session = await getDriverSession();
@@ -111,14 +117,31 @@ function AppContent() {
     }
   };
 
+  const maybeShowWelcome = async () => {
+    try {
+      const session = await getDriverSession();
+      if (!session) return;
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const shownDate = await AsyncStorage.getItem('@jsa/welcomeShownDate');
+      if (shownDate === todayStr) return; // already shown today
+      const fullName = session.legalName || session.displayName || '';
+      const firstName = fullName.trim().split(/\s+/)[0] || '';
+      setWelcomeName(firstName);
+      setShowWelcome(true);
+    } catch {}
+  };
+
   // Clear SSO suppression once auth succeeds
   useEffect(() => {
     if (isAuthenticated && ssoInProgress) setSsoInProgress(false);
   }, [isAuthenticated, ssoInProgress]);
 
-  // On successful auth, check for unfinished JSAs once.
+  // On successful auth, check for unfinished JSAs + welcome.
   useEffect(() => {
-    if (isAuthenticated) checkUnfinishedJsas();
+    if (isAuthenticated) {
+      checkUnfinishedJsas();
+      maybeShowWelcome();
+    }
   }, [isAuthenticated]);
 
   // Full-screen immersive mode — hide Android navigation bar
@@ -259,6 +282,20 @@ function AppContent() {
                 const hash = await SecureStore.getItemAsync('jsa_passcodeHash');
                 const name = await SecureStore.getItemAsync('jsa_driverName');
                 return hash && name ? { hash, name } : null;
+              }}
+            />
+          )}
+
+          {/* Welcome greeting — shown once per day, unless an unfinished-JSA
+              nag is also pending (compliance takes priority). */}
+          {isAuthenticated && (
+            <WelcomeModal
+              visible={showWelcome && !showUnfinished}
+              driverFirstName={welcomeName}
+              onDismiss={() => {
+                const todayStr = new Date().toISOString().slice(0, 10);
+                AsyncStorage.setItem('@jsa/welcomeShownDate', todayStr).catch(() => {});
+                setShowWelcome(false);
               }}
             />
           )}
