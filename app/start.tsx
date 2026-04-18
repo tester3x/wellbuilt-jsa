@@ -23,6 +23,11 @@ export default function StartScreen() {
         }
         // Store params for auto-fill — home screen reads these on mount
         await AsyncStorage.setItem('jsa_autofill', JSON.stringify(params));
+        // Persist returnTo separately so signoff can prompt "Return to Work" even
+        // after jsa_autofill gets cleared by the form consumer.
+        if (params.returnTo) {
+          await AsyncStorage.setItem('jsa_returnTo', String(params.returnTo));
+        }
         console.log('[JSA] Start screen — stored autofill params, redirecting to home');
       } catch (err) {
         console.error('[JSA] Start screen error:', err);

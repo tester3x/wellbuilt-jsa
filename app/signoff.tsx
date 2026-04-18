@@ -5,6 +5,7 @@ import {
     Alert,
     Image,
     KeyboardAvoidingView,
+    Linking,
     Platform,
     ScrollView,
     StyleSheet,
@@ -277,13 +278,19 @@ export default function SignoffScreen() {
       })();
 
       // Write JSA completion to jsa_day_status (fire-and-forget)
-      // This is the signal WB T and WB S use to know JSA is done
+      // This is the signal WB T and WB S use to know JSA is done.
+      // Honors the form's date so resumed prior-day JSAs write to THEIR doc
+      // (e.g. resuming a 4/15 JSA on 4/17 → updates jsa_day_status/{hash}_2026-04-15).
       (async () => {
         try {
           const session = await getDriverSession();
           if (!session?.passcodeHash) return;
-          const todayStr = new Date().toISOString().slice(0, 10);
-          const docId = `${session.passcodeHash}_${todayStr}`;
+          const formDate = typeof params.date === 'string' ? params.date : '';
+          const jsaDate = /^\d{4}-\d{2}-\d{2}$/.test(formDate)
+            ? formDate
+            : new Date().toISOString().slice(0, 10);
+          const docId = `${session.passcodeHash}_${jsaDate}`;
+          const todayStr = jsaDate; // preserve existing variable name used below
           const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
           const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
           const pdfUrl = await AsyncStorage.getItem('jsa_pdfUrl') || '';
@@ -364,9 +371,58 @@ export default function SignoffScreen() {
       })();
 
       // Clear the whole stack (steps → ppe → signoff) so Android back can't
-      // rewind to the just-submitted JSA; then land on the home tabs.
+      // rewind to the just-submitted JSA; then prompt "Return to Work" if
+      // the driver was deep-linked in from another WB app.
       if (router.canDismiss()) router.dismissAll();
-      router.replace("/(tabs)");
+
+      const returnTo = await AsyncStorage.getItem('jsa_returnTo');
+      const returnToScheme = (() => {
+        switch (returnTo) {
+          case 'wbt':
+          case 'wellbuilt-tickets':
+            return 'wellbuilt-tickets://';
+          case 'wbs':
+          case 'wellbuilt-suite':
+            return 'wellbuilt-suite://';
+          case 'wellbuilt-ewallet':
+            return 'wellbuilt-ewallet://';
+          default:
+            return null;
+        }
+      })();
+
+      if (returnToScheme) {
+        const appLabel = returnToScheme.replace('://', '').replace('wellbuilt-', 'WB ').toUpperCase();
+        Alert.alert(
+          'JSA Submitted',
+          `Return to ${appLabel} or stay in WB JSA?`,
+          [
+            {
+              text: 'Stay in JSA',
+              style: 'cancel',
+              onPress: () => {
+                AsyncStorage.removeItem('jsa_returnTo').catch(() => {});
+                router.replace('/(tabs)');
+              },
+            },
+            {
+              text: `Return to ${appLabel}`,
+              onPress: async () => {
+                await AsyncStorage.removeItem('jsa_returnTo').catch(() => {});
+                try {
+                  await Linking.openURL(returnToScheme);
+                } catch (err) {
+                  console.warn('[JSA] Return-to-work deep link failed:', err);
+                  router.replace('/(tabs)');
+                }
+              },
+            },
+          ],
+          { cancelable: false },
+        );
+      } else {
+        router.replace('/(tabs)');
+      }
     };
 
     void saveAndGo();

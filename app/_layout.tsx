@@ -17,6 +17,9 @@ import LoginScreen from '../components/LoginScreen';
 import AppSwitcher from '../components/AppSwitcher';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { getDriverSession } from '../services/driverAuth';
+import { getUnfinishedJsas, discardJsa, type UnfinishedJsa } from '../services/jsaStatus';
+import UnfinishedJsasModal from '../components/UnfinishedJsasModal';
 
 const FIREBASE_DB = 'https://wellbuilt-sync-default-rtdb.firebaseio.com';
 
@@ -92,10 +95,31 @@ function AppContent() {
   const router = useRouter();
   const [ssoInProgress, setSsoInProgress] = useState(true); // suppress login overlay until we check initial URL
 
+  // Unfinished-JSA compliance modal — shown when driver has prior-day JSAs
+  // with wells stamped but never signed off.
+  const [unfinished, setUnfinished] = useState<UnfinishedJsa[]>([]);
+  const [showUnfinished, setShowUnfinished] = useState(false);
+  const checkUnfinishedJsas = async () => {
+    try {
+      const session = await getDriverSession();
+      if (!session?.passcodeHash) return;
+      const list = await getUnfinishedJsas(session.passcodeHash);
+      setUnfinished(list);
+      if (list.length > 0) setShowUnfinished(true);
+    } catch (err) {
+      console.warn('[JSA] checkUnfinishedJsas failed:', err);
+    }
+  };
+
   // Clear SSO suppression once auth succeeds
   useEffect(() => {
     if (isAuthenticated && ssoInProgress) setSsoInProgress(false);
   }, [isAuthenticated, ssoInProgress]);
+
+  // On successful auth, check for unfinished JSAs once.
+  useEffect(() => {
+    if (isAuthenticated) checkUnfinishedJsas();
+  }, [isAuthenticated]);
 
   // Full-screen immersive mode — hide Android navigation bar
   useEffect(() => {
@@ -119,6 +143,8 @@ function AppContent() {
               logout();
             }
           }).catch(() => {});
+          // Re-surface unfinished-JSA nag on foreground
+          checkUnfinishedJsas();
         }
       }
     });
@@ -234,6 +260,41 @@ function AppContent() {
                 const name = await SecureStore.getItemAsync('jsa_driverName');
                 return hash && name ? { hash, name } : null;
               }}
+            />
+          )}
+
+          {/* Unfinished JSA compliance modal — shown on auth + on foreground */}
+          {isAuthenticated && (
+            <UnfinishedJsasModal
+              visible={showUnfinished}
+              list={unfinished}
+              onResume={(date, wellNames) => {
+                // Stash resume target so (tabs)/index.tsx can pre-fill form
+                // with the correct date + wells.
+                AsyncStorage.setItem(
+                  'jsa_resume',
+                  JSON.stringify({ date, wellNames }),
+                ).catch(() => {});
+                setShowUnfinished(false);
+                if (router.canDismiss()) router.dismissAll();
+                router.replace('/(tabs)');
+              }}
+              onDiscard={async (date, reason) => {
+                const session = await getDriverSession();
+                if (!session?.passcodeHash) return;
+                const ok = await discardJsa(session.passcodeHash, date, reason);
+                if (ok) {
+                  setUnfinished(prev => prev.filter(j => j.date !== date));
+                  // Auto-close modal if this was the last unfinished one
+                  setTimeout(() => {
+                    setUnfinished(current => {
+                      if (current.length === 0) setShowUnfinished(false);
+                      return current;
+                    });
+                  }, 0);
+                }
+              }}
+              onClose={() => setShowUnfinished(false)}
             />
           )}
 

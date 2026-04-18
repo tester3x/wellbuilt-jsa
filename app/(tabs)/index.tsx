@@ -80,6 +80,8 @@ export default function JsaHomeScreen() {
   const [activeJsas, setActiveJsas] = useState<ActiveJsa[]>([]);
   const [activeJsaIndex, setActiveJsaIndex] = useState(0);
   const dismissedIdsRef = useRef<Set<string>>(new Set());
+  const [hydrationDone, setHydrationDone] = useState(false);
+  const autofillConsumedRef = useRef(false);
 
   // Derived: is there at least one active JSA?
   const jsaCompletedToday = activeJsas.length > 0;
@@ -95,43 +97,97 @@ export default function JsaHomeScreen() {
   const [addWellJobType, setAddWellJobType] = useState("");
   const [addWellSuggestions, setAddWellSuggestions] = useState<WellRecord[]>([]);
 
-  // Auto-fill from deep link (jsaapp://start?driverName=...&wellName=...)
+  // Auto-fill from deep link (jsaapp://start?driverName=...&wellName=...).
+  // Waits for hydrateAllJsas so we can decide whether to populate the new form
+  // or focus an existing tab for today. Consumed exactly once per mount.
   useEffect(() => {
-    // Check if we have a returnTo stored from a previous deep link (e.g. app was killed and resumed)
+    // Carry-over returnTo (set if app was killed & resumed mid-flow)
     AsyncStorage.getItem('jsa_returnTo').then(val => {
       if (val) setDeepLinked(true);
+    }).catch(() => {});
+
+    if (!hydrationDone || autofillConsumedRef.current) return;
+    autofillConsumedRef.current = true;
+
+    // Resume-unfinished-JSA bridge: if the modal stashed a target date+wells,
+    // pre-fill the new form for that date. Takes priority over regular autofill.
+    AsyncStorage.getItem('jsa_resume').then(raw => {
+      if (!raw) return;
+      try {
+        const { date, wellNames } = JSON.parse(raw);
+        if (date) setDate(date);
+        if (Array.isArray(wellNames) && wellNames.length > 0) {
+          setAddedWells(wellNames.map((name: string) => ({ name, operator: '', county: '' })));
+        }
+        setActiveJsaIndex(-1); // new form, not an existing tab
+        console.log('[JSA] Resumed unfinished JSA for', date, '—', wellNames?.length, 'wells');
+      } catch {}
+      AsyncStorage.removeItem('jsa_resume').catch(() => {});
     }).catch(() => {});
 
     AsyncStorage.getItem('jsa_autofill').then(raw => {
       if (!raw) return;
       try {
         const params = JSON.parse(raw);
+
+        // Metadata always applies (driver identity, return target)
         if (params.driverName) setDriverName(params.driverName);
         if (params.truckNumber) setTruckNumber(params.truckNumber);
-        if (params.wellName) {
-          setWellName(params.wellName);
-          setAddedWells([{
-            name: params.wellName,
-            operator: params.operator || '',
-            county: '',
-          }]);
-        }
-        if (params.jobType) {
-          setJobActivityName(params.jobType);
-        }
         if (params.date) setDate(params.date);
         if (params.disposal) setLocationInput(params.disposal);
         if (params.returnTo) {
           setDeepLinked(true);
-          // Store return app for deep link back on completion
-          AsyncStorage.setItem('jsa_returnTo', params.returnTo).catch(() => {});
+          AsyncStorage.setItem('jsa_returnTo', String(params.returnTo)).catch(() => {});
         }
-        // Clear after reading — one-time auto-fill
+
+        // Well/jobType routing: if a today's JSA tab already exists, focus it
+        // and append the well to its list (deduped). Otherwise populate the new
+        // form the old way.
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayTabIdx = activeJsas.findIndex(j => (j.signedAt || '').startsWith(todayStr));
+        if (todayTabIdx >= 0) {
+          setActiveJsaIndex(todayTabIdx);
+          if (params.wellName) {
+            setActiveJsas(prev => {
+              const target = prev[todayTabIdx];
+              if (!target) return prev;
+              const already = target.wells.some(
+                w => w.name.trim().toUpperCase() === String(params.wellName).trim().toUpperCase(),
+              );
+              if (already) return prev;
+              const updated = [...prev];
+              updated[todayTabIdx] = {
+                ...target,
+                wells: [
+                  ...target.wells,
+                  {
+                    name: params.wellName,
+                    operator: params.operator || '',
+                    county: '',
+                    jobType: params.jobType || '',
+                  },
+                ],
+              };
+              return updated;
+            });
+          }
+        } else {
+          if (params.wellName) {
+            setWellName(params.wellName);
+            setAddedWells([{
+              name: params.wellName,
+              operator: params.operator || '',
+              county: '',
+            }]);
+          }
+          if (params.jobType) setJobActivityName(params.jobType);
+        }
+
         AsyncStorage.removeItem('jsa_autofill').catch(() => {});
-        console.log('[JSA] Auto-filled from deep link');
+        console.log('[JSA] Auto-filled from deep link — todayTabIdx:', todayTabIdx);
       } catch {}
     }).catch(() => {});
-  }, []);
+  }, [hydrationDone, activeJsas]);
 
   // Reusable function to fetch jsa_day_status and update wells/locations
   const fetchJsaDayStatus = React.useCallback(async () => {
@@ -317,6 +373,9 @@ export default function JsaHomeScreen() {
         if (activeJsaIndex === -1) setActiveJsaIndex(existing.length - 1);
       }
     } catch {}
+    // Signal to the autofill effect that it can safely decide where to route
+    // the deep-link params (existing tab vs new form).
+    setHydrationDone(true);
   }, [activeJsaIndex]);
 
   // Hydrate on mount AND when screen gains focus (e.g. returning from submit)
