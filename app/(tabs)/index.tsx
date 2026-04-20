@@ -227,6 +227,18 @@ export default function JsaHomeScreen() {
               const list = JSON.parse(stored);
               if (!Array.isArray(list) || list.length === 0) return;
               const latest = list[0];
+              // Respect dismissedIds — signed + dismissed JSAs must not return as active.
+              let dismissedIds: Set<string> = dismissedIdsRef.current ?? new Set();
+              if (dismissedIds.size === 0) {
+                try {
+                  const dismissedRaw = await AsyncStorage.getItem('@jsa/dismissedIds');
+                  if (dismissedRaw) {
+                    const parsed = JSON.parse(dismissedRaw);
+                    if (Array.isArray(parsed)) dismissedIds = new Set(parsed);
+                  }
+                } catch {}
+              }
+              if (latest?.id && dismissedIds.has(latest.id)) return;
               const wellsList = Array.isArray(latest.wells) ? latest.wells.map((w: any) =>
                 typeof w === 'string' ? { name: w, operator: '', county: '' } : w
               ) : [];
