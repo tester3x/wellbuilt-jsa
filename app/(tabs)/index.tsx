@@ -693,12 +693,36 @@ export default function JsaHomeScreen() {
 
   const handleContinue = () => {
     if (!continueJsa) return;
+    // Resume via the modern flow: /steps → /ppe → /signoff. Mirrors handleNext's
+    // param shape so the resumed JSA walks the same screens as a new one
+    // (consistent wells/locations render, no legacy /openJsas shortcut).
+    const rawWells = Array.isArray(continueJsa.wells) ? continueJsa.wells : [];
+    const wellsForParam = rawWells
+      .map((w: any) => typeof w === 'string'
+        ? { name: w, operator: '', county: '', jobType: continueJsa.jobActivityName || '', source: 'ndic' as const }
+        : {
+            name: w?.name || '',
+            operator: w?.operator || '',
+            county: w?.county || '',
+            jobType: w?.jobType || continueJsa.jobActivityName || '',
+            source: (w?.source || 'ndic') as 'ndic' | 'manual' | 'stamp',
+          })
+      .filter((w: { name: string }) => w.name);
+    const locationsForParam = Array.isArray(continueJsa.locations) ? continueJsa.locations : [];
     router.push({
-      pathname: "/openJsas",
+      pathname: "/steps",
       params: {
         driverName: continueJsa.driverName || driverName,
         truckNumber: continueJsa.truckNumber || truckNumber,
+        jobActivityName: continueJsa.jobActivityName || continueJsa.task || '',
+        pusher: continueJsa.pusher || '',
+        wellName: wellsForParam[0]?.name || continueJsa.wellName || '',
+        wells: JSON.stringify(wellsForParam),
+        otherInfo: continueJsa.otherInfo || '',
+        location: locationsForParam[0] || continueJsa.location || '',
+        locations: JSON.stringify(locationsForParam),
         date: new Date().toISOString().slice(0, 10),
+        jsaSessionId: Date.now().toString(),
       },
     });
   };

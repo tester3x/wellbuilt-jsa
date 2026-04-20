@@ -157,18 +157,33 @@ export default function PpeScreen() {
       {
         label: t("Wells / Locations"),
         value: (() => {
-          const parts: string[] = [];
-          if (wellsList.length > 0) {
-            wellsList.forEach((w: any) => {
-              const name = typeof w === 'string' ? w : w?.name || '';
-              const jt = typeof w !== 'string' && w?.jobType ? ` (${w.jobType})` : '';
-              parts.push(name + jt);
-            });
+          const wellEntries = wellsList
+            .map((w: any) => ({
+              name: typeof w === 'string' ? w : w?.name || '',
+              jobType: typeof w === 'string' ? '' : (w?.jobType || ''),
+            }))
+            .filter((w: { name: string }) => w.name);
+          const locationEntries = locationsList.filter(Boolean);
+          if (wellEntries.length === 0 && locationEntries.length === 0) {
+            return wellName || location || "-";
           }
-          if (locationsList.length > 0) {
-            parts.push(...locationsList);
-          }
-          return parts.length > 0 ? parts.join(", ") : wellName || location || "-";
+          return (
+            <>
+              {wellEntries.map((w: { name: string; jobType: string }, i: number) => (
+                <View key={`w-${i}`} style={{ flexDirection: 'row', gap: 8, marginBottom: 2 }}>
+                  <Text style={styles.summaryRowValue} numberOfLines={1}>{w.name}</Text>
+                  {w.jobType ? (
+                    <Text style={{ fontSize: 12, color: '#888' }}>{w.jobType}</Text>
+                  ) : null}
+                </View>
+              ))}
+              {locationEntries.map((l: string, i: number) => (
+                <Text key={`l-${i}`} style={[styles.summaryRowValue, { marginBottom: 2 }]} numberOfLines={1}>
+                  {l}
+                </Text>
+              ))}
+            </>
+          );
         })(),
       },
       { label: t("Date"), value: date || "-" },
@@ -336,6 +351,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   summaryValue: {
+    color: colors.textDark,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  summaryRowValue: {
     color: colors.textDark,
     fontSize: 14,
     fontWeight: "600",

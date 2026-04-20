@@ -123,9 +123,33 @@ export default function SignoffScreen() {
       {
         label: t("Wells / Locations"),
         value: (() => {
-          const parts: string[] = [...wellNames];
-          if (locations.length > 0) parts.push(...locations);
-          return parts.length > 0 ? parts.join(", ") : params.wellName || params.location || "-";
+          const wellEntries = wellsList
+            .map((w: any) => ({
+              name: typeof w === 'string' ? w : w?.name || '',
+              jobType: typeof w === 'string' ? '' : (w?.jobType || ''),
+            }))
+            .filter((w: { name: string }) => w.name);
+          const locationEntries = locations.filter(Boolean);
+          if (wellEntries.length === 0 && locationEntries.length === 0) {
+            return params.wellName || params.location || "-";
+          }
+          return (
+            <>
+              {wellEntries.map((w: { name: string; jobType: string }, i: number) => (
+                <View key={`w-${i}`} style={{ flexDirection: 'row', gap: 8, marginBottom: 2 }}>
+                  <Text style={styles.summaryRowValue} numberOfLines={1}>{w.name}</Text>
+                  {w.jobType ? (
+                    <Text style={{ fontSize: 12, color: '#888' }}>{w.jobType}</Text>
+                  ) : null}
+                </View>
+              ))}
+              {locationEntries.map((l: string, i: number) => (
+                <Text key={`l-${i}`} style={[styles.summaryRowValue, { marginBottom: 2 }]} numberOfLines={1}>
+                  {l}
+                </Text>
+              ))}
+            </>
+          );
         })(),
       },
       { label: t("Date"), value: params.date || "-" },
@@ -421,11 +445,32 @@ export default function SignoffScreen() {
           { cancelable: false },
         );
       } else {
-        router.replace('/(tabs)');
+        // Manual login: explicit success confirmation before returning home,
+        // so finishing the JSA doesn't feel like a silent dump to tabs.
+        Alert.alert(
+          t("JSA Submitted") || "JSA Submitted",
+          t("Your JSA has been submitted and saved.") || "Your JSA has been submitted and saved.",
+          [
+            {
+              text: t("OK") || "OK",
+              onPress: () => router.replace('/(tabs)'),
+            },
+          ],
+          { cancelable: false },
+        );
       }
     };
 
-    void saveAndGo();
+    // Explicit submit confirmation — driver must confirm completion, not just
+    // tap through a screen that feels like a dismiss.
+    Alert.alert(
+      t("Submit JSA?") || "Submit JSA?",
+      t("Submit and complete this JSA?") || "Submit and complete this JSA?",
+      [
+        { text: t("Cancel") || "Cancel", style: "cancel" },
+        { text: t("Submit") || "Submit", onPress: () => { void saveAndGo(); } },
+      ],
+    );
   };
 
   return (
@@ -607,6 +652,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   summaryValue: {
+    color: colors.textDark,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  summaryRowValue: {
     color: colors.textDark,
     fontSize: 14,
     fontWeight: "600",

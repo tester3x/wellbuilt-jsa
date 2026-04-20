@@ -256,12 +256,21 @@ export default function ViewJsaScreen() {
                   placeholderTextColor={colors.textMuted}
                 />
               </View>
-              {allLocationsText && allLocationsText !== '-' ? (
+              {locationsList.length > 0 ? (
                 <View style={styles.row}>
                   <Text style={styles.label}>{t("Locations")}</Text>
-                  <Text style={styles.value}>{allLocationsText}</Text>
+                  <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                    {locationsList.map((l: string, i: number) => (
+                      <Text key={`ed-l-${i}`} style={[styles.value, { marginBottom: 2 }]} numberOfLines={1}>{l}</Text>
+                    ))}
+                  </View>
                 </View>
-              ) : null}
+              ) : (params.location ? (
+                <View style={styles.row}>
+                  <Text style={styles.label}>{t("Locations")}</Text>
+                  <Text style={styles.value}>{params.location}</Text>
+                </View>
+              ) : null)}
               {(params.jsaType || params.task) ? (
                 <View style={styles.row}>
                   <Text style={styles.label}>{t("Task")}</Text>
@@ -310,17 +319,20 @@ export default function ViewJsaScreen() {
                 <Text style={styles.label}>{t("Wells / Locations")}</Text>
                 <View style={{ flex: 1, alignItems: 'flex-end' }}>
                   {wellsList.length > 0 ? wellsList.map((w: any, i: number) => (
-                    <Text key={`w-${i}`} style={styles.value}>
+                    <Text key={`w-${i}`} style={[styles.value, { marginBottom: 2 }]} numberOfLines={1}>
                       {typeof w === 'string' ? w : w?.name || ''}
                       {typeof w !== 'string' && w?.jobType ? ` (${w.jobType})` : ''}
                     </Text>
                   )) : null}
-                  {allLocationsText && allLocationsText !== '-' ? (
-                    <Text style={styles.value}>{allLocationsText}</Text>
-                  ) : null}
-                  {wellsList.length === 0 && (!allLocationsText || allLocationsText === '-') && (
+                  {locationsList.length > 0 ? locationsList.map((l: string, i: number) => (
+                    <Text key={`vj-l-${i}`} style={[styles.value, { marginBottom: 2 }]} numberOfLines={1}>{l}</Text>
+                  )) : null}
+                  {wellsList.length === 0 && locationsList.length === 0 && !params.location ? (
                     <Text style={styles.value}>{wellName || "-"}</Text>
-                  )}
+                  ) : null}
+                  {wellsList.length === 0 && locationsList.length === 0 && params.location ? (
+                    <Text style={styles.value}>{params.location}</Text>
+                  ) : null}
                 </View>
               </View>
               {(params.jsaType || params.task) ? (

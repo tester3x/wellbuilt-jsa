@@ -2,12 +2,22 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { cardShadow, colors } from "../../constants/colors";
-import { SummaryField } from "../../types/jsa";
+
+export type SummaryFieldValue = string | number | React.ReactNode;
+
+export type SummaryFieldLike = {
+  label: string;
+  value: SummaryFieldValue;
+};
 
 type SummaryCardProps = {
-  fields: SummaryField[];
+  fields: SummaryFieldLike[];
   title?: string;
 };
+
+function isScalar(v: SummaryFieldValue): v is string | number {
+  return typeof v === "string" || typeof v === "number";
+}
 
 export function SummaryCard({ fields, title }: SummaryCardProps) {
   return (
@@ -16,7 +26,11 @@ export function SummaryCard({ fields, title }: SummaryCardProps) {
       {fields.map((field) => (
         <View key={field.label} style={styles.row}>
           <Text style={styles.label}>{field.label}</Text>
-          <Text style={styles.value}>{field.value}</Text>
+          {isScalar(field.value) ? (
+            <Text style={styles.value}>{field.value}</Text>
+          ) : (
+            <View style={styles.valueContainer}>{field.value}</View>
+          )}
         </View>
       ))}
     </View>
@@ -54,5 +68,10 @@ const styles = StyleSheet.create({
     textAlign: "right",
     flex: 1,
     marginLeft: 12,
+  },
+  valueContainer: {
+    flex: 1,
+    marginLeft: 12,
+    alignItems: "flex-end",
   },
 });
