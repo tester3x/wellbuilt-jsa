@@ -375,7 +375,20 @@ export default function SignoffScreen() {
       // unmounted component are dropped silently, and the branded completion
       // modal never renders. Stack dismissal is deferred to the modal button
       // handlers (handleDoneStandalone / handleStayInJsa / handleReturnToOrigin).
-      //
+
+      // Signal the home screen to reset its form on next focus. Without this,
+      // rows the driver manually deleted pre-submit can come back after
+      // navigating home (fetchJsaDayStatus stamped-wells merge path). Home
+      // reads this flag, clears wells/locations/pusher/notes, then removes
+      // the flag. Must be set BEFORE navigating away.
+      try {
+        await AsyncStorage.setItem('@jsa/clearFormOnNextFocus', '1');
+      } catch {}
+
+      // Also clear the same-day draft bridge key that the unfinished-modal
+      // might otherwise use to re-populate the form.
+      try { await AsyncStorage.removeItem('jsa_resume'); } catch {}
+
       // Resolve launch origin once, store on state, and show the branded
       // completion modal. Single modal replaces the prior double-confirm
       // (pre-submit Alert + post-submit Alert).

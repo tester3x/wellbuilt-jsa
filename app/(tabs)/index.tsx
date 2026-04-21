@@ -98,6 +98,14 @@ export default function JsaHomeScreen() {
   const [addWellJobType, setAddWellJobType] = useState("");
   const [addWellSuggestions, setAddWellSuggestions] = useState<WellRecord[]>([]);
 
+  // Debug: tracks which hydration path (if any) populated the form state.
+  // Updated whenever any source mutates addedWells / addedLocations / form values.
+  // Surfaced in the debug panel so field test can prove where rehydrated data
+  // is coming from.
+  const [hydrationSource, setHydrationSource] = useState<string>('none');
+  // Once-per-session NO_ACTIVITY warning — avoid log spam.
+  const noActivityLoggedRef = useRef(false);
+
   // Auto-fill from deep link (jsaapp://start?driverName=...&wellName=...).
   // Waits for hydrateAllJsas so we can decide whether to populate the new form
   // or focus an existing tab for today. Consumed exactly once per mount.
@@ -119,6 +127,7 @@ export default function JsaHomeScreen() {
         if (date) setDate(date);
         if (Array.isArray(wellNames) && wellNames.length > 0) {
           setAddedWells(wellNames.map((name: string) => ({ name, operator: '', county: '' })));
+          setHydrationSource('resume');
         }
         setActiveJsaIndex(-1); // new form, not an existing tab
         console.log('[JSA] Resumed unfinished JSA for', date, '—', wellNames?.length, 'wells');
@@ -180,7 +189,9 @@ export default function JsaHomeScreen() {
               name: params.wellName,
               operator: params.operator || '',
               county: '',
+              jobType: params.jobType || '',
             }]);
+            setHydrationSource('deep_link');
           }
           if (params.jobType) setJobActivityName(params.jobType);
         }
@@ -210,9 +221,10 @@ export default function JsaHomeScreen() {
       if (!resp.ok) return;
 
       const doc = await resp.json();
+      const jsaCompletedToday = doc.fields?.jsaCompleted?.booleanValue === true;
 
       // Check completion status — if JSA signed in Firestore but no active JSAs loaded, hydrate from saved data
-      if (doc.fields?.jsaCompleted?.booleanValue === true) {
+      if (jsaCompletedToday) {
         const completedAt = doc.fields?.jsaCompletedAt?.timestampValue || doc.fields?.jsaCompletedAt?.stringValue;
         if (completedAt) setJsaCompletedTime(completedAt);
         const pdfUrl = doc.fields?.pdfUrl?.stringValue || '';
@@ -281,7 +293,13 @@ export default function JsaHomeScreen() {
         }
       }
 
-      // Add new stamps to the current active JSA's wells (or to form addedWells if no active JSA)
+      // Add new stamps to the current active JSA's wells (or to form addedWells if no active JSA).
+      // CRITICAL: if today's JSA is already completed in Firestore, DO NOT seed
+      // the home form with the stamped wells. The driver submitted, possibly
+      // removed wells manually, and expects a clean new form. Rehydrating
+      // deleted wells back into the form is exactly the regression that sent
+      // us here. Stamped wells still get merged into an existing active JSA
+      // (paper-doc display), just not into the fresh form.
       if (allStamped.size > 0) {
         if (activeJsas.length > 0) {
           // Add to the most recent active JSA
@@ -297,8 +315,11 @@ export default function JsaHomeScreen() {
             updated[idx] = { ...current, wells: [...current.wells, ...newWells] };
             return updated;
           });
-        } else {
-          // No active JSA yet — add to form wells for pre-population
+        } else if (!jsaCompletedToday) {
+          // No active JSA AND today's JSA is not yet submitted → safe to
+          // pre-populate the form with stamped wells (the "deferred JSA"
+          // flow — driver worked jobs first, completes JSA later).
+          setHydrationSource('stamped_wells');
           setAddedWells(prev => {
             const existingNames = new Set(prev.map(w => w.name.toUpperCase()));
             const newWells = [...allStamped]
@@ -312,6 +333,8 @@ export default function JsaHomeScreen() {
               .filter(name => !existingLocs.has(name.toUpperCase()) && !/\d/.test(name));
             return newLocs.length > 0 ? [...prev, ...newLocs] : prev;
           });
+        } else {
+          console.log('[JSA][rehydrate skipped] jsaCompleted=true today — not seeding form with stamped wells');
         }
       }
     } catch (err) {
@@ -504,11 +527,60 @@ export default function JsaHomeScreen() {
   useEffect(() => { readLaunchOrigin(); }, [deepLinked, readLaunchOrigin]);
   useFocusEffect(useCallback(() => { readLaunchOrigin(); }, [readLaunchOrigin]));
 
+  // Post-submit clear-form gate. Signoff sets `@jsa/clearFormOnNextFocus`
+  // before the completion modal opens. When the driver returns here via
+  // Done / Stay on JSA / Return-to-origin, we read the flag, wipe the form
+  // state, and remove the flag (one-shot). This is what prevents rows the
+  // driver deleted pre-submit from coming back on the next session.
+  const clearFormIfRequested = useCallback(async () => {
+    try {
+      const flag = await AsyncStorage.getItem('@jsa/clearFormOnNextFocus');
+      if (flag !== '1') return;
+      console.log('[JSA][form-reset] clearFormOnNextFocus=1 — wiping form state');
+      setAddedWells([]);
+      setAddedLocations([]);
+      setWellName('');
+      setLocationInput('');
+      setJobActivityName('');
+      setPusher('');
+      setOtherInfo('');
+      setDate(new Date().toISOString().slice(0, 10));
+      setHydrationSource('post_submit_clear');
+      noActivityLoggedRef.current = false;
+      await AsyncStorage.removeItem('@jsa/clearFormOnNextFocus').catch(() => {});
+    } catch (err) {
+      console.warn('[JSA][form-reset] failed:', err);
+    }
+  }, []);
+  useFocusEffect(useCallback(() => { clearFormIfRequested(); }, [clearFormIfRequested]));
+
   const trimmedLocation = locationInput.trim();
   const hasWellOrLocation = addedWells.length > 0 || wellName.trim().length > 0 || addedLocations.length > 0 || trimmedLocation.length > 0;
+  const hasActivity = jobActivityName.trim().length > 0;
+  // Session-level warning: wells exist but no activity defined. Logged once
+  // so the field-test log isn't spammed. This is the signal that upstream
+  // data will deliver empty resolvedActivity to JsaSummaryCard.
+  useEffect(() => {
+    if (hasWellOrLocation && !hasActivity && !noActivityLoggedRef.current) {
+      noActivityLoggedRef.current = true;
+      console.warn('[JSA][NO_ACTIVITY_DEFINED] wells/locations exist but jobActivityName is empty', {
+        wells: addedWells.length,
+        locations: addedLocations.length,
+      });
+    }
+    // Reset the one-shot when activity is cleared AND list empties, so a
+    // later add-without-activity event logs again.
+    if (!hasWellOrLocation && !hasActivity) noActivityLoggedRef.current = false;
+  }, [hasWellOrLocation, hasActivity, addedWells.length, addedLocations.length]);
   // Deep-linked (pre-shift from WB S): driver may not have a job yet, well/location optional
-  // Form is hidden when JSA completed, so no need for jsaCompletedToday check here
-  const isNextDisabled = !driverName.trim() || !truckNumber.trim() || (!hasWellOrLocation && !deepLinked);
+  // Form is hidden when JSA completed, so no need for jsaCompletedToday check here.
+  // Activity is required whenever wells/locations exist — prevents submitting
+  // rows with empty resolvedActivity.
+  const isNextDisabled =
+    !driverName.trim() ||
+    !truckNumber.trim() ||
+    (!hasWellOrLocation && !deepLinked) ||
+    (hasWellOrLocation && !hasActivity);
 
   const handleJobTypeTextChange = (text: string) => {
     setJobActivityName(text);
@@ -535,26 +607,46 @@ export default function JsaHomeScreen() {
     }
   };
 
+  // Activity-required guard. Any path that adds a well or location must
+  // have jobActivityName populated — otherwise the row will ship with an
+  // empty resolvedActivity and render as `[]`. Inline alert is clearer than
+  // a silent dismissal; driver sees exactly why the add was rejected.
+  const requireActivityOrWarn = (): boolean => {
+    if (jobActivityName.trim().length > 0) return true;
+    Alert.alert(
+      t("Job Type Required") || "Job Type Required",
+      t("Enter a Job Type before adding a well or location.") ||
+        "Enter a Job Type before adding a well or location.",
+      [{ text: t("OK") || "OK" }],
+    );
+    return false;
+  };
+
   const handleWellSelect = (well: WellRecord) => {
-    const entry = { name: well.well_name, operator: well.operator, county: well.county, jobType: jobActivityName || '' };
+    if (!requireActivityOrWarn()) return;
+    const entry = { name: well.well_name, operator: well.operator, county: well.county, jobType: jobActivityName.trim() };
     if (!addedWells.some(w => w.name === well.well_name && w.operator === well.operator)) {
       setAddedWells((prev) => [...prev, entry]);
+      setHydrationSource('user_input');
     }
     setWellName("");
     setWellSuggestions([]);
-    setJobActivityName("");
+    // Keep jobActivityName — driver is often adding multiple wells for the
+    // same activity. Form field stays populated; they clear it manually if
+    // switching activities between wells.
     setJobTypeSuggestions([]);
   };
 
   const addWellManual = () => {
     const trimmed = wellName.trim();
     if (!trimmed) return;
+    if (!requireActivityOrWarn()) return;
     if (!addedWells.some(w => w.name.toLowerCase() === trimmed.toLowerCase())) {
-      setAddedWells((prev) => [...prev, { name: trimmed, operator: '', county: '', jobType: jobActivityName || '' }]);
+      setAddedWells((prev) => [...prev, { name: trimmed, operator: '', county: '', jobType: jobActivityName.trim() }]);
+      setHydrationSource('user_input');
     }
     setWellName("");
     setWellSuggestions([]);
-    setJobActivityName("");
     setJobTypeSuggestions([]);
   };
 
@@ -565,8 +657,10 @@ export default function JsaHomeScreen() {
   const addLocationToList = (loc: string) => {
     const trimmed = loc.trim();
     if (!trimmed) return;
+    if (!requireActivityOrWarn()) return;
     if (!addedLocations.some(l => l.toLowerCase() === trimmed.toLowerCase())) {
       setAddedLocations((prev) => [...prev, trimmed]);
+      setHydrationSource('user_input');
     }
     // Also save as favorite if not already
     if (!favoriteLocations.some(l => l.toLowerCase() === trimmed.toLowerCase())) {
@@ -1012,7 +1106,7 @@ export default function JsaHomeScreen() {
         <View style={{ backgroundColor: '#FFE4E1', padding: 10, marginBottom: 8, borderRadius: 8, borderWidth: 2, borderColor: '#DC143C' }}>
           <Text style={{ fontWeight: '800', fontSize: 11, color: '#8B0000', marginBottom: 6 }}>DEBUG — React state (remove after audit)</Text>
           <Text style={{ fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: '#333' }}>
-            {`session.displayName: "${session?.displayName ?? ''}"\nsession.legalName:   "${session?.legalName ?? ''}"\n— form state —\ndriverName:  "${driverName}"\ntruckNumber: "${truckNumber}"\ndate:        "${date}"\njobType:     "${jobActivityName}"\npusher:      "${pusher}"\nnotes:       "${otherInfo}"`}
+            {`hydrationSource: ${hydrationSource}\nactiveJsaId:     ${currentJsa?.id ?? '(none)'}\nactiveJsas:      ${activeJsas.length}\nwellsCount:      ${addedWells.length}\nlocationsCount:  ${addedLocations.length}\njobActivity:     "${jobActivityName}"\n— identity —\nsession.displayName: "${session?.displayName ?? ''}"\nsession.legalName:   "${session?.legalName ?? ''}"\n— form state —\ndriverName:  "${driverName}"\ntruckNumber: "${truckNumber}"\ndate:        "${date}"\npusher:      "${pusher}"\nnotes:       "${otherInfo}"`}
           </Text>
         </View>
         {/* ── END TEMP DEBUG ─────────────────────────────────────────── */}
