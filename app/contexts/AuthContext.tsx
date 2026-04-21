@@ -354,7 +354,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           driverData.isViewer === true,
           driverData.companyId,
           driverData.companyName,
-          driverData.legalName,
+          // legalName lives at profile.legalName for most approved drivers —
+          // fall through to root legalName for back-compat.
+          driverData.profile?.legalName || driverData.legalName,
           'sso',
         );
         const driverSession = await getDriverSession();

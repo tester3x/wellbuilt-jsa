@@ -201,7 +201,10 @@ export const verifyLogin = async (
         valid: true,
         driverId: hash,
         displayName: driverData.displayName,
-        legalName: driverData.legalName || undefined,
+        // legalName can live at the root OR under profile/ (approval forms
+        // write to profile.legalName). Check both so driverName field
+        // doesn't fall back to the login displayName (e.g. "TabletS10").
+        legalName: driverData.profile?.legalName || driverData.legalName || undefined,
         passcodeHash: hash,
         isAdmin: driverData.isAdmin === true,
         isViewer: driverData.isViewer === true,

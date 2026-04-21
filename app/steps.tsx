@@ -16,6 +16,7 @@ import Animated, {
     withTiming
 } from "react-native-reanimated";
 
+import { JsaSummaryCard, buildLocationActivityRows } from "../components/jsa";
 import { colors } from "../constants/colors";
 import { JSA_STEPS, type JSAStep } from "../constants/jsaTemplate";
 import { useLanguage } from "./contexts/LanguageContext";
@@ -182,74 +183,19 @@ const locationsList = useMemo(() => {
           style={styles.container}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* Summary Card */}
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{t("Driver Name")}</Text>
-              <Text style={styles.summaryValue}>{driverName || "-"}</Text>
-            </View>
-            <View style={styles.separator} />
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{t("Truck #")}</Text>
-              <Text style={styles.summaryValue}>{truckNumber || "-"}</Text>
-            </View>
-            <View style={styles.separator} />
-            {jobActivityName ? (
-              <>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>{t("Job/Activity")}</Text>
-                  <Text style={styles.summaryValue}>{jobActivityName}</Text>
-                </View>
-                <View style={styles.separator} />
-              </>
-            ) : null}
-            {pusher ? (
-              <>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>{t("Pusher")}</Text>
-                  <Text style={styles.summaryValue}>{pusher}</Text>
-                </View>
-                <View style={styles.separator} />
-              </>
-            ) : null}
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{t("Wells / Locations")}</Text>
-              <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                {wellsList.length > 0 ? wellsList.map((w: any, i: number) => (
-                  <View key={`w-${i}`} style={{ flexDirection: 'row', gap: 8, marginBottom: 2 }}>
-                    <Text style={styles.summaryValue} numberOfLines={1}>
-                      {typeof w === 'string' ? w : w?.name || ''}
-                    </Text>
-                    {typeof w !== 'string' && w?.jobType ? (
-                      <Text style={{ fontSize: 12, color: '#888' }}>{w.jobType}</Text>
-                    ) : null}
-                  </View>
-                )) : null}
-                {locationsList.length > 0 ? locationsList.map((l, i) => (
-                  <Text key={`l-${i}`} style={[styles.summaryValue, { marginBottom: 2 }]} numberOfLines={1}>
-                    {l}
-                  </Text>
-                )) : null}
-                {wellsList.length === 0 && locationsList.length === 0 && (
-                  <Text style={styles.summaryValue}>{wellName || location || "-"}</Text>
-                )}
-              </View>
-            </View>
-            <View style={styles.separator} />
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{t("Date")}</Text>
-              <Text style={styles.summaryValue}>{date || "-"}</Text>
-            </View>
-            {otherInfo ? (
-              <>
-                <View style={styles.separator} />
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>{t("Notes")}</Text>
-                  <Text style={styles.summaryValue}>{otherInfo}</Text>
-                </View>
-              </>
-            ) : null}
-          </View>
+          {/* Canonical top summary card — shared across Steps, PPE, Review, View.
+              Rows are pre-resolved via buildLocationActivityRows so the card
+              never has to do fallback lookups. */}
+          <JsaSummaryCard
+            driverName={driverName}
+            truckNumber={truckNumber}
+            rows={buildLocationActivityRows(
+              wellsList,
+              locationsList,
+              { jobActivityName, task },
+            )}
+            date={date}
+          />
 
           {/* Step */}
           <View style={{ marginTop: 16 }}>{renderStepCard(currentStep)}</View>

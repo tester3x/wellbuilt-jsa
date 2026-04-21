@@ -6,6 +6,7 @@ import {
     Image,
     KeyboardAvoidingView,
     Linking,
+    Modal,
     Platform,
     ScrollView,
     StyleSheet,
@@ -17,7 +18,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { SummaryCard } from "../components/jsa";
+import { JsaSummaryCard, buildLocationActivityRows } from "../components/jsa";
 import SignatureModal from "../components/SignatureModal";
 import { colors } from "../constants/colors";
 import {
@@ -61,6 +62,12 @@ export default function SignoffScreen() {
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [showSigModal, setShowSigModal] = useState(false);
   const isLoadedRef = useRef(false);
+
+  // Branded post-submit modal. Shown ONCE after saveAndGo completes —
+  // replaces the two-Alert double-confirm flow. Buttons adapt to launch origin.
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [completeOrigin, setCompleteOrigin] = useState<'wbs' | 'wbt' | 'wbew' | 'standalone'>('standalone');
+  const [completeReturnScheme, setCompleteReturnScheme] = useState<string | null>(null);
 
   // Pre-load drawn signature from Firebase profile (same as WB T / WB S)
   useEffect(() => {
@@ -114,49 +121,18 @@ export default function SignoffScreen() {
     return {};
   }, [params.locationAcks]);
 
-  const summaryFields = useMemo(
-    () => [
-      { label: t("Driver Name"), value: params.driverName || "-" },
-      { label: t("Truck #"), value: params.truckNumber || "-" },
-      { label: t("Job/Activity"), value: params.jobActivityName || params.task || "-" },
-      { label: t("Pusher"), value: params.pusher || "-" },
+  // Pre-resolve rows at the data layer. JsaSummaryCard no longer does any
+  // fallback lookups — each row's resolvedActivity is baked in here.
+  const summaryRows = useMemo(() => (
+    buildLocationActivityRows(
+      wellsList,
+      locations,
       {
-        label: t("Wells / Locations"),
-        value: (() => {
-          const wellEntries = wellsList
-            .map((w: any) => ({
-              name: typeof w === 'string' ? w : w?.name || '',
-              jobType: typeof w === 'string' ? '' : (w?.jobType || ''),
-            }))
-            .filter((w: { name: string }) => w.name);
-          const locationEntries = locations.filter(Boolean);
-          if (wellEntries.length === 0 && locationEntries.length === 0) {
-            return params.wellName || params.location || "-";
-          }
-          return (
-            <>
-              {wellEntries.map((w: { name: string; jobType: string }, i: number) => (
-                <View key={`w-${i}`} style={{ flexDirection: 'row', gap: 8, marginBottom: 2 }}>
-                  <Text style={styles.summaryRowValue} numberOfLines={1}>{w.name}</Text>
-                  {w.jobType ? (
-                    <Text style={{ fontSize: 12, color: '#888' }}>{w.jobType}</Text>
-                  ) : null}
-                </View>
-              ))}
-              {locationEntries.map((l: string, i: number) => (
-                <Text key={`l-${i}`} style={[styles.summaryRowValue, { marginBottom: 2 }]} numberOfLines={1}>
-                  {l}
-                </Text>
-              ))}
-            </>
-          );
-        })(),
+        jobActivityName: params.jobActivityName as string | undefined,
+        task: params.task as string | undefined,
       },
-      { label: t("Date"), value: params.date || "-" },
-      { label: t("Notes"), value: params.otherInfo || "-" },
-    ],
-    [params.driverName, params.truckNumber, params.jobActivityName, params.pusher, params.wellName, wellsList, params.location, locations, params.date, params.otherInfo, params.task, t]
-  );
+    )
+  ), [wellsList, locations, params.jobActivityName, params.task]);
 
   const togglePrepared = (id: string) => {
     setPrepared((prev) => ({
@@ -394,83 +370,87 @@ export default function SignoffScreen() {
         }
       })();
 
-      // Clear the whole stack (steps → ppe → signoff) so Android back can't
-      // rewind to the just-submitted JSA; then prompt "Return to Work" if
-      // the driver was deep-linked in from another WB app.
-      if (router.canDismiss()) router.dismissAll();
-
-      const returnTo = await AsyncStorage.getItem('jsa_returnTo');
-      const returnToScheme = (() => {
+      // NOTE: do NOT call router.dismissAll() here. Dismissing the stack
+      // unmounts this signoff screen; subsequent setState calls on an
+      // unmounted component are dropped silently, and the branded completion
+      // modal never renders. Stack dismissal is deferred to the modal button
+      // handlers (handleDoneStandalone / handleStayInJsa / handleReturnToOrigin).
+      //
+      // Resolve launch origin once, store on state, and show the branded
+      // completion modal. Single modal replaces the prior double-confirm
+      // (pre-submit Alert + post-submit Alert).
+      let scheme: string | null = null;
+      let origin: 'wbs' | 'wbt' | 'wbew' | 'standalone' = 'standalone';
+      try {
+        const returnTo = await AsyncStorage.getItem('jsa_returnTo');
         switch (returnTo) {
           case 'wbt':
           case 'wellbuilt-tickets':
-            return 'wellbuilt-tickets://';
+            scheme = 'wellbuilt-tickets://'; origin = 'wbt'; break;
           case 'wbs':
           case 'wellbuilt-suite':
-            return 'wellbuilt-suite://';
+            scheme = 'wellbuilt-suite://'; origin = 'wbs'; break;
           case 'wellbuilt-ewallet':
-            return 'wellbuilt-ewallet://';
+            scheme = 'wellbuilt-ewallet://'; origin = 'wbew'; break;
           default:
-            return null;
+            scheme = null; origin = 'standalone';
         }
-      })();
-
-      if (returnToScheme) {
-        const appLabel = returnToScheme.replace('://', '').replace('wellbuilt-', 'WB ').toUpperCase();
-        Alert.alert(
-          'JSA Submitted',
-          `Return to ${appLabel} or stay in WB JSA?`,
-          [
-            {
-              text: 'Stay in JSA',
-              style: 'cancel',
-              onPress: () => {
-                AsyncStorage.removeItem('jsa_returnTo').catch(() => {});
-                router.replace('/(tabs)');
-              },
-            },
-            {
-              text: `Return to ${appLabel}`,
-              onPress: async () => {
-                await AsyncStorage.removeItem('jsa_returnTo').catch(() => {});
-                try {
-                  await Linking.openURL(returnToScheme);
-                } catch (err) {
-                  console.warn('[JSA] Return-to-work deep link failed:', err);
-                  router.replace('/(tabs)');
-                }
-              },
-            },
-          ],
-          { cancelable: false },
-        );
-      } else {
-        // Manual login: explicit success confirmation before returning home,
-        // so finishing the JSA doesn't feel like a silent dump to tabs.
-        Alert.alert(
-          t("JSA Submitted") || "JSA Submitted",
-          t("Your JSA has been submitted and saved.") || "Your JSA has been submitted and saved.",
-          [
-            {
-              text: t("OK") || "OK",
-              onPress: () => router.replace('/(tabs)'),
-            },
-          ],
-          { cancelable: false },
-        );
+      } catch (err) {
+        console.warn('[JSA-Signoff] jsa_returnTo read failed, defaulting to standalone:', err);
       }
+      console.log('[JSA-Signoff] saveAndGo complete — showing modal, origin:', origin);
+      setCompleteReturnScheme(scheme);
+      setCompleteOrigin(origin);
+      setShowCompleteModal(true);
     };
 
-    // Explicit submit confirmation — driver must confirm completion, not just
-    // tap through a screen that feels like a dismiss.
-    Alert.alert(
-      t("Submit JSA?") || "Submit JSA?",
-      t("Submit and complete this JSA?") || "Submit and complete this JSA?",
-      [
-        { text: t("Cancel") || "Cancel", style: "cancel" },
-        { text: t("Submit") || "Submit", onPress: () => { void saveAndGo(); } },
-      ],
-    );
+    // Single-tap submit. The pre-submit confirmation Alert was removed —
+    // the branded completion modal is the only confirmation surface now.
+    // Wrap in a top-level catch so ANY failure in saveAndGo still surfaces
+    // the modal (driver must not be stranded on signoff after tap).
+    saveAndGo().catch((err) => {
+      console.error('[JSA-Signoff] saveAndGo failed — forcing modal:', err);
+      setCompleteReturnScheme(null);
+      setCompleteOrigin('standalone');
+      setShowCompleteModal(true);
+    });
+  };
+
+  // Branded-modal action handlers.
+  // Each handler is responsible for dismissing the steps → ppe → signoff
+  // stack so Android back can't rewind to the just-submitted JSA. Deferred
+  // from saveAndGo() — calling dismissAll earlier unmounts this screen
+  // before the modal state flips, and the modal would never render.
+  const dismissStack = () => {
+    try { if (router.canDismiss()) router.dismissAll(); } catch {}
+  };
+  const handleStayInJsa = () => {
+    // Staying — but PRESERVE jsa_returnTo so the persistent header chip on
+    // the home screen can still deep-link back later.
+    setShowCompleteModal(false);
+    dismissStack();
+    router.replace('/(tabs)');
+  };
+  const handleReturnToOrigin = async () => {
+    setShowCompleteModal(false);
+    await AsyncStorage.removeItem('jsa_returnTo').catch(() => {});
+    dismissStack();
+    if (completeReturnScheme) {
+      try { await Linking.openURL(completeReturnScheme); }
+      catch (err) {
+        console.warn('[JSA] Return-to-origin deep link failed:', err);
+        router.replace('/(tabs)');
+      }
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
+  const handleDoneStandalone = () => {
+    // Standalone exit — make sure the driver can always leave the JSA flow
+    // cleanly. Dismiss stack, then replace to home tab.
+    setShowCompleteModal(false);
+    dismissStack();
+    router.replace('/(tabs)');
   };
 
   return (
@@ -503,7 +483,12 @@ export default function SignoffScreen() {
           keyboardShouldPersistTaps="always"
         >
           {/* Summary */}
-          <SummaryCard fields={summaryFields} />
+          <JsaSummaryCard
+            driverName={(params.driverName as string) || ''}
+            truckNumber={(params.truckNumber as string) || ''}
+            rows={summaryRows}
+            date={(params.date as string) || ''}
+          />
 
         {/* Prepared checklist */}
         <View style={styles.card}>
@@ -567,7 +552,9 @@ export default function SignoffScreen() {
                 <View style={{ backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 4, height: 80, justifyContent: 'center' }}>
                   <Image
                     source={{ uri: signatureImage.startsWith('data:') ? signatureImage : `data:image/png;base64,${signatureImage}` }}
-                    style={{ width: '100%', height: 72 }}
+                    // tintColor forces strokes to render black regardless of
+                    // the capture source. Matches Settings preview (filter:brightness(0)).
+                    style={{ width: '100%', height: 72, tintColor: '#000' }}
                     resizeMode="contain"
                   />
                 </View>
@@ -615,9 +602,159 @@ export default function SignoffScreen() {
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
+
+    {/* ── Branded completion modal (single post-submit surface) ─────── */}
+    <Modal
+      visible={showCompleteModal}
+      transparent
+      animationType="fade"
+      onRequestClose={() => { /* blocked — one of the action buttons must be used */ }}
+    >
+      <View style={brandedModalStyles.backdrop}>
+        <View style={brandedModalStyles.card}>
+          <View style={[brandedModalStyles.header, { backgroundColor: accent }]}>
+            <Text style={brandedModalStyles.headerTitle}>{t("JSA Submitted")}</Text>
+          </View>
+          <View style={brandedModalStyles.body}>
+            <View style={[brandedModalStyles.checkCircle, { borderColor: accent }]}>
+              <Text style={[brandedModalStyles.checkMark, { color: accent }]}>✓</Text>
+            </View>
+            <Text style={brandedModalStyles.bodyText}>
+              {t("Your JSA has been submitted and saved.")}
+            </Text>
+            {completeOrigin !== 'standalone' ? (
+              <Text style={brandedModalStyles.bodyTextSmall}>
+                {completeOrigin === 'wbs' ? t("Launched from WellBuilt Suite.") :
+                 completeOrigin === 'wbt' ? t("Launched from WellBuilt Tickets.") :
+                 t("Launched from WellBuilt eWallet.")}
+              </Text>
+            ) : null}
+          </View>
+          <View style={brandedModalStyles.buttonRow}>
+            {completeOrigin === 'standalone' ? (
+              <TouchableOpacity
+                style={[brandedModalStyles.primaryBtn, { backgroundColor: accent }]}
+                onPress={handleDoneStandalone}
+              >
+                <Text style={brandedModalStyles.primaryBtnText}>{t("Done")}</Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={brandedModalStyles.secondaryBtn}
+                  onPress={handleStayInJsa}
+                >
+                  <Text style={brandedModalStyles.secondaryBtnText}>{t("Stay on JSA")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[brandedModalStyles.primaryBtn, { backgroundColor: accent }]}
+                  onPress={handleReturnToOrigin}
+                >
+                  <Text style={brandedModalStyles.primaryBtnText}>
+                    {completeOrigin === 'wbs' ? t("Return to WB S") :
+                     completeOrigin === 'wbt' ? t("Return to WB T") :
+                     t("Return to WB eW")}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </View>
+    </Modal>
   </SafeAreaView>
   );
 }
+
+const brandedModalStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 440,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  header: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: 0.3,
+  },
+  body: {
+    padding: 20,
+    alignItems: 'center',
+    gap: 10,
+  },
+  checkCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  checkMark: {
+    fontSize: 28,
+    fontWeight: '900',
+  },
+  bodyText: {
+    color: '#111',
+    fontSize: 15,
+    textAlign: 'center',
+  },
+  bodyTextSmall: {
+    color: '#666',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 18,
+    paddingTop: 4,
+  },
+  primaryBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  secondaryBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    backgroundColor: '#f5f5f5',
+  },
+  secondaryBtnText: {
+    color: '#333',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+});
 
 const styles = StyleSheet.create({
   safeArea: {

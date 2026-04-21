@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { JsaSummaryCard, buildLocationActivityRows } from "../components/jsa";
 import { colors } from "../constants/colors";
 import { STORAGE_KEYS } from "../constants/storageKeys";
 import { useLanguage } from "./contexts/LanguageContext";
@@ -202,10 +203,10 @@ export default function ViewJsaScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {isEditing ? (
         <View style={styles.card}>
           <Text style={styles.title}>{t("Job Details")}</Text>
-          {isEditing ? (
-            <>
+          <>
               <View style={styles.fieldRow}>
                 <Text style={styles.label}>{t("Driver")}</Text>
                 <TextInput
@@ -260,9 +261,17 @@ export default function ViewJsaScreen() {
                 <View style={styles.row}>
                   <Text style={styles.label}>{t("Locations")}</Text>
                   <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                    {locationsList.map((l: string, i: number) => (
-                      <Text key={`ed-l-${i}`} style={[styles.value, { marginBottom: 2 }]} numberOfLines={1}>{l}</Text>
-                    ))}
+                    {locationsList.map((l: string, i: number) => {
+                      const locJob = jobActivityName || (params.task as string) || (params.jsaType as string) || '';
+                      return (
+                        <View key={`ed-l-${i}`} style={{ flexDirection: 'row', gap: 8, marginBottom: 2 }}>
+                          <Text style={styles.value} numberOfLines={1}>{l}</Text>
+                          {locJob ? (
+                            <Text style={{ fontSize: 12, color: '#888' }}>{locJob}</Text>
+                          ) : null}
+                        </View>
+                      );
+                    })}
                   </View>
                 </View>
               ) : (params.location ? (
@@ -293,67 +302,33 @@ export default function ViewJsaScreen() {
                 />
               </View>
             </>
-          ) : (
-            <>
-              <View style={styles.row}>
-                <Text style={styles.label}>{t("Driver")}</Text>
-                <Text style={styles.value}>{driverName || "-"}</Text>
-              </View>
-              <View style={styles.row}>
-                <Text style={styles.label}>{t("Truck #")}</Text>
-                <Text style={styles.value}>{truckNumber || "-"}</Text>
-              </View>
-              {jobActivityName ? (
-                <View style={styles.row}>
-                  <Text style={styles.label}>{t("Job/Activity")}</Text>
-                  <Text style={styles.value}>{jobActivityName}</Text>
-                </View>
-              ) : null}
-              {pusher ? (
-                <View style={styles.row}>
-                  <Text style={styles.label}>{t("Pusher")}</Text>
-                  <Text style={styles.value}>{pusher}</Text>
-                </View>
-              ) : null}
-              <View style={styles.row}>
-                <Text style={styles.label}>{t("Wells / Locations")}</Text>
-                <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                  {wellsList.length > 0 ? wellsList.map((w: any, i: number) => (
-                    <Text key={`w-${i}`} style={[styles.value, { marginBottom: 2 }]} numberOfLines={1}>
-                      {typeof w === 'string' ? w : w?.name || ''}
-                      {typeof w !== 'string' && w?.jobType ? ` (${w.jobType})` : ''}
-                    </Text>
-                  )) : null}
-                  {locationsList.length > 0 ? locationsList.map((l: string, i: number) => (
-                    <Text key={`vj-l-${i}`} style={[styles.value, { marginBottom: 2 }]} numberOfLines={1}>{l}</Text>
-                  )) : null}
-                  {wellsList.length === 0 && locationsList.length === 0 && !params.location ? (
-                    <Text style={styles.value}>{wellName || "-"}</Text>
-                  ) : null}
-                  {wellsList.length === 0 && locationsList.length === 0 && params.location ? (
-                    <Text style={styles.value}>{params.location}</Text>
-                  ) : null}
-                </View>
-              </View>
-              {(params.jsaType || params.task) ? (
-                <View style={styles.row}>
-                  <Text style={styles.label}>{t("Task")}</Text>
-                  <Text style={styles.value}>{params.jsaType || params.task}</Text>
-                </View>
-              ) : null}
-              <View style={styles.row}>
-                <Text style={styles.label}>{t("Date")}</Text>
-                <Text style={styles.value}>{params.date || "-"}</Text>
-              </View>
-              {(params.timestamp || params.savedAt) && (
+        </View>
+        ) : (
+          <>
+            <JsaSummaryCard
+              driverName={driverName}
+              truckNumber={truckNumber}
+              rows={buildLocationActivityRows(
+                wellsList,
+                locationsList,
+                {
+                  jobActivityName,
+                  task: params.task as string | undefined,
+                  jsaType: params.jsaType as string | undefined,
+                },
+              )}
+              date={(params.date as string) || ''}
+            />
+            {(params.timestamp || params.savedAt) ? (
+              <View style={[styles.card, { marginTop: 8 }]}>
                 <View style={styles.row}>
                   <Text style={styles.label}>{t("Saved")}</Text>
                   <Text style={styles.value}>{new Date(params.timestamp || params.savedAt || "").toLocaleString()}</Text>
                 </View>
-              )}
-            </>
-          )}
-        </View>
+              </View>
+            ) : null}
+          </>
+        )}
 
         {/* Locations section removed — merged with Wells / Locations above */}
 
@@ -419,7 +394,8 @@ export default function ViewJsaScreen() {
                 <View style={{ backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 4, height: 80, justifyContent: 'center', marginBottom: 6 }}>
                   <Image
                     source={{ uri: (params.signatureImage as string).startsWith('data:') ? params.signatureImage : `data:image/png;base64,${params.signatureImage}` }}
-                    style={{ width: '100%', height: 72 }}
+                    // Force black strokes (matches Settings preview + PDF).
+                    style={{ width: '100%', height: 72, tintColor: '#000' }}
                     resizeMode="contain"
                   />
                 </View>

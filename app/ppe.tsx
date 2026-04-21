@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { SummaryCard } from "../components/jsa";
+import { JsaSummaryCard, buildLocationActivityRows } from "../components/jsa";
 import { colors } from "../constants/colors";
 import { PPE_ITEMS, type PpeItem } from "../constants/jsaTemplate";
 import { STORAGE_KEYS } from "../constants/storageKeys";
@@ -148,49 +148,15 @@ export default function PpeScreen() {
     setOtherItems((prev) => prev.filter((i) => i !== item));
   };
 
-  const summaryFields = useMemo(
-    () => [
-      { label: t("Driver Name"), value: driverName || "-" },
-      { label: t("Truck #"), value: truckNumber || "-" },
-      { label: t("Job/Activity"), value: jobActivityName || "-" },
-      { label: t("Pusher"), value: pusher || "-" },
-      {
-        label: t("Wells / Locations"),
-        value: (() => {
-          const wellEntries = wellsList
-            .map((w: any) => ({
-              name: typeof w === 'string' ? w : w?.name || '',
-              jobType: typeof w === 'string' ? '' : (w?.jobType || ''),
-            }))
-            .filter((w: { name: string }) => w.name);
-          const locationEntries = locationsList.filter(Boolean);
-          if (wellEntries.length === 0 && locationEntries.length === 0) {
-            return wellName || location || "-";
-          }
-          return (
-            <>
-              {wellEntries.map((w: { name: string; jobType: string }, i: number) => (
-                <View key={`w-${i}`} style={{ flexDirection: 'row', gap: 8, marginBottom: 2 }}>
-                  <Text style={styles.summaryRowValue} numberOfLines={1}>{w.name}</Text>
-                  {w.jobType ? (
-                    <Text style={{ fontSize: 12, color: '#888' }}>{w.jobType}</Text>
-                  ) : null}
-                </View>
-              ))}
-              {locationEntries.map((l: string, i: number) => (
-                <Text key={`l-${i}`} style={[styles.summaryRowValue, { marginBottom: 2 }]} numberOfLines={1}>
-                  {l}
-                </Text>
-              ))}
-            </>
-          );
-        })(),
-      },
-      { label: t("Date"), value: date || "-" },
-      { label: t("Notes"), value: otherInfo || "-" },
-    ],
-    [driverName, truckNumber, jobActivityName, pusher, wellName, wellsList, location, locationsList, date, otherInfo, t]
-  );
+  // Pre-resolve rows at the data layer. JsaSummaryCard no longer does any
+  // fallback lookups — each row's resolvedActivity is baked in here.
+  const summaryRows = useMemo(() => (
+    buildLocationActivityRows(
+      wellsList,
+      locationsList,
+      { jobActivityName, task, jsaType },
+    )
+  ), [wellsList, locationsList, jobActivityName, task, jsaType]);
 
   const toggleItem = (item: PpeItem) => {
     setSelected((prev) => ({
@@ -250,7 +216,12 @@ export default function PpeScreen() {
         >
           <Pressable onPress={Keyboard.dismiss}>
           {/* Summary */}
-          <SummaryCard fields={summaryFields} />
+          <JsaSummaryCard
+            driverName={driverName}
+            truckNumber={truckNumber}
+            rows={summaryRows}
+            date={date}
+          />
 
         {/* Checklist */}
         <View style={styles.card}>

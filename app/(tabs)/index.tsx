@@ -33,6 +33,7 @@ import {
   WellRecord,
 } from "../../services/wellData";
 import { fetchDriverProfile } from "../../services/driverAuth";
+import { resolveActivity } from "../../components/jsa/locationActivity";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -131,8 +132,9 @@ export default function JsaHomeScreen() {
         const params = JSON.parse(raw);
 
         // Metadata always applies (driver identity, return target)
-        if (params.driverName) setDriverName(params.driverName);
-        if (params.truckNumber) setTruckNumber(params.truckNumber);
+        if (params.driverName && !isTruckPolluted(params.driverName)) setDriverName(params.driverName);
+        // Truck # guard: reject any upstream value equal to login display/legal name.
+        if (params.truckNumber && !isTruckPolluted(params.truckNumber)) setTruckNumber(params.truckNumber);
         if (params.date) setDate(params.date);
         if (params.disposal) setLocationInput(params.disposal);
         if (params.returnTo) {
@@ -447,6 +449,61 @@ export default function JsaHomeScreen() {
 
   const [addedLocations, setAddedLocations] = useState<string[]>([]);
 
+  // Refs for keyboard Next tab order across the Job Details form.
+  // Chain: driverName → truckNumber → date → jobActivityName → wellName → pusher → otherInfo (last).
+  const driverNameRef = useRef<TextInput>(null);
+  const truckNumberRef = useRef<TextInput>(null);
+  const dateRef = useRef<TextInput>(null);
+  const jobActivityRef = useRef<TextInput>(null);
+  const wellNameRef = useRef<TextInput>(null);
+  const pusherRef = useRef<TextInput>(null);
+  const otherInfoRef = useRef<TextInput>(null);
+
+  // Controls visibility of Well/Location autocomplete dropdowns.
+  // Dropdowns render only while the Well / Location TextInput has focus,
+  // so they close on blur, on tap into another field, on Next, and on select.
+  const [wellFieldFocused, setWellFieldFocused] = useState(false);
+
+  // Truck # pollution guard: any value equal to the driver's login
+  // displayName (or legalName) is treated as corruption. This covers every
+  // upstream source — SSO deep link, AsyncStorage, RTDB profile, autofill —
+  // because the device login identifier has leaked into truck fields in
+  // prior builds (Mike TabletS10 scenario).
+  const isTruckPolluted = useCallback((v: unknown): boolean => {
+    if (!v || typeof v !== 'string') return false;
+    const t = v.trim();
+    if (!t) return false;
+    const d = (session?.displayName || '').trim();
+    const l = (session?.legalName || '').trim();
+    if (d && t === d) return true;
+    if (l && t === l) return true;
+    return false;
+  }, [session?.displayName, session?.legalName]);
+
+  // Return-to-origin: launch origin is persisted as `jsa_returnTo` in
+  // AsyncStorage by the deep-link handlers. Convert to a stable enum for the
+  // UI and for the submit modal's button choices. Re-read on focus so the
+  // return chip disappears after the user actually deep-links back out.
+  const [launchOrigin, setLaunchOrigin] = useState<'wbs' | 'wbt' | 'wbew' | 'standalone'>('standalone');
+  const readLaunchOrigin = useCallback(async () => {
+    const raw = await AsyncStorage.getItem('jsa_returnTo').catch(() => null);
+    if (!raw) { setLaunchOrigin('standalone'); return; }
+    switch (raw) {
+      case 'wbs':
+      case 'wellbuilt-suite':
+        setLaunchOrigin('wbs'); break;
+      case 'wbt':
+      case 'wellbuilt-tickets':
+        setLaunchOrigin('wbt'); break;
+      case 'wellbuilt-ewallet':
+        setLaunchOrigin('wbew'); break;
+      default:
+        setLaunchOrigin('standalone');
+    }
+  }, []);
+  useEffect(() => { readLaunchOrigin(); }, [deepLinked, readLaunchOrigin]);
+  useFocusEffect(useCallback(() => { readLaunchOrigin(); }, [readLaunchOrigin]));
+
   const trimmedLocation = locationInput.trim();
   const hasWellOrLocation = addedWells.length > 0 || wellName.trim().length > 0 || addedLocations.length > 0 || trimmedLocation.length > 0;
   // Deep-linked (pre-shift from WB S): driver may not have a job yet, well/location optional
@@ -559,18 +616,28 @@ export default function JsaHomeScreen() {
           AsyncStorage.getItem('@jsa/ssoTruck'),
         ]);
 
-        // SSO truck takes priority
+        // Truck # hydration — filter pollution at EVERY source. If any source
+        // reports truck == login display/legal name, treat it as corrupt and
+        // clear from storage. Sources in priority order:
+        //   1. ssoTruck  (one-time, from WB S/WB T deep link login.tsx handler)
+        //   2. storedTruck  (AsyncStorage persisted from prior session)
+        //   3. profileData.truckNumber  (RTDB drivers/approved/{hash}/profile)
         if (ssoTruck) {
-          setTruckNumber(ssoTruck);
-          AsyncStorage.removeItem('@jsa/ssoTruck').catch(() => {}); // one-time
+          if (!isTruckPolluted(ssoTruck)) setTruckNumber(ssoTruck);
+          // Always remove the one-shot key, whether clean or polluted.
+          AsyncStorage.removeItem('@jsa/ssoTruck').catch(() => {});
         } else if (storedTruck) {
-          setTruckNumber(storedTruck);
+          if (isTruckPolluted(storedTruck)) {
+            // Purge so next render doesn't re-hydrate it.
+            AsyncStorage.removeItem(STORAGE_KEYS.truckNumber).catch(() => {});
+          } else {
+            setTruckNumber(storedTruck);
+          }
         }
         // Driver name: use session legalName first, then stored
         if (!driverName && storedDriver) setDriverName(storedDriver);
 
         // Fetch fresh profile from RTDB — gets legalName, truck#, assignedCustomers
-        // This fixes stale AsyncStorage values (e.g. "TabletS10" in truck# field)
         const profileData = await fetchDriverProfile();
         if (profileData) {
           // Update legalName if RTDB has it and current value is just displayName
@@ -581,13 +648,23 @@ export default function JsaHomeScreen() {
               setDriverName(profileData.legalName);
             }
           }
-          // Update truck# from RTDB if current value is empty or matches displayName (stale)
-          if (profileData.truckNumber) {
-            const currentTruck = ssoTruck || storedTruck || '';
-            const sessionDisplay = session?.displayName || '';
-            if (!currentTruck || currentTruck === sessionDisplay) {
-              setTruckNumber(profileData.truckNumber);
+          // Truck from RTDB — also filtered. If RTDB is polluted (user's
+          // profile literally has truckNumber="TabletS10"), ignore it.
+          const rtdbTruck = profileData.truckNumber || '';
+          const rtdbTruckClean = rtdbTruck && !isTruckPolluted(rtdbTruck);
+          const currentTruck =
+            (ssoTruck && !isTruckPolluted(ssoTruck)) ? ssoTruck :
+            (storedTruck && !isTruckPolluted(storedTruck)) ? storedTruck : '';
+          if (rtdbTruckClean) {
+            // RTDB is the authoritative truth when not polluted.
+            if (!currentTruck) {
+              setTruckNumber(rtdbTruck);
             }
+          } else if (!currentTruck) {
+            // Nothing clean anywhere. Make sure the field is empty rather
+            // than whatever the initial render might have left.
+            setTruckNumber('');
+            AsyncStorage.removeItem(STORAGE_KEYS.truckNumber).catch(() => {});
           }
           // Set assigned operators for company-scoped well loading
           if (profileData.assignedCustomers.length > 0) {
@@ -622,7 +699,24 @@ export default function JsaHomeScreen() {
         return;
       }
       try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEYS.saves);
+        // A save is "resumable" only if:
+        //   1. driver/truck/today match
+        //   2. its id is NOT in @jsa/dismissedIds (signoff writes there on submit)
+        //   3. it has NO completion signal (neither typed name nor drawn signature image)
+        // Previously the filter was just `!item.signature` — a submitted JSA with
+        // an empty typed name field (image-only signature) slipped through and
+        // re-appeared as "Pick Up Where I Left Off" after redirect.
+        const [stored, dismissedRaw] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEYS.saves),
+          AsyncStorage.getItem('@jsa/dismissedIds'),
+        ]);
+        let dismissedIds: Set<string> = new Set();
+        if (dismissedRaw) {
+          try {
+            const arr = JSON.parse(dismissedRaw);
+            if (Array.isArray(arr)) dismissedIds = new Set(arr.map(String));
+          } catch {}
+        }
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed)) {
@@ -632,7 +726,9 @@ export default function JsaHomeScreen() {
                 (item.driverName || "").trim() === name &&
                 (item.truckNumber || "").trim() === truck &&
                 item.date === today &&
-                !item.signature
+                !dismissedIds.has(String(item.id || '')) &&
+                !item.signature &&
+                !item.signatureImage
             );
             if (matches.length) {
               const latest = matches.sort(
@@ -642,7 +738,11 @@ export default function JsaHomeScreen() {
             } else {
               setContinueJsa(null);
             }
+          } else {
+            setContinueJsa(null);
           }
+        } else {
+          setContinueJsa(null);
         }
       } catch (error) {
         console.warn("Failed to check existing JSA", error);
@@ -727,6 +827,31 @@ export default function JsaHomeScreen() {
     });
   };
 
+  // ── TEMP DEBUG (remove after field-test audit) ─────────────────────────
+  // Proves whether "TabletS10 showing in all fields" is React state
+  // contamination or an Android autofill / keyboard overlay. State values
+  // are logged on mount and on every change, and rendered in an on-screen
+  // panel at the top of the form. Compare panel values to what the input
+  // fields visually show.
+  useEffect(() => {
+    console.log('[JSA-DEBUG] Mount — session snapshot:', JSON.stringify({
+      displayName: session?.displayName ?? null,
+      legalName: session?.legalName ?? null,
+      companyId: session?.companyId ?? null,
+    }));
+  }, []);
+  useEffect(() => {
+    console.log('[JSA-DEBUG] State:', JSON.stringify({
+      driverName,
+      truckNumber,
+      date,
+      jobActivityName,
+      pusher,
+      otherInfo,
+    }));
+  }, [driverName, truckNumber, date, jobActivityName, pusher, otherInfo]);
+  // ── END TEMP DEBUG ─────────────────────────────────────────────────────
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -755,13 +880,45 @@ export default function JsaHomeScreen() {
               <Text style={styles.subtitle}>{themeCompanyName} • {t("Digital JSA")}</Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={styles.menuButton}
-            onPress={() => router.push("/settings" as any)}
-            accessibilityLabel="Open settings"
-          >
-            <Text style={styles.menuIcon}>⚙</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {/* Persistent return-to-origin chip — visible whenever the JSA
+                was launched from another WB app. If user chose "Stay on JSA"
+                on the submit modal they can still return here. */}
+            {(launchOrigin === 'wbs' || launchOrigin === 'wbt' || launchOrigin === 'wbew') && (
+              <TouchableOpacity
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  backgroundColor: accent,
+                  borderRadius: 8,
+                }}
+                onPress={async () => {
+                  const scheme =
+                    launchOrigin === 'wbs' ? 'wellbuilt-suite://' :
+                    launchOrigin === 'wbt' ? 'wellbuilt-tickets://' :
+                    'wellbuilt-ewallet://';
+                  const { Linking } = require('react-native');
+                  try { await Linking.openURL(scheme); } catch (err) {
+                    console.warn('[JSA] Return-to-origin failed:', err);
+                  }
+                }}
+                accessibilityLabel="Return to origin app"
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                  {launchOrigin === 'wbs' ? t("Return to WB S") :
+                   launchOrigin === 'wbt' ? t("Return to WB T") :
+                   t("Return to WB eW")}
+                </Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => router.push("/settings" as any)}
+              accessibilityLabel="Open settings"
+            >
+              <Text style={styles.menuIcon}>⚙</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* JSA Active Banner + Tabs */}
@@ -847,6 +1004,18 @@ export default function JsaHomeScreen() {
           ]}
           keyboardShouldPersistTaps="handled"
         >
+        {/* ── TEMP DEBUG (remove after field-test audit) ──────────────────
+            Shows ACTUAL React state for the 6 JSA fields. Compare against
+            what the input fields visually show. If panel shows "" but the
+            field shows "TabletS10" → Android autofill / keyboard overlay.
+            If panel shows "TabletS10" → real state contamination. */}
+        <View style={{ backgroundColor: '#FFE4E1', padding: 10, marginBottom: 8, borderRadius: 8, borderWidth: 2, borderColor: '#DC143C' }}>
+          <Text style={{ fontWeight: '800', fontSize: 11, color: '#8B0000', marginBottom: 6 }}>DEBUG — React state (remove after audit)</Text>
+          <Text style={{ fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: '#333' }}>
+            {`session.displayName: "${session?.displayName ?? ''}"\nsession.legalName:   "${session?.legalName ?? ''}"\n— form state —\ndriverName:  "${driverName}"\ntruckNumber: "${truckNumber}"\ndate:        "${date}"\njobType:     "${jobActivityName}"\npusher:      "${pusher}"\nnotes:       "${otherInfo}"`}
+          </Text>
+        </View>
+        {/* ── END TEMP DEBUG ─────────────────────────────────────────── */}
         {/* Living JSA Dashboard — full paper JSA per tab */}
         {jsaCompletedToday && currentJsa && (
           <>
@@ -914,12 +1083,15 @@ export default function JsaHomeScreen() {
           <View style={styles.field}>
             <Text style={styles.label}>{t("Driver Name")}</Text>
             <TextInput
+              ref={driverNameRef}
               style={styles.input}
               placeholder={t("Enter driver name")}
               placeholderTextColor={colors.textMuted}
               value={driverName}
               onChangeText={setDriverName}
               returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => truckNumberRef.current?.focus()}
               autoComplete="off"
               importantForAutofill="no"
             />
@@ -928,6 +1100,7 @@ export default function JsaHomeScreen() {
           <View style={styles.field}>
             <Text style={styles.label}>{t("Truck #")}</Text>
             <TextInput
+              ref={truckNumberRef}
               style={styles.input}
               placeholder={t("e.g. 105")}
               placeholderTextColor={colors.textMuted}
@@ -935,6 +1108,8 @@ export default function JsaHomeScreen() {
               onChangeText={setTruckNumber}
               keyboardType="numeric"
               returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => dateRef.current?.focus()}
               autoComplete="off"
               importantForAutofill="no"
             />
@@ -943,12 +1118,15 @@ export default function JsaHomeScreen() {
           <View style={styles.field}>
             <Text style={styles.label}>{t("Date")}</Text>
             <TextInput
+              ref={dateRef}
               style={styles.input}
               placeholder="YYYY-MM-DD"
               placeholderTextColor={colors.textMuted}
               value={date}
               onChangeText={setDate}
               returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => jobActivityRef.current?.focus()}
               autoComplete="off"
               importantForAutofill="no"
             />
@@ -962,12 +1140,15 @@ export default function JsaHomeScreen() {
             {/* Job Type first — driver picks job type, then well */}
             <Text style={styles.label}>{t("Job Type")}</Text>
             <TextInput
+              ref={jobActivityRef}
               style={styles.input}
               placeholder={t("e.g. Production Water, Service Work...")}
               placeholderTextColor={colors.textMuted}
               value={jobActivityName}
               onChangeText={handleJobTypeTextChange}
               returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => wellNameRef.current?.focus()}
               autoComplete="off"
               importantForAutofill="no"
             />
@@ -996,6 +1177,7 @@ export default function JsaHomeScreen() {
               </View>
             )}
             <TextInput
+              ref={wellNameRef}
               style={styles.input}
               placeholder={wellDataLoading ? t("Loading wells...") : t("Search wells or enter location...")}
               placeholderTextColor={colors.textMuted}
@@ -1004,13 +1186,29 @@ export default function JsaHomeScreen() {
                 handleWellTextChange(text);
                 setLocationInput(text);
               }}
+              onFocus={() => setWellFieldFocused(true)}
+              onBlur={() => {
+                // Delay so tapping a suggestion item lands before the dropdown unmounts.
+                setTimeout(() => {
+                  setWellFieldFocused(false);
+                  setWellSuggestions([]);
+                }, 150);
+              }}
               returnKeyType="next"
-              onSubmitEditing={addWellManual}
+              blurOnSubmit={false}
+              // Next must advance focus to the Pusher field, not just dismiss
+              // the keyboard. Add the typed entry (if any) on the way out.
+              onSubmitEditing={() => {
+                addWellManual();
+                setWellFieldFocused(false);
+                setWellSuggestions([]);
+                pusherRef.current?.focus();
+              }}
               autoComplete="off"
               importantForAutofill="no"
             />
             {/* NDIC well suggestions */}
-            {wellSuggestions.length > 0 && (
+            {wellFieldFocused && wellSuggestions.length > 0 && (
               <View style={styles.wellSuggestionsContainer}>
                 <ScrollView
                   nestedScrollEnabled
@@ -1035,7 +1233,7 @@ export default function JsaHomeScreen() {
               </View>
             )}
             {/* Favorite location suggestions (when no NDIC matches) */}
-            {wellSuggestions.length === 0 && (() => {
+            {wellFieldFocused && wellSuggestions.length === 0 && (() => {
               const trimmed = wellName.trim().toLowerCase();
               const matches = trimmed && trimmed.length >= 2
                 ? favoriteLocations.filter((f) => f.toLowerCase().includes(trimmed) && f.toLowerCase() !== trimmed)
@@ -1088,43 +1286,59 @@ export default function JsaHomeScreen() {
               </TouchableOpacity>
             )}
 
-            {/* Combined list: Added Wells / Locations */}
+            {/* Combined list: Location & Activity (paired well/location + job).
+                Activity is resolved ONCE per row via the shared
+                resolveActivity helper. Empty resolvedActivity is a data bug
+                (logged inside the helper), not a UI layout issue. */}
             {(addedWells.length > 0 || addedLocations.length > 0) && (
               <View style={{ marginTop: 12 }}>
-                <Text style={styles.label}>{t("Added Wells / Locations")}</Text>
+                <Text style={styles.label}>{t("Added Location & Activity")}</Text>
                 <View style={[styles.favoriteList, { marginTop: 6 }]}>
-                  {addedWells.map((well) => (
-                    <View
-                      key={`well-${well.name}`}
-                      style={[styles.favoriteRow, { flexDirection: 'column', alignItems: 'stretch' }]}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={styles.favoriteText} numberOfLines={1}>{well.name}</Text>
-                        {well.jobType ? <Text style={[styles.wellDetailText, { marginLeft: 8 }]} numberOfLines={1}>{well.jobType}</Text> : null}
-                        <View style={{ flex: 1 }} />
-                        <TouchableOpacity onPress={() => removeWellFromList(well.name)} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
-                          <Text style={styles.favoriteAdd}>{t("Remove")}</Text>
-                        </TouchableOpacity>
+                  {addedWells.map((well) => {
+                    const resolvedActivity = resolveActivity(well, { jobActivityName });
+                    if (!resolvedActivity) {
+                      console.warn('[JSA][resolvedActivity MISSING] added well:', JSON.stringify({ well, jobActivityName }));
+                    }
+                    return (
+                      <View
+                        key={`well-${well.name}`}
+                        style={[styles.favoriteRow, { flexDirection: 'column', alignItems: 'stretch' }]}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text style={styles.favoriteText} numberOfLines={1}>{well.name}</Text>
+                          <Text style={[styles.wellDetailText, { marginLeft: 8 }]} numberOfLines={1}>[{resolvedActivity}]</Text>
+                          <View style={{ flex: 1 }} />
+                          <TouchableOpacity onPress={() => removeWellFromList(well.name)} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
+                            <Text style={styles.favoriteAdd}>{t("Remove")}</Text>
+                          </TouchableOpacity>
+                        </View>
+                        {(well.operator || well.county) && (
+                          <Text style={[styles.wellDetailText, { marginTop: 2 }]} numberOfLines={1}>
+                            {[well.operator, well.county ? `${well.county} Co.` : ''].filter(Boolean).join(' • ')}
+                          </Text>
+                        )}
                       </View>
-                      {(well.operator || well.county) && (
-                        <Text style={[styles.wellDetailText, { marginTop: 2 }]} numberOfLines={1}>
-                          {[well.operator, well.county ? `${well.county} Co.` : ''].filter(Boolean).join(' • ')}
-                        </Text>
-                      )}
-                    </View>
-                  ))}
-                  {addedLocations.map((loc) => (
+                    );
+                  })}
+                  {addedLocations.map((loc) => {
+                    const resolvedActivity = resolveActivity(undefined, { jobActivityName });
+                    if (!resolvedActivity) {
+                      console.warn('[JSA][resolvedActivity MISSING] added location:', JSON.stringify({ loc, jobActivityName }));
+                    }
+                    return (
                     <View
                       key={`loc-${loc}`}
                       style={styles.favoriteRow}
                     >
                       <Text style={styles.favoriteText} numberOfLines={1}>{loc}</Text>
+                      <Text style={[styles.wellDetailText, { marginLeft: 8 }]} numberOfLines={1}>[{resolvedActivity}]</Text>
                       <View style={{ flex: 1 }} />
                       <TouchableOpacity onPress={() => removeLocationFromList(loc)} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
                         <Text style={styles.favoriteAdd}>{t("Remove")}</Text>
                       </TouchableOpacity>
                     </View>
-                  ))}
+                    );
+                  })}
                 </View>
               </View>
             )}
@@ -1134,27 +1348,32 @@ export default function JsaHomeScreen() {
           <View style={styles.field}>
             <Text style={styles.label}>{t("Pusher")}</Text>
             <TextInput
+              ref={pusherRef}
               style={styles.input}
               placeholder={t("Pusher name")}
               placeholderTextColor={colors.textMuted}
               value={pusher}
               onChangeText={setPusher}
               returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => otherInfoRef.current?.focus()}
               autoComplete="off"
               importantForAutofill="no"
             />
           </View>
 
-          {/* — Notes — */}
+          {/* — Notes — (last field in tab order) */}
           <View style={styles.field}>
             <Text style={styles.label}>{t("Notes")}</Text>
             <TextInput
+              ref={otherInfoRef}
               style={[styles.input, styles.multiline]}
               placeholder={t("Notes")}
               placeholderTextColor={colors.textMuted}
               value={otherInfo}
               onChangeText={setOtherInfo}
               multiline
+              returnKeyType="done"
               autoComplete="off"
               importantForAutofill="no"
             />

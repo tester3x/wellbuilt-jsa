@@ -133,6 +133,9 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
       max-height: 80px;
       object-fit: contain;
       display: block;
+      /* Force black strokes regardless of capture color (matches Settings
+         preview + in-app signature render via tintColor). */
+      filter: brightness(0);
     }
     .signature-name {
       font-size: 12px;
