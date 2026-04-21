@@ -92,6 +92,15 @@ export default function JsaHomeScreen() {
   const [jsaCompletedTime, setJsaCompletedTime] = useState<string | null>(null);
   const [jsaPdfUrl, setJsaPdfUrl] = useState<string | null>(null);
 
+  // Authoritative "today's submitted JSA" — loaded from STORAGE_KEYS.saves
+  // (the saved-JSA record, not draft/resume/form state). This is the source
+  // of truth for "did the driver submit a JSA today on this device?",
+  // independent of activeJsas tabs (which get dismissed on submit by design).
+  // Drives the persistent "View Today's JSA" banner so drivers can always
+  // produce today's JSA for safety, even after submit-dismiss stranded them
+  // on the new-form screen.
+  const [todaysJsaSave, setTodaysJsaSave] = useState<any | null>(null);
+
   // Living document — add well modal
   const [showAddWellModal, setShowAddWellModal] = useState(false);
   const [addWellName, setAddWellName] = useState("");
@@ -419,6 +428,108 @@ export default function JsaHomeScreen() {
   useFocusEffect(
     useCallback(() => { hydrateAllJsas(); }, [hydrateAllJsas])
   );
+
+  // Load today's submitted JSA from STORAGE_KEYS.saves. Match strategy
+  // mirrors WB T's yesterday-UTC fallback: `date === todayUTC || dateYesterdayUTC`.
+  // At 6 PM Mountain, toISOString rolls to tomorrow-UTC while the save still
+  // carries today's Mountain date; the fallback catches that. We do NOT
+  // window on timestamp-age (would misattribute yesterday's afternoon JSA
+  // to this morning). Saves list is newest-first (signoff prepends), so
+  // Array.find returns the newest match automatically.
+  const loadTodaysSave = React.useCallback(async () => {
+    try {
+      const stored = await AsyncStorage.getItem(STORAGE_KEYS.saves);
+      if (!stored) { setTodaysJsaSave(null); return; }
+      const list = JSON.parse(stored);
+      if (!Array.isArray(list) || list.length === 0) { setTodaysJsaSave(null); return; }
+      const today = new Date().toISOString().slice(0, 10);
+      const yest = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const match = list.find((s: any) => {
+        const d = typeof s?.date === 'string' ? s.date : '';
+        return d === today || d === yest;
+      });
+      setTodaysJsaSave(match || null);
+    } catch (err) {
+      console.warn('[JSA] loadTodaysSave failed:', err);
+      setTodaysJsaSave(null);
+    }
+  }, []);
+  useEffect(() => { loadTodaysSave(); }, [loadTodaysSave]);
+  useFocusEffect(useCallback(() => { loadTodaysSave(); }, [loadTodaysSave]));
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') loadTodaysSave();
+    });
+    return () => sub.remove();
+  }, [loadTodaysSave]);
+
+  // Navigate to today's JSA in view mode. Params mirror history.tsx's
+  // handleViewDetails exactly so viewJsa.tsx's param contract is honored
+  // (same code path, no new viewer code). Source is the authoritative
+  // STORAGE_KEYS.saves record — not form state, not activeJsas drafts.
+  const openTodaysJsa = React.useCallback(() => {
+    const item = todaysJsaSave;
+    if (!item) return;
+    const ppeStr = typeof item.ppeSelected === 'string'
+      ? item.ppeSelected
+      : JSON.stringify({ selected: item.ppeSelected });
+    const wellNamesStr = Array.isArray(item.wells)
+      ? item.wells.map((w: any) => (typeof w === 'string' ? w : w?.name)).filter(Boolean).join(', ')
+      : (item.wellName || '');
+    console.log('[JSA][open-mode] opening today\'s submitted JSA', { id: item.id, date: item.date });
+    router.push({
+      pathname: '/viewJsa',
+      params: {
+        id: item.id,
+        driverName: item.driverName,
+        truckNumber: item.truckNumber,
+        jobActivityName: item.jobActivityName,
+        pusher: item.pusher,
+        wellName: wellNamesStr,
+        wells: JSON.stringify(item.wells || []),
+        otherInfo: item.otherInfo,
+        location: item.location,
+        task: item.task,
+        date: item.date,
+        ppeSelected: ppeStr,
+        locations: JSON.stringify(item.locations || []),
+        locationAcks: JSON.stringify(item.locationAcks || {}),
+        prepared: JSON.stringify(item.prepared || {}),
+        notes: item.notes,
+        signature: item.signature,
+        signatureImage: item.signatureImage || '',
+        timestamp: item.timestamp,
+      },
+    });
+  }, [todaysJsaSave, router]);
+
+  // Debug: log the open-mode decision on every state change that affects it.
+  // Field-test signal for proving how WB JSA resolved the driver's situation:
+  //   mode === 'active_view' → today's submitted JSA exists, banner shown
+  //   mode === 'resume'      → unfinished JSA in jsa_resume
+  //   mode === 'new'         → nothing today, blank form
+  useEffect(() => {
+    const logOpenMode = async () => {
+      let incompleteJsaExists = false;
+      try {
+        const raw = await AsyncStorage.getItem('jsa_resume');
+        if (raw) {
+          const data = JSON.parse(raw);
+          const wellNames = Array.isArray(data?.wellNames) ? data.wellNames : [];
+          incompleteJsaExists = wellNames.length > 0;
+        }
+      } catch {}
+      const completed = !!todaysJsaSave;
+      const mode = completed ? 'active_view' : incompleteJsaExists ? 'resume' : 'new';
+      console.log('[JSA][open-mode]', {
+        jsaCompletedToday: completed,
+        incompleteJsaExists,
+        mode,
+        jsaId: todaysJsaSave?.id || currentJsa?.id || null,
+      });
+    };
+    logOpenMode();
+  }, [todaysJsaSave, currentJsa?.id]);
 
   // Persist active JSAs to AsyncStorage whenever they change
   useEffect(() => {
@@ -1014,6 +1125,49 @@ export default function JsaHomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Persistent "View Today's JSA" entry — shows when a JSA was
+            submitted today (STORAGE_KEYS.saves has today's record) but no
+            tab is currently open (activeJsas empty). Covers the
+            post-submit-dismiss case where the driver needs to produce
+            today's JSA for safety/DOT. Loads from saves (authoritative),
+            routes into /viewJsa in read mode. When activeJsas.length > 0
+            the inline "JSA Active" card below already handles this. */}
+        {todaysJsaSave && activeJsas.length === 0 && (
+          <TouchableOpacity
+            onPress={openTodaysJsa}
+            activeOpacity={0.8}
+            accessibilityLabel={t("View Today's JSA")}
+            style={{
+              backgroundColor: '#166534',
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <View style={{
+              width: 36, height: 36, borderRadius: 18,
+              backgroundColor: 'rgba(34,197,94,0.2)',
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Text style={{ fontSize: 18 }}>✓</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>
+                {t("View Today's JSA")}
+              </Text>
+              <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 }}>
+                {todaysJsaSave?.timestamp
+                  ? `${t('Submitted')} ${new Date(todaysJsaSave.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`
+                  : t('Already submitted today')}
+              </Text>
+            </View>
+            <Text style={{ color: '#fff', fontSize: 20, fontWeight: '300' }}>›</Text>
+          </TouchableOpacity>
+        )}
 
         {/* JSA Active Banner + Tabs */}
         {jsaCompletedToday && (
