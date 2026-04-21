@@ -79,9 +79,35 @@ export default function ViewJsaScreen() {
   const [jobActivityName, setJobActivityName] = useState(params.jobActivityName || "");
   const [pusher, setPusher] = useState(params.pusher || "");
   const [wellName, setWellName] = useState(params.wellName || "");
-  const wellsList: string[] = useMemo(() => {
+  // Wells are serialized as object[] by signoff (`wells: wellsList` in
+  // signoff.tsx — "full WellEntry[] objects now"). Older saves may contain
+  // plain string[]. Type was `string[]` which lied about runtime shape.
+  const wellsList: Array<string | { name?: string; jobType?: string; operator?: string; county?: string }> = useMemo(() => {
     try { return params.wells ? JSON.parse(params.wells) : []; } catch { return []; }
   }, [params.wells]);
+
+  // Saves predating the activity-enforcement APK can have empty
+  // form-level fields (jobActivityName, task) because old `handleWellSelect`
+  // cleared jobActivityName after each add. In that shape, per-well jobType
+  // was the only record of activity — form.jobActivityName = "", form.task = "".
+  // When all form-level fields resolve empty, locationActivity.ts returns ""
+  // and JsaSummaryCard renders the empty-bracket glyphs ("[]") the driver
+  // saw in the field.
+  //
+  // This derives a single fallback activity from whichever well has a
+  // non-empty jobType, and plugs it into form.jobActivityName when the
+  // save's form-level field is empty. Per-row jobType still wins (resolver
+  // priority unchanged); this only rescues the all-empty-form case.
+  //
+  // Data prep only — no changes to locationActivity.ts or JsaSummaryCard.
+  const wellsSynthActivity = useMemo(() => {
+    for (const w of wellsList) {
+      if (typeof w === 'string') continue;
+      const j = w && typeof w.jobType === 'string' ? w.jobType : '';
+      if (j.trim()) return j.trim();
+    }
+    return '';
+  }, [wellsList]);
   const [otherInfo, setOtherInfo] = useState(params.otherInfo || "");
   const [notes, setNotes] = useState(params.notes || "");
   const [signature, setSignature] = useState(params.signature || "");
@@ -308,15 +334,47 @@ export default function ViewJsaScreen() {
             <JsaSummaryCard
               driverName={driverName}
               truckNumber={truckNumber}
-              rows={buildLocationActivityRows(
-                wellsList,
-                locationsList,
-                {
-                  jobActivityName,
-                  task: params.task as string | undefined,
-                  jsaType: params.jsaType as string | undefined,
-                },
-              )}
+              rows={(() => {
+                // Effective form: empty form.jobActivityName gets the
+                // well-derived fallback so legacy saves don't render as
+                // empty brackets. Per-row jobType is untouched.
+                const effectiveForm = {
+                  jobActivityName: jobActivityName || wellsSynthActivity,
+                  task: (params.task as string | undefined) || undefined,
+                  jsaType: (params.jsaType as string | undefined) || undefined,
+                };
+                const built = buildLocationActivityRows(wellsList, locationsList, effectiveForm);
+                // Field-debug trace — one line per row with raw values,
+                // final resolved value, its type, and JSON form. Gated on
+                // __DEV__ so release APKs carry no per-render log cost.
+                if (__DEV__) {
+                  console.log('[JSA][viewJsa][form]', {
+                    paramsJobActivityName: params.jobActivityName,
+                    stateJobActivityName: jobActivityName,
+                    paramsTask: params.task,
+                    paramsJsaType: params.jsaType,
+                    wellsSynthActivity,
+                    effectiveForm,
+                  });
+                  for (let i = 0; i < wellsList.length; i++) {
+                    const w = wellsList[i] as any;
+                    const row = built[i];
+                    console.log('[JSA][viewJsa][row]', {
+                      index: i,
+                      name: typeof w === 'string' ? w : w?.name,
+                      rawJobType: typeof w === 'string' ? undefined : w?.jobType,
+                      rawJobTypeType: typeof (typeof w === 'string' ? undefined : w?.jobType),
+                      formJobActivityName: effectiveForm.jobActivityName,
+                      formTask: effectiveForm.task,
+                      formJsaType: effectiveForm.jsaType,
+                      resolvedActivity: row?.resolvedActivity,
+                      resolvedActivityType: typeof row?.resolvedActivity,
+                      resolvedActivityJson: JSON.stringify(row?.resolvedActivity),
+                    });
+                  }
+                }
+                return built;
+              })()}
               date={(params.date as string) || ''}
             />
             {(params.timestamp || params.savedAt) ? (
