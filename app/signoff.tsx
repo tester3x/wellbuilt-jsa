@@ -188,18 +188,69 @@ export default function SignoffScreen() {
         else if (typeof parsed === 'object' && !Array.isArray(parsed)) ppeObj = parsed;
       } catch {}
 
+      // ── Activity persistence contract ────────────────────────────
+      // Read-mode (viewJsa) resolves activity by locationActivity.ts,
+      // which checks row.jobType → form.jobActivityName → form.task →
+      // form.jsaType. For saves loaded later to render readable text,
+      // those fields must be NON-EMPTY in the persisted record — we
+      // can't rely on any live form state after submit.
+      //
+      // Previously this save path wrote params through as-is:
+      //   wells kept whatever jobType was at push-time (could be ""
+      //   for wells added via deep-link autofill or jsa_day_status
+      //   stamped-wells path, both of which bypass the home-screen
+      //   activity enforcement),
+      //   jobActivityName = params.jobActivityName (could be ""),
+      //   task             = params.task            (could be "").
+      // If the driver submitted without a typed activity (bypassable
+      // via pre-enforcement builds, stamped-wells, or deep-link
+      // autofill without a jobType param), EVERY resolution source
+      // persisted empty, and viewJsa rendered "[]" glyphs.
+      //
+      // Fix: derive ONE canonical activity from every in-scope source
+      // at save time — form-level params, then any well's own jobType.
+      // Backfill wells that have empty jobType + backfill form-level
+      // jobActivityName/task when empty. Per-row jobType is preferred
+      // by the resolver, so wells with their own jobType keep it.
+      const paramsJobActivityName = (typeof params.jobActivityName === 'string' ? params.jobActivityName : '').trim();
+      const paramsTask = (typeof params.task === 'string' ? params.task : '').trim();
+      const firstWellJobType = (() => {
+        for (const w of wellsList) {
+          if (typeof w === 'string') continue;
+          const j = (w && typeof (w as any).jobType === 'string') ? (w as any).jobType.trim() : '';
+          if (j) return j;
+        }
+        return '';
+      })();
+      const canonicalActivity = paramsJobActivityName || paramsTask || firstWellJobType || '';
+      if (!canonicalActivity) {
+        console.warn('[JSA][save] submitting JSA with NO activity anywhere', {
+          paramsJobActivityName,
+          paramsTask,
+          wellsWithoutJobType: wellsList.filter((w: any) => typeof w === 'string' || !((w as any)?.jobType || '').trim()).length,
+          totalWells: wellsList.length,
+        });
+      }
+      const wellsForSave = wellsList.map((w: any) => {
+        if (typeof w === 'string') {
+          return { name: w, operator: '', county: '', jobType: canonicalActivity };
+        }
+        const existing = (typeof w.jobType === 'string' ? w.jobType : '').trim();
+        return { ...w, jobType: existing || canonicalActivity };
+      });
+
       const payload = {
         id: Date.now().toString(),
         timestamp: new Date().toISOString(),
         driverName: params.driverName ?? "",
         truckNumber: params.truckNumber ?? "",
-        jobActivityName: params.jobActivityName ?? "",
+        jobActivityName: paramsJobActivityName || canonicalActivity,
         pusher: params.pusher ?? "",
         wellName: params.wellName ?? "",
-        wells: wellsList, // full WellEntry[] objects now
+        wells: wellsForSave,
         otherInfo: params.otherInfo ?? "",
         location: params.location ?? "",
-        task: params.task ?? "",
+        task: paramsTask || canonicalActivity,
         date: params.date ?? "",
         ppeSelected: ppeObj,
         ppeOtherItems,
