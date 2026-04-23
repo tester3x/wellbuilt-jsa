@@ -84,6 +84,26 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
     wellsHtml = `<div class="row"><span class="row-label">${wellName}</span><span class="row-value">${jobActivity || '-'}</span></div>`;
   }
 
+  // Append locations — the comment on line 189 below ("Locations section
+  // removed — merged with Wells / Locations") advertises a merge that was
+  // never actually implemented. Drivers adding non-NDIC sites via the
+  // Location field (yards, free-text disposals, SWDs) were captured in
+  // `locations[]` on the save record but silently dropped here at render
+  // time, so those entries never appeared on the paper JSA or uploaded PDF.
+  // Reusing the existing `<div class="row">` template keeps styling and
+  // the section-guard logic on line 181 unchanged — if wells is empty but
+  // locations is non-empty, the Wells / Locations card now renders the
+  // locations alone instead of hiding entirely.
+  if (locations && locations.length > 0) {
+    wellsHtml += locations
+      .filter(Boolean)
+      .map(l => `<div class="row">
+        <span class="row-label">${l}</span>
+        <span class="row-value">${jobActivity || '-'}</span>
+      </div>`)
+      .join('');
+  }
+
   // Build signature HTML — black on white, full width
   const sigImgSrc = signatureImage
     ? (signatureImage.startsWith('data:') ? signatureImage : `data:image/png;base64,${signatureImage}`)
