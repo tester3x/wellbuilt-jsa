@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors, cardShadow } from "../../constants/colors";
 import { STORAGE_KEYS } from "../../constants/storageKeys";
+import { deleteJSAEverywhere } from "../../services/sync";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -160,8 +161,12 @@ export default function HistoryTabScreen() {
           style: "destructive",
           onPress: async () => {
             try {
+              // Delete from BOTH cloud and local. Filtering AsyncStorage alone
+              // creates a write-back loop: completed.tsx → syncToCloud →
+              // fetchJSAsForDevice re-fetches the still-living cloud doc and
+              // merges it back into local. Authoritative delete kills the loop.
+              await deleteJSAEverywhere(item.id);
               const newHistory = history.filter((h) => h.id !== item.id);
-              await AsyncStorage.setItem(STORAGE_KEYS.saves, JSON.stringify(newHistory));
               setHistory(newHistory);
             } catch (err) {
               console.error("Error deleting JSA:", err);
