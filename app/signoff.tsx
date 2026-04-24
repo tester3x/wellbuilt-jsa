@@ -239,10 +239,32 @@ export default function SignoffScreen() {
         return { ...w, jobType: existing || canonicalActivity };
       });
 
+      // Resolve session up front so linkage fields land in BOTH the local
+      // AsyncStorage save (replayed by syncToCloud) AND the direct Firestore
+      // writes below. Historically the jsas collection docs had no driverHash
+      // at all, so "all JSAs by Mike" couldn't be queried server-side.
+      const sessionForPayload = await getDriverSession().catch(() => null);
+      const driverHashForPayload = sessionForPayload?.passcodeHash || '';
+      const companyIdForPayload =
+        sessionForPayload?.companyId
+        || (await AsyncStorage.getItem('selectedCompanyId').catch(() => null))
+        || '';
+      const driverLegalNameForPayload =
+        sessionForPayload?.legalName
+        || sessionForPayload?.displayName
+        || (params.driverName as string)
+        || '';
+
       const payload = {
         id: Date.now().toString(),
         timestamp: new Date().toISOString(),
         driverName: params.driverName ?? "",
+        // Linkage fields — required for server-side queries by driver.
+        driverHash: driverHashForPayload,
+        driverId: driverHashForPayload,
+        driverLegalName: driverLegalNameForPayload,
+        companyId: companyIdForPayload,
+        createdAt: new Date().toISOString(),
         truckNumber: params.truckNumber ?? "",
         jobActivityName: paramsJobActivityName || canonicalActivity,
         pusher: params.pusher ?? "",
@@ -289,12 +311,33 @@ export default function SignoffScreen() {
         }
       } catch {}
 
-      // Auto-generate PDF and upload to Firebase Storage (fire-and-forget)
-      // Stores URL in AsyncStorage so WB T can attach to tickets (per_load mode)
+      // Post-submit cloud write: single sequential IIFE that (1) generates
+      // the PDF + uploads to Storage, then (2) writes jsa_day_status with
+      // the resolved pdfUrl, then (3) writes jsas/{id} with full linkage.
+      //
+      // Previously two parallel IIFEs raced: the PDF IIFE stashed the URL
+      // in AsyncStorage while the jsa_day_status IIFE read AsyncStorage
+      // immediately, so jsa_day_status.pdfUrl was always empty. WB T read
+      // that empty pdfUrl and couldn't attach the JSA PDF to invoices.
+      //
+      // Still fire-and-forget at the top level so the branded completion
+      // modal renders immediately; sequencing is internal to the IIFE.
       (async () => {
+        const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
+        const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
+        const driverHash = driverHashForPayload;
+        const companyId = companyIdForPayload;
+        const driverLegalName = driverLegalNameForPayload;
+        const formDate = typeof params.date === 'string' ? params.date : '';
+        const jsaDate = /^\d{4}-\d{2}-\d{2}$/.test(formDate)
+          ? formDate
+          : new Date().toISOString().slice(0, 10);
+
+        // Step 1 — generate + upload PDF. Await so jsa_day_status and jsas
+        // writes below see the final URL, never an empty string.
+        let pdfUrl = '';
         try {
           const { generateAndUploadJsaPdf } = await import('../services/jsaPdf');
-          const companyId = await AsyncStorage.getItem('selectedCompanyId') || '';
           const ppeItems: string[] = [];
           try {
             const parsed = params.ppeSelected ? JSON.parse(params.ppeSelected as string) : {};
@@ -303,14 +346,14 @@ export default function SignoffScreen() {
             }
           } catch {}
           const preparedItems = Object.entries(prepared).filter(([, v]) => v).map(([k]) => k);
-          const pdfUrl = await generateAndUploadJsaPdf({
-            driverName: params.driverName as string || '',
-            truckNumber: params.truckNumber as string || '',
-            date: params.date as string || '',
+          const url = await generateAndUploadJsaPdf({
+            driverName: (params.driverName as string) || driverLegalName,
+            truckNumber: (params.truckNumber as string) || '',
+            date: jsaDate,
             wells: wellsList,
             locations: locations as string[],
-            jobActivity: params.jobActivityName as string || '',
-            pusher: params.pusher as string || '',
+            jobActivity: (params.jobActivityName as string) || '',
+            pusher: (params.pusher as string) || '',
             ppeItems,
             preparedItems,
             notes,
@@ -318,106 +361,204 @@ export default function SignoffScreen() {
             signatureImage: signatureImage || undefined,
             companyName: companyId,
             accentColor: accent,
-          }, companyId);
-          if (pdfUrl) {
-            await AsyncStorage.setItem('jsa_pdfUrl', pdfUrl);
-            console.log('[JSA] PDF URL stored for WB T:', pdfUrl);
+          }, companyId, {
+            driverHash,
+            jsaDocId: payload.id,
+            jsaDate,
+          });
+          if (url) {
+            pdfUrl = url;
+            await AsyncStorage.setItem('jsa_pdfUrl', url).catch(() => {});
+            console.log('[JSA] PDF ready for WB T:', url);
+          } else {
+            console.warn('[JSA] PDF URL empty after upload — downstream writes will have no pdfUrl');
           }
         } catch (err) {
-          console.warn('[JSA] PDF auto-generate failed (non-fatal):', err);
+          console.warn('[JSA] PDF generate/upload failed (non-fatal):', err);
         }
-      })();
 
-      // Write JSA completion to jsa_day_status (fire-and-forget)
-      // This is the signal WB T and WB S use to know JSA is done.
-      // Honors the form's date so resumed prior-day JSAs write to THEIR doc
-      // (e.g. resuming a 4/15 JSA on 4/17 → updates jsa_day_status/{hash}_2026-04-15).
-      (async () => {
-        try {
-          const session = await getDriverSession();
-          if (!session?.passcodeHash) return;
-          const formDate = typeof params.date === 'string' ? params.date : '';
-          const jsaDate = /^\d{4}-\d{2}-\d{2}$/.test(formDate)
-            ? formDate
-            : new Date().toISOString().slice(0, 10);
-          const docId = `${session.passcodeHash}_${jsaDate}`;
-          const todayStr = jsaDate; // preserve existing variable name used below
-          const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
-          const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
-          const pdfUrl = await AsyncStorage.getItem('jsa_pdfUrl') || '';
-
-          // Read existing wells[] so WB T-stamped entries aren't clobbered
-          let existingWells: any[] = [];
+        // Step 2 — jsa_day_status write with pdfUrl in hand.
+        if (driverHash) {
           try {
-            const getResp = await fetch(`${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`);
-            if (getResp.ok) {
-              const doc = await getResp.json();
-              existingWells = doc.fields?.wells?.arrayValue?.values || [];
-            }
-          } catch {}
-          const existingNames = new Set(
-            existingWells
-              .map((v: any) => v?.mapValue?.fields?.name?.stringValue?.trim().toUpperCase())
-              .filter(Boolean)
-          );
+            const docId = `${driverHash}_${jsaDate}`;
 
-          // Build wells array from the form, skipping any names already present
-          const formWells = wellsList
-            .map((w: any) => {
-              const name = typeof w === 'string' ? w : (w?.name || '');
-              const jobType = typeof w === 'string'
-                ? (params.jobActivityName || '')
-                : (w?.jobType || params.jobActivityName || '');
-              return { name, jobType };
-            })
-            .filter(w => w.name && !existingNames.has(w.name.trim().toUpperCase()))
-            .map(w => ({
-              mapValue: {
+            // Read existing wells[] + locations[] so WB T-stamped entries aren't clobbered.
+            let existingWells: any[] = [];
+            let existingLocations: any[] = [];
+            try {
+              const getResp = await fetch(`${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`);
+              if (getResp.ok) {
+                const doc = await getResp.json();
+                existingWells = doc.fields?.wells?.arrayValue?.values || [];
+                existingLocations = doc.fields?.locations?.arrayValue?.values || [];
+              }
+            } catch {}
+            const existingNames = new Set(
+              existingWells
+                .map((v: any) => v?.mapValue?.fields?.name?.stringValue?.trim().toUpperCase())
+                .filter(Boolean)
+            );
+            const existingLocationNames = new Set(
+              existingLocations
+                .map((v: any) => v?.mapValue?.fields?.name?.stringValue?.trim().toUpperCase())
+                .filter(Boolean)
+            );
+
+            const formWells = wellsList
+              .map((w: any) => {
+                const name = typeof w === 'string' ? w : (w?.name || '');
+                const jobType = typeof w === 'string'
+                  ? (params.jobActivityName || '')
+                  : (w?.jobType || params.jobActivityName || '');
+                return { name, jobType };
+              })
+              .filter(w => w.name && !existingNames.has(w.name.trim().toUpperCase()))
+              .map(w => ({
+                mapValue: {
+                  fields: {
+                    name: { stringValue: w.name },
+                    type: { stringValue: 'pickup' },
+                    jobType: { stringValue: w.jobType },
+                    stampedAt: { timestampValue: new Date().toISOString() },
+                  },
+                },
+              }));
+            const wellsForFirestore = [...existingWells, ...formWells];
+
+            const formLocations = (Array.isArray(locations) ? locations : [])
+              .map((l: any) => (typeof l === 'string' ? l : (l?.name || '')))
+              .filter((name: string) => name && !existingLocationNames.has(name.trim().toUpperCase()))
+              .map((name: string) => ({
+                mapValue: {
+                  fields: {
+                    name: { stringValue: name },
+                    type: { stringValue: 'location' },
+                    jobType: { stringValue: (params.jobActivityName as string) || '' },
+                    stampedAt: { timestampValue: new Date().toISOString() },
+                  },
+                },
+              }));
+            const locationsForFirestore = [...existingLocations, ...formLocations];
+
+            const patchUrl = `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`
+              + '&updateMask.fieldPaths=driverHash'
+              + '&updateMask.fieldPaths=driverName'
+              + '&updateMask.fieldPaths=companyId'
+              + '&updateMask.fieldPaths=date'
+              + '&updateMask.fieldPaths=jsaCompleted'
+              + '&updateMask.fieldPaths=jsaCompletedAt'
+              + '&updateMask.fieldPaths=jsaDocId'
+              + '&updateMask.fieldPaths=pdfUrl'
+              + '&updateMask.fieldPaths=wells'
+              + '&updateMask.fieldPaths=locations'
+              + '&updateMask.fieldPaths=updatedAt';
+
+            const resp = await fetch(patchUrl, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
                 fields: {
-                  name: { stringValue: w.name },
-                  type: { stringValue: 'pickup' },
-                  jobType: { stringValue: w.jobType },
-                  stampedAt: { timestampValue: new Date().toISOString() },
+                  driverHash: { stringValue: driverHash },
+                  driverName: { stringValue: driverLegalName },
+                  companyId: { stringValue: companyId },
+                  date: { stringValue: jsaDate },
+                  jsaCompleted: { booleanValue: true },
+                  jsaCompletedAt: { timestampValue: new Date().toISOString() },
+                  jsaDocId: { stringValue: payload.id },
+                  pdfUrl: { stringValue: pdfUrl },
+                  wells: { arrayValue: { values: wellsForFirestore } },
+                  locations: { arrayValue: { values: locationsForFirestore } },
+                  updatedAt: { timestampValue: new Date().toISOString() },
+                },
+              }),
+            });
+            if (!resp.ok) {
+              const body = await resp.text().catch(() => '');
+              console.warn(`[JSA] jsa_day_status write failed: HTTP ${resp.status} ${body.slice(0, 200)}`);
+            } else {
+              console.log(`[JSA] jsa_day_status/${docId} written (pdfUrl=${pdfUrl ? 'set' : 'empty'})`);
+            }
+          } catch (err) {
+            console.warn('[JSA] jsa_day_status write error (non-fatal):', err);
+          }
+        } else {
+          console.warn('[JSA] No driverHash — skipping jsa_day_status + jsas cloud write');
+        }
+
+        // Step 3 — jsas/{id} direct write with linkage. Primary path now that
+        // the branded completion modal bypasses completed.tsx. syncToCloud
+        // still exists as a backup for unsynced local saves — setDoc there
+        // will idempotently overwrite with the same payload.
+        if (driverHash) {
+          try {
+            const docUrl = `${FIRESTORE_BASE}/jsas/${payload.id}?key=${API_KEY}`;
+            const fields: any = {
+              id: { stringValue: payload.id },
+              timestamp: { stringValue: payload.timestamp },
+              createdAt: { timestampValue: new Date().toISOString() },
+              driverHash: { stringValue: driverHash },
+              driverId: { stringValue: driverHash },
+              driverName: { stringValue: payload.driverName || driverLegalName },
+              driverLegalName: { stringValue: driverLegalName },
+              companyId: { stringValue: companyId },
+              truckNumber: { stringValue: payload.truckNumber || '' },
+              jobActivityName: { stringValue: payload.jobActivityName || '' },
+              pusher: { stringValue: payload.pusher || '' },
+              wellName: { stringValue: payload.wellName || '' },
+              otherInfo: { stringValue: payload.otherInfo || '' },
+              location: { stringValue: payload.location || '' },
+              task: { stringValue: payload.task || '' },
+              date: { stringValue: jsaDate },
+              notes: { stringValue: payload.notes || '' },
+              signature: { stringValue: payload.signature || '' },
+              signatureImage: { stringValue: payload.signatureImage || '' },
+              pdfUrl: { stringValue: pdfUrl },
+              // Complex objects stored as JSON strings for compact REST encoding.
+              ppeSelected: { stringValue: JSON.stringify(payload.ppeSelected || {}) },
+              prepared: { stringValue: JSON.stringify(payload.prepared || {}) },
+              locationAcks: { stringValue: JSON.stringify(payload.locationAcks || {}) },
+              wells: {
+                arrayValue: {
+                  values: (payload.wells || []).map((w: any) => ({
+                    mapValue: {
+                      fields: {
+                        name: { stringValue: w.name || '' },
+                        operator: { stringValue: w.operator || '' },
+                        county: { stringValue: w.county || '' },
+                        jobType: { stringValue: w.jobType || '' },
+                      },
+                    },
+                  })),
                 },
               },
-            }));
-          const wellsForFirestore = [...existingWells, ...formWells];
-
-          const patchUrl = `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`
-            + '&updateMask.fieldPaths=driverHash'
-            + '&updateMask.fieldPaths=driverName'
-            + '&updateMask.fieldPaths=companyId'
-            + '&updateMask.fieldPaths=date'
-            + '&updateMask.fieldPaths=jsaCompleted'
-            + '&updateMask.fieldPaths=jsaCompletedAt'
-            + '&updateMask.fieldPaths=jsaDocId'
-            + '&updateMask.fieldPaths=pdfUrl'
-            + '&updateMask.fieldPaths=wells'
-            + '&updateMask.fieldPaths=updatedAt';
-
-          await fetch(patchUrl, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              fields: {
-                driverHash: { stringValue: session.passcodeHash },
-                driverName: { stringValue: session.legalName || session.displayName || '' },
-                companyId: { stringValue: session.companyId || '' },
-                date: { stringValue: todayStr },
-                jsaCompleted: { booleanValue: true },
-                jsaCompletedAt: { timestampValue: new Date().toISOString() },
-                jsaDocId: { stringValue: payload.id },
-                pdfUrl: { stringValue: pdfUrl },
-                wells: wellsForFirestore.length > 0
-                  ? { arrayValue: { values: wellsForFirestore } }
-                  : { arrayValue: { values: [] } },
-                updatedAt: { timestampValue: new Date().toISOString() },
+              locations: {
+                arrayValue: {
+                  values: (payload.locations || []).map((l: any) => ({
+                    stringValue: typeof l === 'string' ? l : (l?.name || ''),
+                  })),
+                },
               },
-            }),
-          });
-          console.log('[JSA] Wrote completion to jsa_day_status');
-        } catch (err) {
-          console.warn('[JSA] jsa_day_status write failed (non-fatal):', err);
+              ppeOtherItems: {
+                arrayValue: {
+                  values: (payload.ppeOtherItems || []).map((p: string) => ({ stringValue: p })),
+                },
+              },
+            };
+
+            const resp = await fetch(docUrl, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fields }),
+            });
+            if (!resp.ok) {
+              const body = await resp.text().catch(() => '');
+              console.warn(`[JSA] jsas/${payload.id} write failed: HTTP ${resp.status} ${body.slice(0, 200)}`);
+            } else {
+              console.log(`[JSA] jsas/${payload.id} written with linkage (driverHash=${driverHash.slice(0, 8)}..., companyId=${companyId})`);
+            }
+          } catch (err) {
+            console.warn('[JSA] jsas direct write error (non-fatal):', err);
+          }
         }
       })();
 

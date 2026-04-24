@@ -27,10 +27,26 @@ interface JsaPdfData {
 }
 
 /**
- * Generate a compact JSA PDF and upload to Firebase Storage.
- * Returns the public download URL.
+ * Optional linkage metadata for downstream consumers (Dashboard queries,
+ * WB T per_load PDF attach). Without driverHash, the `jsa_completions` doc
+ * can't be joined back to a specific driver.
  */
-export async function generateAndUploadJsaPdf(data: JsaPdfData, companyId: string): Promise<string | null> {
+export interface JsaPdfMeta {
+  driverHash?: string;
+  jsaDocId?: string;
+  jsaDate?: string;  // local YYYY-MM-DD — use instead of UTC today() for doc ids
+}
+
+/**
+ * Generate a compact JSA PDF and upload to Firebase Storage.
+ * Returns the public download URL, or null on any failure (logged).
+ */
+export async function generateAndUploadJsaPdf(
+  data: JsaPdfData,
+  companyId: string,
+  meta: JsaPdfMeta = {},
+): Promise<string | null> {
+  const stage = { step: 'init' };
   try {
     // Use the shared PDF HTML builder for consistent output
     const wellEntries = data.wells.map(w => {
@@ -38,6 +54,7 @@ export async function generateAndUploadJsaPdf(data: JsaPdfData, companyId: strin
       return w;
     });
 
+    stage.step = 'buildHtml';
     const html = buildJsaPdfHtml({
       driverName: data.driverName,
       truckNumber: data.truckNumber,
@@ -59,13 +76,18 @@ export async function generateAndUploadJsaPdf(data: JsaPdfData, companyId: strin
       logoDataUrl: null,
     });
 
+    stage.step = 'printToFile';
     const { uri } = await Print.printToFileAsync({ html });
 
-    // Read the PDF file as base64
+    stage.step = 'readBase64';
     const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
 
-    // Upload to Firebase Storage via REST
-    const date = data.date || new Date().toISOString().slice(0, 10);
+    // Upload to Firebase Storage via REST. Use the local jsaDate (meta) when
+    // provided so the Storage path and the jsa_completions doc id agree with
+    // the day the driver perceives they're on — not UTC, which rolls at
+    // 6 PM Mountain.
+    stage.step = 'upload';
+    const date = meta.jsaDate || data.date || new Date().toISOString().slice(0, 10);
     const safeName = data.driverName.replace(/[^a-zA-Z0-9]/g, '_');
     const storagePath = `jsa/${companyId}/${date}/${safeName}_${Date.now()}.pdf`;
     const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(storagePath)}?uploadType=media&key=${FIREBASE_API_KEY}`;
@@ -77,12 +99,22 @@ export async function generateAndUploadJsaPdf(data: JsaPdfData, companyId: strin
     });
 
     if (!resp.ok) {
-      console.warn('[jsaPdf] Upload failed:', resp.status);
+      const body = await resp.text().catch(() => '');
+      console.warn(`[jsaPdf] Upload failed: HTTP ${resp.status} path=${storagePath} body=${body.slice(0, 300)}`);
       return null;
     }
 
+    stage.step = 'parseUploadResult';
     const result = await resp.json();
     const token = result.downloadTokens;
+    if (!token) {
+      // Some Firebase Storage responses omit downloadTokens unless the
+      // upload sets firebaseStorageDownloadTokens metadata. Falling back
+      // to an untokenized alt=media URL will 403 for public reads. Surface
+      // the issue loudly instead of returning a broken URL.
+      console.warn('[jsaPdf] Upload succeeded but response is missing downloadTokens:', JSON.stringify(result).slice(0, 300));
+      return null;
+    }
     const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(storagePath)}?alt=media&token=${token}`;
 
     // Clean up temp file
@@ -90,28 +122,40 @@ export async function generateAndUploadJsaPdf(data: JsaPdfData, companyId: strin
 
     console.log('[jsaPdf] PDF uploaded:', downloadUrl);
 
-    // Write URL to Firestore so WB T can read it for per_load auto-attach
+    // Write URL to Firestore so Dashboard + WB T can find it. Now includes
+    // driverHash + jsaDocId so a specific driver's JSA can be located.
+    stage.step = 'writeCompletions';
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const docPath = `jsa_completions/${companyId}_${today}`;
+      const docPath = `jsa_completions/${companyId}_${date}`;
       const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents/${docPath}?key=${FIREBASE_API_KEY}`;
-      await fetch(firestoreUrl, {
+      const fields: any = {
+        pdfUrl: { stringValue: downloadUrl },
+        driverName: { stringValue: data.driverName },
+        companyId: { stringValue: companyId },
+        date: { stringValue: date },
+        updatedAt: { timestampValue: new Date().toISOString() },
+      };
+      if (meta.driverHash) {
+        fields.driverHash = { stringValue: meta.driverHash };
+        fields.driverId = { stringValue: meta.driverHash };
+      }
+      if (meta.jsaDocId) fields.jsaDocId = { stringValue: meta.jsaDocId };
+      const compResp = await fetch(firestoreUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fields: {
-            pdfUrl: { stringValue: downloadUrl },
-            driverName: { stringValue: data.driverName },
-            date: { stringValue: data.date },
-            updatedAt: { stringValue: new Date().toISOString() },
-          },
-        }),
+        body: JSON.stringify({ fields }),
       });
-    } catch {}
+      if (!compResp.ok) {
+        const body = await compResp.text().catch(() => '');
+        console.warn(`[jsaPdf] jsa_completions write failed: HTTP ${compResp.status} ${body.slice(0, 200)}`);
+      }
+    } catch (err) {
+      console.warn('[jsaPdf] jsa_completions write error (non-fatal):', err);
+    }
 
     return downloadUrl;
-  } catch (err) {
-    console.warn('[jsaPdf] Generate/upload failed:', err);
+  } catch (err: any) {
+    console.warn(`[jsaPdf] Generate/upload failed at stage=${stage.step}:`, err?.message || err);
     return null;
   }
 }
