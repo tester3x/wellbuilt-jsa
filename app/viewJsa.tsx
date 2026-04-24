@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
     Alert,
     Image,
@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { JsaSummaryCard, buildLocationActivityRows } from "../components/jsa";
 import { colors } from "../constants/colors";
 import { STORAGE_KEYS } from "../constants/storageKeys";
+import { getDriverSession } from "../services/driverAuth";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 
@@ -82,7 +83,9 @@ export default function ViewJsaScreen() {
   // Wells are serialized as object[] by signoff (`wells: wellsList` in
   // signoff.tsx — "full WellEntry[] objects now"). Older saves may contain
   // plain string[]. Type was `string[]` which lied about runtime shape.
-  const wellsList: Array<string | { name?: string; jobType?: string; operator?: string; county?: string }> = useMemo(() => {
+  // SNAPSHOT ONLY — actual rendered list (wellsList) merges in
+  // jsa_day_status.wells[] further down so the view reflects real work.
+  const wellsListSnapshot: Array<string | { name?: string; jobType?: string; operator?: string; county?: string }> = useMemo(() => {
     try { return params.wells ? JSON.parse(params.wells) : []; } catch { return []; }
   }, [params.wells]);
 
@@ -101,13 +104,13 @@ export default function ViewJsaScreen() {
   //
   // Data prep only — no changes to locationActivity.ts or JsaSummaryCard.
   const wellsSynthActivity = useMemo(() => {
-    for (const w of wellsList) {
+    for (const w of wellsListSnapshot) {
       if (typeof w === 'string') continue;
       const j = w && typeof w.jobType === 'string' ? w.jobType : '';
       if (j.trim()) return j.trim();
     }
     return '';
-  }, [wellsList]);
+  }, [wellsListSnapshot]);
   const [otherInfo, setOtherInfo] = useState(params.otherInfo || "");
   const [notes, setNotes] = useState(params.notes || "");
   const [signature, setSignature] = useState(params.signature || "");
@@ -142,7 +145,7 @@ export default function ViewJsaScreen() {
     return [];
   }, [params.prepared]);
 
-  const locationsList = useMemo(() => {
+  const locationsListFromParams = useMemo(() => {
     try {
       const parsed = params.locations ? JSON.parse(params.locations) : [];
       if (Array.isArray(parsed)) return parsed;
@@ -151,6 +154,113 @@ export default function ViewJsaScreen() {
     }
     return [];
   }, [params.locations]);
+
+  // ── Live JSA day truth ─────────────────────────────────────────────
+  // The JSA is a LIVING document for the day, not a snapshot frozen at
+  // signoff. WB T stamps every well + dropoff the driver actually visits
+  // into jsa_day_status.wells[] (via FlowController.closeJob). Reading
+  // params.wells alone shows only what was typed at signoff time — so a
+  // dispatch reroute (e.g. driver typed "Gab 1" but actually worked
+  // "Test Well") leaves the saved view stale.
+  //
+  // Fetch jsa_day_status keyed by {driverHash}_{params.date} and merge
+  // its wells[] / locations[] into the displayed lists. Form-typed
+  // entries take precedence (preserve operator/county/jobType metadata);
+  // stamped-only entries fill in the missing names. Dedup by case-
+  // insensitive trimmed name.
+  const [stampedWells, setStampedWells] = useState<Array<{ name: string; type?: string; jobType?: string; stampedAt?: string }>>([]);
+  const [stampedLocations, setStampedLocations] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const session = await getDriverSession();
+        const driverHash = session?.passcodeHash;
+        const dateStr = typeof params.date === 'string' ? params.date : '';
+        if (!driverHash || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+        const docId = `${driverHash}_${dateStr}`;
+        const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/jsa_day_status/${docId}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
+        const resp = await fetch(url);
+        if (!resp.ok) return;
+        const doc = await resp.json();
+        const f = doc.fields || {};
+        // wells[] map array
+        const wellsArr = (f.wells?.arrayValue?.values || [])
+          .map((v: any) => {
+            const fld = v?.mapValue?.fields;
+            if (!fld) return null;
+            return {
+              name: fld.name?.stringValue || '',
+              type: fld.type?.stringValue || '',
+              jobType: fld.jobType?.stringValue || '',
+              stampedAt: fld.stampedAt?.timestampValue || fld.stampedAt?.stringValue || '',
+            };
+          })
+          .filter((w: any) => w && w.name);
+        // locations[] is sometimes string[] (legacy) or map[] (newer signoff writes)
+        const locsRaw = f.locations?.arrayValue?.values || [];
+        const locs = locsRaw
+          .map((v: any) => {
+            if (typeof v?.stringValue === 'string') return v.stringValue;
+            if (v?.mapValue?.fields?.name?.stringValue) return v.mapValue.fields.name.stringValue;
+            return '';
+          })
+          .filter(Boolean);
+        if (!cancelled) {
+          setStampedWells(wellsArr);
+          setStampedLocations(locs);
+        }
+      } catch (err) {
+        if (__DEV__) console.warn('[JSA][viewJsa] jsa_day_status fetch failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [params.date]);
+
+  // Merge form-snapshot wells with stamped wells. Form entries win on
+  // metadata (operator/county/jobType). Stamped entries marked dropoff
+  // get filtered to locationsList instead.
+  const wellsList = useMemo(() => {
+    const merged: Array<string | { name?: string; jobType?: string; operator?: string; county?: string }> = [...wellsListSnapshot];
+    const seen = new Set(
+      wellsListSnapshot
+        .map((w: any) => (typeof w === 'string' ? w : w?.name || ''))
+        .map((n: string) => n.trim().toUpperCase())
+        .filter(Boolean),
+    );
+    for (const w of stampedWells) {
+      // Dropoffs land in locationsList, not the wells row list
+      if (w.type === 'dropoff') continue;
+      const norm = w.name.trim().toUpperCase();
+      if (!norm || seen.has(norm)) continue;
+      seen.add(norm);
+      merged.push({ name: w.name, jobType: w.jobType || '', operator: '', county: '' });
+    }
+    return merged;
+  }, [wellsListSnapshot, stampedWells]);
+
+  const locationsList = useMemo(() => {
+    const merged: string[] = [...locationsListFromParams];
+    const seen = new Set(merged.map((l) => l.trim().toUpperCase()).filter(Boolean));
+    // Add manually-typed locations from jsa_day_status.locations[]
+    for (const l of stampedLocations) {
+      const norm = l.trim().toUpperCase();
+      if (!norm || seen.has(norm)) continue;
+      seen.add(norm);
+      merged.push(l);
+    }
+    // Add any wells stamped as dropoff (SWDs, yards) — these are locations, not pickups
+    for (const w of stampedWells) {
+      if (w.type !== 'dropoff') continue;
+      const norm = w.name.trim().toUpperCase();
+      if (!norm || seen.has(norm)) continue;
+      seen.add(norm);
+      merged.push(w.name);
+    }
+    return merged;
+  }, [locationsListFromParams, stampedLocations, stampedWells]);
+
   const allLocationsText =
     locationsList.length > 0 ? locationsList.join(", ") : params.location || "-";
 

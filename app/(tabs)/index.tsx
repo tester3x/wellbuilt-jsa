@@ -463,6 +463,16 @@ export default function JsaHomeScreen() {
     return () => sub.remove();
   }, [loadTodaysSave]);
 
+  // Auto-route to today's submitted JSA on app open. Rule: 1 JSA per day —
+  // if it's already submitted, opening the app should drop the driver into
+  // the existing JSA, not the new-form screen. Tapping Home from viewJsa
+  // returns here, but autoRoutedRef makes sure we don't bounce them back
+  // (so they can still reach the form to start a second JSA if they ever
+  // need to). Fires only after hydration is settled, and only when there
+  // is no pending deep-link / resume payload — those flows own their own
+  // routing decision (e.g. WB T sending in a new well to append).
+
+
   // Navigate to today's JSA in view mode. Params mirror history.tsx's
   // handleViewDetails exactly so viewJsa.tsx's param contract is honored
   // (same code path, no new viewer code). Source is the authoritative
@@ -502,6 +512,39 @@ export default function JsaHomeScreen() {
       },
     });
   }, [todaysJsaSave, router]);
+
+  const autoRoutedRef = useRef(false);
+  useEffect(() => {
+    if (autoRoutedRef.current) return;
+    if (!hydrationDone) return;
+    if (!todaysJsaSave) return;
+
+    (async () => {
+      try {
+        // Pending deep-link autofill or resume? Let those flows route.
+        const autofill = await AsyncStorage.getItem('jsa_autofill');
+        if (autofill) {
+          try {
+            const p = JSON.parse(autofill);
+            if (p?.wellName) return; // SSO with new well — autofill effect handles routing
+          } catch {}
+        }
+        const resume = await AsyncStorage.getItem('jsa_resume');
+        if (resume) {
+          try {
+            const p = JSON.parse(resume);
+            if (Array.isArray(p?.wellNames) && p.wellNames.length > 0) return;
+          } catch {}
+        }
+
+        autoRoutedRef.current = true;
+        console.log('[JSA][auto-route] today\'s JSA exists, routing to viewJsa', { id: todaysJsaSave?.id });
+        openTodaysJsa();
+      } catch (err) {
+        console.warn('[JSA][auto-route] check failed:', err);
+      }
+    })();
+  }, [hydrationDone, todaysJsaSave, openTodaysJsa]);
 
   // Debug: log the open-mode decision on every state change that affects it.
   // Field-test signal for proving how WB JSA resolved the driver's situation:
@@ -960,6 +1003,27 @@ export default function JsaHomeScreen() {
   const handleNext = () => {
     if (isNextDisabled) return;
 
+    // Flush buffered Well/Location text that the driver typed but never tapped
+    // "+ Add" on. Without this, the typed entry is silently dropped at Next and
+    // the JSA ships with 0 wells/locations even though the driver saw the text
+    // in the field. Treat buffered text the same way the manual "+ Add" button
+    // treats it — as a well entry tagged with the current jobActivityName.
+    const bufferedText = wellName.trim();
+    const wellsForSubmit = (() => {
+      if (!bufferedText) return addedWells;
+      const alreadyInWells = addedWells.some(
+        w => w.name.toLowerCase() === bufferedText.toLowerCase(),
+      );
+      const alreadyInLocations = addedLocations.some(
+        l => l.toLowerCase() === bufferedText.toLowerCase(),
+      );
+      if (alreadyInWells || alreadyInLocations) return addedWells;
+      return [
+        ...addedWells,
+        { name: bufferedText, operator: '', county: '', jobType: jobActivityName.trim() },
+      ];
+    })();
+
     router.push({
       pathname: "/steps",
       params: {
@@ -967,8 +1031,8 @@ export default function JsaHomeScreen() {
         truckNumber,
         jobActivityName,
         pusher,
-        wellName: addedWells[0]?.name || wellName,
-        wells: JSON.stringify(addedWells.map(w => ({
+        wellName: wellsForSubmit[0]?.name || wellName,
+        wells: JSON.stringify(wellsForSubmit.map(w => ({
           name: w.name,
           operator: w.operator || '',
           county: w.county || '',
@@ -1061,7 +1125,12 @@ export default function JsaHomeScreen() {
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        // Android with behavior=undefined was a no-op; the keyboard rode
+        // straight over the Next button on landscape tablets. `padding`
+        // works on both platforms with a ScrollView child — the bottom
+        // edge of the scrollable area lifts above the keyboard so the
+        // last form field + Next button are reachable.
+        behavior="padding"
         keyboardVerticalOffset={0}
       >
         {/* === PINNED HEADER (outside ScrollView) === */}
@@ -1248,22 +1317,14 @@ export default function JsaHomeScreen() {
           style={styles.container}
           contentContainerStyle={[
             styles.scrollContent,
-            keyboardVisible && { paddingBottom: 250 }
+            // Bump the bottom inset when the keyboard is up so the Next
+            // button can scroll above it (KeyboardAvoidingView shrinks the
+            // viewport; this gives ScrollView room to scroll the last
+            // field + Next into the visible area).
+            keyboardVisible && { paddingBottom: 420 },
           ]}
           keyboardShouldPersistTaps="handled"
         >
-        {/* ── TEMP DEBUG (remove after field-test audit) ──────────────────
-            Shows ACTUAL React state for the 6 JSA fields. Compare against
-            what the input fields visually show. If panel shows "" but the
-            field shows "TabletS10" → Android autofill / keyboard overlay.
-            If panel shows "TabletS10" → real state contamination. */}
-        <View style={{ backgroundColor: '#FFE4E1', padding: 10, marginBottom: 8, borderRadius: 8, borderWidth: 2, borderColor: '#DC143C' }}>
-          <Text style={{ fontWeight: '800', fontSize: 11, color: '#8B0000', marginBottom: 6 }}>DEBUG — React state (remove after audit)</Text>
-          <Text style={{ fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: '#333' }}>
-            {`hydrationSource: ${hydrationSource}\nactiveJsaId:     ${currentJsa?.id ?? '(none)'}\nactiveJsas:      ${activeJsas.length}\nwellsCount:      ${addedWells.length}\nlocationsCount:  ${addedLocations.length}\njobActivity:     "${jobActivityName}"\n— identity —\nsession.displayName: "${session?.displayName ?? ''}"\nsession.legalName:   "${session?.legalName ?? ''}"\n— form state —\ndriverName:  "${driverName}"\ntruckNumber: "${truckNumber}"\ndate:        "${date}"\npusher:      "${pusher}"\nnotes:       "${otherInfo}"`}
-          </Text>
-        </View>
-        {/* ── END TEMP DEBUG ─────────────────────────────────────────── */}
         {/* Living JSA Dashboard — full paper JSA per tab */}
         {jsaCompletedToday && currentJsa && (
           <>
