@@ -262,6 +262,21 @@ export default function SignoffScreen() {
       const shiftIdForPayload = (await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null))
         || new Date().toISOString().slice(0, 10);
 
+      // operator — scopes the JSA WITHIN a shift. A driver running for two
+      // oil companies in one shift gets two distinct JSAs. Source order:
+      // first well's operator field → params.operator (if WB T sent one) →
+      // empty string (= shift-default scope, single-operator shift).
+      const operatorForPayload = (() => {
+        const fromWell = wellsForSave.find((w: any) => typeof w?.operator === 'string' && w.operator.trim())?.operator;
+        if (fromWell) return String(fromWell).trim();
+        const fromParam = typeof (params as any).operator === 'string' ? (params as any).operator.trim() : '';
+        return fromParam;
+      })();
+      const operatorSlug = operatorForPayload
+        ? operatorForPayload.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+        : '';
+      const scopeForPayload = operatorSlug ? `${shiftIdForPayload}__${operatorSlug}` : shiftIdForPayload;
+
       const payload = {
         id: Date.now().toString(),
         timestamp: new Date().toISOString(),
@@ -272,6 +287,9 @@ export default function SignoffScreen() {
         driverLegalName: driverLegalNameForPayload,
         companyId: companyIdForPayload,
         shiftId: shiftIdForPayload,
+        operator: operatorForPayload,
+        operatorSlug,
+        scope: scopeForPayload,
         createdAt: new Date().toISOString(),
         truckNumber: params.truckNumber ?? "",
         jobActivityName: paramsJobActivityName || canonicalActivity,
@@ -386,11 +404,12 @@ export default function SignoffScreen() {
         }
 
         // Step 2 — jsa_day_status write with pdfUrl in hand. Doc id keyed
-        // by shiftId now (per-shift JSA scope) so closing a shift freezes
-        // its JSA. Falls back to date when no shift is active (legacy).
+        // by (shiftId, operatorSlug) — each oil company the driver works
+        // in this shift gets its own day-status doc. Falls back to plain
+        // shiftId (or today) when no operator/shift is active.
         if (driverHash) {
           try {
-            const scope = shiftIdForPayload;
+            const scope = scopeForPayload;
             const docId = `${driverHash}_${scope}`;
 
             // Read existing wells[] + locations[] so WB T-stamped entries aren't clobbered.
@@ -456,6 +475,8 @@ export default function SignoffScreen() {
               + '&updateMask.fieldPaths=driverName'
               + '&updateMask.fieldPaths=companyId'
               + '&updateMask.fieldPaths=shiftId'
+              + '&updateMask.fieldPaths=operatorSlug'
+              + '&updateMask.fieldPaths=operatorName'
               + '&updateMask.fieldPaths=date'
               + '&updateMask.fieldPaths=jsaCompleted'
               + '&updateMask.fieldPaths=jsaCompletedAt'
@@ -473,7 +494,9 @@ export default function SignoffScreen() {
                   driverHash: { stringValue: driverHash },
                   driverName: { stringValue: driverLegalName },
                   companyId: { stringValue: companyId },
-                  shiftId: { stringValue: scope },
+                  shiftId: { stringValue: shiftIdForPayload },
+                  operatorSlug: { stringValue: operatorSlug },
+                  operatorName: { stringValue: operatorForPayload },
                   date: { stringValue: jsaDate },
                   jsaCompleted: { booleanValue: true },
                   jsaCompletedAt: { timestampValue: new Date().toISOString() },
@@ -515,6 +538,8 @@ export default function SignoffScreen() {
               driverLegalName: { stringValue: driverLegalName },
               companyId: { stringValue: companyId },
               shiftId: { stringValue: shiftIdForPayload },
+              operatorSlug: { stringValue: operatorSlug },
+              operator: { stringValue: operatorForPayload },
               truckNumber: { stringValue: payload.truckNumber || '' },
               jobActivityName: { stringValue: payload.jobActivityName || '' },
               pusher: { stringValue: payload.pusher || '' },
