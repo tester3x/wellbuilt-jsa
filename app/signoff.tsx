@@ -255,6 +255,13 @@ export default function SignoffScreen() {
         || (params.driverName as string)
         || '';
 
+      // shiftId — scopes this JSA to the active shift. WB T / WB JSA local
+      // hydration filters saves by shiftId so old shifts' JSAs don't bleed
+      // into a fresh shift. Falls back to today's UTC date when no shift is
+      // active (legacy / standalone mode).
+      const shiftIdForPayload = (await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null))
+        || new Date().toISOString().slice(0, 10);
+
       const payload = {
         id: Date.now().toString(),
         timestamp: new Date().toISOString(),
@@ -264,6 +271,7 @@ export default function SignoffScreen() {
         driverId: driverHashForPayload,
         driverLegalName: driverLegalNameForPayload,
         companyId: companyIdForPayload,
+        shiftId: shiftIdForPayload,
         createdAt: new Date().toISOString(),
         truckNumber: params.truckNumber ?? "",
         jobActivityName: paramsJobActivityName || canonicalActivity,
@@ -377,10 +385,13 @@ export default function SignoffScreen() {
           console.warn('[JSA] PDF generate/upload failed (non-fatal):', err);
         }
 
-        // Step 2 — jsa_day_status write with pdfUrl in hand.
+        // Step 2 — jsa_day_status write with pdfUrl in hand. Doc id keyed
+        // by shiftId now (per-shift JSA scope) so closing a shift freezes
+        // its JSA. Falls back to date when no shift is active (legacy).
         if (driverHash) {
           try {
-            const docId = `${driverHash}_${jsaDate}`;
+            const scope = shiftIdForPayload;
+            const docId = `${driverHash}_${scope}`;
 
             // Read existing wells[] + locations[] so WB T-stamped entries aren't clobbered.
             let existingWells: any[] = [];
@@ -444,6 +455,7 @@ export default function SignoffScreen() {
               + '&updateMask.fieldPaths=driverHash'
               + '&updateMask.fieldPaths=driverName'
               + '&updateMask.fieldPaths=companyId'
+              + '&updateMask.fieldPaths=shiftId'
               + '&updateMask.fieldPaths=date'
               + '&updateMask.fieldPaths=jsaCompleted'
               + '&updateMask.fieldPaths=jsaCompletedAt'
@@ -461,6 +473,7 @@ export default function SignoffScreen() {
                   driverHash: { stringValue: driverHash },
                   driverName: { stringValue: driverLegalName },
                   companyId: { stringValue: companyId },
+                  shiftId: { stringValue: scope },
                   date: { stringValue: jsaDate },
                   jsaCompleted: { booleanValue: true },
                   jsaCompletedAt: { timestampValue: new Date().toISOString() },
@@ -501,6 +514,7 @@ export default function SignoffScreen() {
               driverName: { stringValue: payload.driverName || driverLegalName },
               driverLegalName: { stringValue: driverLegalName },
               companyId: { stringValue: companyId },
+              shiftId: { stringValue: shiftIdForPayload },
               truckNumber: { stringValue: payload.truckNumber || '' },
               jobActivityName: { stringValue: payload.jobActivityName || '' },
               pusher: { stringValue: payload.pusher || '' },

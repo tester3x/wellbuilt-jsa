@@ -21,6 +21,13 @@ export default function StartScreen() {
         if (params.hash && params.name) {
           await ssoLogin(params.hash as string, params.name as string);
         }
+        // shiftId — scopes the JSA to the current shift. WB S mints it at
+        // Start Shift; closing a shift clears it; the next shift gets a new
+        // id so the JSA doesn't bleed across shifts. Stored under the same
+        // key WB T uses so all three apps look at the same scope.
+        if (params.shiftId) {
+          await AsyncStorage.setItem('wellbuilt-current-shift-id', String(params.shiftId));
+        }
         // Store params for auto-fill — home screen reads these on mount
         await AsyncStorage.setItem('jsa_autofill', JSON.stringify(params));
         // Persist returnTo separately so signoff can prompt "Return to Work" even

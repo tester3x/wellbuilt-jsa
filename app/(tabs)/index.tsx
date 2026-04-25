@@ -211,11 +211,24 @@ export default function JsaHomeScreen() {
     }).catch(() => {});
   }, [hydrationDone, activeJsas]);
 
+  // Read the active shiftId — minted by WB S at Start Shift, passed via
+  // SSO deep link in start.tsx. JSA scope is per-shift now: each shift's
+  // JSA + its day-status doc are keyed by shiftId, so closing a shift
+  // freezes its JSA and the next shift starts a fresh one. Falls back to
+  // today's UTC date when no shiftId is present (legacy / standalone).
+  const getJsaScope = React.useCallback(async (): Promise<string> => {
+    try {
+      const id = await AsyncStorage.getItem('wellbuilt-current-shift-id');
+      if (id) return id;
+    } catch {}
+    return new Date().toISOString().slice(0, 10);
+  }, []);
+
   // Reusable function to fetch jsa_day_status and update wells/locations
   const fetchJsaDayStatus = React.useCallback(async () => {
     if (!session?.passcodeHash) return;
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const docId = `${session.passcodeHash}_${todayStr}`;
+    const scope = await getJsaScope();
+    const docId = `${session.passcodeHash}_${scope}`;
     const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
     const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
 
@@ -380,15 +393,37 @@ export default function JsaHomeScreen() {
         } catch {}
       }
 
-      // 1. Load persisted active JSA tabs
+      // Current shift scope — only saves tagged with this shiftId become
+      // active tabs. Old-shift saves stay in History but don't pollute
+      // today's active JSA list.
+      const scope = await getJsaScope();
+      const today = new Date().toISOString().slice(0, 10);
+      const matchesScope = (save: any): boolean => {
+        const sShift = typeof save?.shiftId === 'string' ? save.shiftId : '';
+        if (sShift) return sShift === scope;
+        // Legacy save without shiftId — match only if scope is itself a date
+        // (no shift active) AND the save's date matches today.
+        const d = typeof save?.date === 'string' ? save.date : '';
+        return scope === today && d === today;
+      };
+
+      // 1. Load persisted active JSA tabs (filter to current scope)
       let existing: ActiveJsa[] = [];
       const persistedRaw = await AsyncStorage.getItem('@jsa/activeJsas');
       if (persistedRaw) {
         const parsed = JSON.parse(persistedRaw);
-        if (Array.isArray(parsed)) existing = parsed;
+        if (Array.isArray(parsed)) {
+          existing = parsed.filter((j: any) => {
+            // Tabs created post-rollout carry their save's shiftId on
+            // savedData; legacy tabs fall through to date matching.
+            const data = j?.savedData;
+            if (!data) return false;
+            return matchesScope(data);
+          });
+        }
       }
 
-      // 2. Load saves and merge any new ones (skip dismissed)
+      // 2. Load saves and merge any new ones (skip dismissed, skip out-of-scope)
       const savesRaw = await AsyncStorage.getItem(STORAGE_KEYS.saves);
       const saves = savesRaw ? JSON.parse(savesRaw) : [];
       if (Array.isArray(saves)) {
@@ -396,6 +431,7 @@ export default function JsaHomeScreen() {
         for (const save of saves) {
           if (existingIds.has(save.id)) continue;
           if (dismissedIdsRef.current.has(save.id)) continue;
+          if (!matchesScope(save)) continue;
           const wellsList = Array.isArray(save.wells) ? save.wells.map((w: any) =>
             typeof w === 'string' ? { name: w, operator: '', county: '' } : w
           ) : [];
@@ -417,43 +453,54 @@ export default function JsaHomeScreen() {
         setJsaPdfUrl(existing[0].pdfUrl || null);
         // If we were in new-JSA mode, switch to the newest
         if (activeJsaIndex === -1) setActiveJsaIndex(existing.length - 1);
+      } else {
+        // No matching saves for this shift — make sure the form clears any
+        // residual state from a previous shift's JSA.
+        setActiveJsas([]);
+        setJsaCompletedTime(null);
+        setJsaPdfUrl(null);
       }
     } catch {}
     // Signal to the autofill effect that it can safely decide where to route
     // the deep-link params (existing tab vs new form).
     setHydrationDone(true);
-  }, [activeJsaIndex]);
+  }, [activeJsaIndex, getJsaScope]);
 
   // Hydrate on mount AND when screen gains focus (e.g. returning from submit)
   useFocusEffect(
     useCallback(() => { hydrateAllJsas(); }, [hydrateAllJsas])
   );
 
-  // Load today's submitted JSA from STORAGE_KEYS.saves. Match strategy
-  // mirrors WB T's yesterday-UTC fallback: `date === todayUTC || dateYesterdayUTC`.
-  // At 6 PM Mountain, toISOString rolls to tomorrow-UTC while the save still
-  // carries today's Mountain date; the fallback catches that. We do NOT
-  // window on timestamp-age (would misattribute yesterday's afternoon JSA
-  // to this morning). Saves list is newest-first (signoff prepends), so
-  // Array.find returns the newest match automatically.
+  // Load the current SHIFT's submitted JSA from STORAGE_KEYS.saves. JSA is
+  // per-shift now, not per-day: each save is tagged with the shiftId that
+  // was active at submit time, and we only consider saves matching the
+  // current shiftId. Closing a shift (= shiftId clears) → no current-shift
+  // save → user goes back to the empty form. Saves list is newest-first
+  // (signoff prepends), so Array.find returns the newest match
+  // automatically. Legacy saves without shiftId fall back to date matching
+  // so old data still surfaces during the rollout window.
   const loadTodaysSave = React.useCallback(async () => {
     try {
       const stored = await AsyncStorage.getItem(STORAGE_KEYS.saves);
       if (!stored) { setTodaysJsaSave(null); return; }
       const list = JSON.parse(stored);
       if (!Array.isArray(list) || list.length === 0) { setTodaysJsaSave(null); return; }
+      const scope = await getJsaScope();
       const today = new Date().toISOString().slice(0, 10);
-      const yest = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const match = list.find((s: any) => {
+        const sShift = typeof s?.shiftId === 'string' ? s.shiftId : '';
+        if (sShift) return sShift === scope;
+        // Legacy save (no shiftId) — only match if no shift is active OR if
+        // its date matches today AND scope is itself a date (no shiftId).
         const d = typeof s?.date === 'string' ? s.date : '';
-        return d === today || d === yest;
+        return scope === today && d === today;
       });
       setTodaysJsaSave(match || null);
     } catch (err) {
       console.warn('[JSA] loadTodaysSave failed:', err);
       setTodaysJsaSave(null);
     }
-  }, []);
+  }, [getJsaScope]);
   useEffect(() => { loadTodaysSave(); }, [loadTodaysSave]);
   useFocusEffect(useCallback(() => { loadTodaysSave(); }, [loadTodaysSave]));
   useEffect(() => {
