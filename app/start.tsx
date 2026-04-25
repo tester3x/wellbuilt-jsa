@@ -27,6 +27,9 @@ export default function StartScreen() {
         // key WB T uses so all three apps look at the same scope.
         if (params.shiftId) {
           await AsyncStorage.setItem('wellbuilt-current-shift-id', String(params.shiftId));
+          console.log('[JSA-SSO] shiftId persisted via /start:', params.shiftId);
+        } else {
+          console.warn('[JSA-SSO] /start route — NO shiftId in URL params — JSA scope will fall back to date');
         }
         // Store params for auto-fill — home screen reads these on mount
         await AsyncStorage.setItem('jsa_autofill', JSON.stringify(params));

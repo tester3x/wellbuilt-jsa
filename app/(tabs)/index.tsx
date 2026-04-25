@@ -212,16 +212,23 @@ export default function JsaHomeScreen() {
   }, [hydrationDone, activeJsas]);
 
   // Read the active shiftId — minted by WB S at Start Shift, passed via
-  // SSO deep link in start.tsx. JSA scope is per-shift now: each shift's
-  // JSA + its day-status doc are keyed by shiftId, so closing a shift
-  // freezes its JSA and the next shift starts a fresh one. Falls back to
-  // today's UTC date when no shiftId is present (legacy / standalone).
+  // SSO deep link in start.tsx / login.tsx. JSA scope is per-shift now:
+  // each shift's JSA + its day-status doc are keyed by shiftId, so
+  // closing a shift freezes its JSA and the next shift starts a fresh
+  // one. Falls back to today's UTC date when no shiftId is present
+  // (legacy / standalone). Logs which path was taken so post-mortems
+  // on field-test JSA bleed can identify whether the fallback was hit.
   const getJsaScope = React.useCallback(async (): Promise<string> => {
     try {
       const id = await AsyncStorage.getItem('wellbuilt-current-shift-id');
-      if (id) return id;
+      if (id) {
+        console.log('[JSA-scope] resolved=shiftId scope=' + id + ' fallbackUsed=false');
+        return id;
+      }
     } catch {}
-    return new Date().toISOString().slice(0, 10);
+    const dateScope = new Date().toISOString().slice(0, 10);
+    console.warn('[JSA-scope] resolved=date scope=' + dateScope + ' fallbackUsed=true (no shiftId in AsyncStorage)');
+    return dateScope;
   }, []);
 
   // Reusable function to fetch jsa_day_status and update wells/locations

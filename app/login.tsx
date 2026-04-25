@@ -1,10 +1,16 @@
 // app/login.tsx
-// SSO deep link handler — receives hash + name from WB Suite hub app
-// URL: jsaapp://login?hash={passcodeHash}&name={displayName}
+// SSO deep link handler — receives hash + name + shiftId from WB Suite hub app.
+// URL: jsaapp://login?hash={passcodeHash}&name={displayName}&shiftId={shiftId}
 //
 // This route exists solely so Expo Router can match the deep link URL.
 // It extracts the SSO params and delegates to AuthContext.ssoLogin(),
 // then redirects to the main app.
+//
+// shiftId capture is CRITICAL — without it WB JSA falls back to a
+// date-keyed JSA scope, which causes the previous shift's JSA to bleed
+// into the new shift and blocks WB S's banner from clearing. Field
+// failure 4/25/2026: this was the primary entry point users actually
+// hit, but only /start captured shiftId. Now both routes do.
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -14,7 +20,13 @@ import { useAuth } from './contexts/AuthContext';
 
 export default function SSOLoginRoute() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ hash?: string; name?: string; truck?: string; trailer?: string }>();
+  const params = useLocalSearchParams<{
+    hash?: string;
+    name?: string;
+    truck?: string;
+    trailer?: string;
+    shiftId?: string;
+  }>();
   const { ssoLogin, isAuthenticated } = useAuth();
   const [status, setStatus] = useState<'validating' | 'error'>('validating');
   const [errorMsg, setErrorMsg] = useState('');
@@ -39,9 +51,20 @@ export default function SSOLoginRoute() {
       return;
     }
 
-    console.log('[JSA-SSO] Validating SSO for:', name);
+    console.log('[JSA-SSO] Validating SSO for:', name, 'shiftId:', params.shiftId || '(none)');
 
     try {
+      // shiftId — scopes JSA to the active shift. Captured BEFORE ssoLogin
+      // so that downstream JSA reads/writes during the auth flow already
+      // see the correct scope. Without this, WB JSA falls back to today's
+      // UTC date and writes a doc that bleeds into the previous shift.
+      if (params.shiftId) {
+        await AsyncStorage.setItem('wellbuilt-current-shift-id', String(params.shiftId));
+        console.log('[JSA-SSO] shiftId persisted:', params.shiftId);
+      } else {
+        console.warn('[JSA-SSO] NO shiftId in URL params — JSA scope will fall back to date');
+      }
+
       // Store vehicle info from SSO params for the home screen
       if (params.truck) await AsyncStorage.setItem('@jsa/ssoTruck', params.truck);
       if (params.trailer) await AsyncStorage.setItem('@jsa/ssoTrailer', params.trailer);
