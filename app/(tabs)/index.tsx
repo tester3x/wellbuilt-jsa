@@ -32,7 +32,7 @@ import {
   preloadCompanyWells,
   WellRecord,
 } from "../../services/wellData";
-import { fetchDriverProfile } from "../../services/driverAuth";
+import { fetchDriverProfile, getDriverSession } from "../../services/driverAuth";
 import { resolveActivity } from "../../components/jsa/locationActivity";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -324,7 +324,8 @@ export default function JsaHomeScreen() {
             if (r.document) docs.push(r.document);
           }
         }
-        console.log(`[JSA-fetch] mode=sso shiftId=${shiftIdInStorage} matchedDocs=${docs.length}`);
+        console.log(`[JSA-current-shift] mode=sso shiftId=${shiftIdInStorage} driverHash=${session.passcodeHash.slice(0, 8)}...`);
+        console.log(`[JSA-current-shift] matchedStatusDocs=${docs.length}`);
       } else {
         // Standalone mode: single-doc fetch by today's UTC date.
         const dateScope = new Date().toISOString().slice(0, 10);
@@ -340,7 +341,7 @@ export default function JsaHomeScreen() {
           const d = await resp.json();
           if (d?.fields) docs.push(d);
         }
-        console.log(`[JSA-fetch] mode=standalone date=${dateScope} found=${docs.length}`);
+        console.log(`[JSA-current-shift] mode=standalone date=${dateScope} matchedStatusDocs=${docs.length}`);
       }
 
       if (docs.length === 0) return;
@@ -384,7 +385,10 @@ export default function JsaHomeScreen() {
           }
         }
       }
-      console.log(`[JSA-fetch] merged jsaCompleted=${jsaCompletedToday} totalStamped=${allStamped.size}`);
+      const wellsCount = [...allStamped].filter(n => /\d/.test(n)).length;
+      const locsCount = allStamped.size - wellsCount;
+      console.log(`[JSA-current-shift] merged locations=${locsCount} wells=${wellsCount}`);
+      console.log(`[JSA-current-shift] existingSubmitted=${jsaCompletedToday}`);
 
       // Check completion status — if JSA signed in Firestore but no active JSAs loaded, hydrate from saved data
       if (jsaCompletedToday) {
@@ -601,26 +605,138 @@ export default function JsaHomeScreen() {
   // so old data still surfaces during the rollout window.
   const loadTodaysSave = React.useCallback(async () => {
     try {
+      const shiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+      const isShiftMode = !!shiftId;
+
+      // Try local AsyncStorage first — fast path for the same-device same-day case.
       const stored = await AsyncStorage.getItem(STORAGE_KEYS.saves);
-      if (!stored) { setTodaysJsaSave(null); return; }
-      const list = JSON.parse(stored);
-      if (!Array.isArray(list) || list.length === 0) { setTodaysJsaSave(null); return; }
-      const scope = await getJsaScope();
+      const list = stored ? JSON.parse(stored) : [];
       const today = new Date().toISOString().slice(0, 10);
-      const match = list.find((s: any) => {
-        const sShift = typeof s?.shiftId === 'string' ? s.shiftId : '';
-        if (sShift) return sShift === scope;
-        // Legacy save (no shiftId) — only match if no shift is active OR if
-        // its date matches today AND scope is itself a date (no shiftId).
-        const d = typeof s?.date === 'string' ? s.date : '';
-        return scope === today && d === today;
+
+      let match: any = null;
+      if (Array.isArray(list) && list.length > 0) {
+        match = list.find((s: any) => {
+          const sShift = typeof s?.shiftId === 'string' ? s.shiftId : '';
+          if (isShiftMode) return sShift === shiftId;
+          // Standalone: legacy date matching.
+          const d = typeof s?.date === 'string' ? s.date : '';
+          return d === today;
+        });
+      }
+
+      if (match) {
+        console.log(`[JSA-current-shift] loadTodaysSave hit=local id=${match.id} shiftId=${match.shiftId || '(none)'}`);
+        setTodaysJsaSave(match);
+        return;
+      }
+
+      // SSO mode + no local match: fall back to a Firestore query for any
+      // submitted jsas/{id} doc tagged with this shiftId. Fresh APK installs
+      // have empty local saves but the server may have a submitted JSA from
+      // an earlier device or session. Synthesize a save-shaped object so the
+      // existing openTodaysJsa / auto-route paths work unchanged.
+      if (!isShiftMode) {
+        console.log('[JSA-current-shift] loadTodaysSave miss=local mode=standalone');
+        setTodaysJsaSave(null);
+        return;
+      }
+
+      const session = await getDriverSession().catch(() => null);
+      const driverHash = session?.passcodeHash;
+      if (!driverHash) {
+        setTodaysJsaSave(null);
+        return;
+      }
+
+      const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
+      const BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
+      const queryBody = {
+        structuredQuery: {
+          from: [{ collectionId: 'jsas' }],
+          where: {
+            compositeFilter: {
+              op: 'AND',
+              filters: [
+                { fieldFilter: { field: { fieldPath: 'driverHash' }, op: 'EQUAL', value: { stringValue: driverHash } } },
+                { fieldFilter: { field: { fieldPath: 'shiftId' }, op: 'EQUAL', value: { stringValue: shiftId } } },
+              ],
+            },
+          },
+          limit: 10,
+        },
+      };
+      const resp = await fetch(`${BASE}:runQuery?key=${API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(queryBody),
       });
-      setTodaysJsaSave(match || null);
+      if (!resp.ok) { setTodaysJsaSave(null); return; }
+      const arr: any[] = await resp.json();
+      // Newest by createdAt — convert to a save-shaped synthetic.
+      let best: any = null;
+      let bestTs = '';
+      for (const r of arr) {
+        if (!r.document) continue;
+        const f = r.document.fields || {};
+        const ts = f.createdAt?.timestampValue || f.timestamp?.stringValue || '';
+        if (ts > bestTs) { best = r.document; bestTs = ts; }
+      }
+      if (!best) {
+        console.log(`[JSA-current-shift] loadTodaysSave miss=both shiftId=${shiftId} — no submitted JSA on server`);
+        setTodaysJsaSave(null);
+        return;
+      }
+
+      const f = best.fields || {};
+      const ppeRaw = f.ppeSelected?.stringValue || '{}';
+      const preparedRaw = f.prepared?.stringValue || '{}';
+      const locationAcksRaw = f.locationAcks?.stringValue || '{}';
+      const wellsArr = (f.wells?.arrayValue?.values || [])
+        .map((v: any) => {
+          const fld = v?.mapValue?.fields;
+          if (!fld) return null;
+          return {
+            name: fld.name?.stringValue || '',
+            operator: fld.operator?.stringValue || '',
+            county: fld.county?.stringValue || '',
+            jobType: fld.jobType?.stringValue || '',
+          };
+        })
+        .filter(Boolean);
+      const locationsArr = (f.locations?.arrayValue?.values || [])
+        .map((v: any) => v?.stringValue || v?.mapValue?.fields?.name?.stringValue || '')
+        .filter(Boolean);
+      const synthetic = {
+        id: f.id?.stringValue || best.name?.split('/').pop() || Date.now().toString(),
+        timestamp: f.timestamp?.stringValue || f.createdAt?.timestampValue || '',
+        driverName: f.driverName?.stringValue || '',
+        truckNumber: f.truckNumber?.stringValue || '',
+        jobActivityName: f.jobActivityName?.stringValue || '',
+        pusher: f.pusher?.stringValue || '',
+        wellName: f.wellName?.stringValue || '',
+        wells: wellsArr,
+        otherInfo: f.otherInfo?.stringValue || '',
+        location: f.location?.stringValue || '',
+        task: f.task?.stringValue || '',
+        date: f.date?.stringValue || today,
+        shiftId: f.shiftId?.stringValue || shiftId,
+        ppeSelected: ppeRaw,
+        locations: locationsArr,
+        locationAcks: locationAcksRaw,
+        prepared: preparedRaw,
+        notes: f.notes?.stringValue || '',
+        signature: f.signature?.stringValue || '',
+        signatureImage: f.signatureImage?.stringValue || '',
+        pdfUrl: f.pdfUrl?.stringValue || '',
+        _syntheticFromServer: true,
+      };
+      console.log(`[JSA-current-shift] loadTodaysSave hit=server id=${synthetic.id} shiftId=${shiftId}`);
+      setTodaysJsaSave(synthetic);
     } catch (err) {
       console.warn('[JSA] loadTodaysSave failed:', err);
       setTodaysJsaSave(null);
     }
-  }, [getJsaScope]);
+  }, []);
   useEffect(() => { loadTodaysSave(); }, [loadTodaysSave]);
   useFocusEffect(useCallback(() => { loadTodaysSave(); }, [loadTodaysSave]));
   useEffect(() => {
@@ -684,7 +800,6 @@ export default function JsaHomeScreen() {
   useEffect(() => {
     if (autoRoutedRef.current) return;
     if (!hydrationDone) return;
-    if (!todaysJsaSave) return;
 
     (async () => {
       try {
@@ -704,14 +819,28 @@ export default function JsaHomeScreen() {
           } catch {}
         }
 
-        autoRoutedRef.current = true;
-        console.log('[JSA][auto-route] today\'s JSA exists, routing to viewJsa', { id: todaysJsaSave?.id });
-        openTodaysJsa();
+        // Routing decision per the SSO product rule:
+        //   A. Current shift JSA exists/submitted → route=review (open viewJsa)
+        //   B. Current shift JSA exists but incomplete → route=resume (not yet
+        //      implemented separately; falls through to start because we
+        //      don't currently track partial-state JSAs at the shift level)
+        //   C. No current shift JSA → route=start (stay on home / SSO CTA)
+        if (todaysJsaSave) {
+          autoRoutedRef.current = true;
+          console.log(`[JSA-current-shift] route=review id=${todaysJsaSave?.id} synthetic=${!!todaysJsaSave?._syntheticFromServer}`);
+          openTodaysJsa();
+        } else {
+          // Stay on home tab; SSO CTA card or standalone form will render.
+          // Phase 1 — no resume state tracked, so missing save = start.
+          if (isSsoMode) {
+            console.log('[JSA-current-shift] route=start (no current-shift JSA found)');
+          }
+        }
       } catch (err) {
         console.warn('[JSA][auto-route] check failed:', err);
       }
     })();
-  }, [hydrationDone, todaysJsaSave, openTodaysJsa]);
+  }, [hydrationDone, todaysJsaSave, openTodaysJsa, isSsoMode]);
 
   // Debug: log the open-mode decision on every state change that affects it.
   // Field-test signal for proving how WB JSA resolved the driver's situation:

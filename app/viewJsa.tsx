@@ -177,36 +177,96 @@ export default function ViewJsaScreen() {
       try {
         const session = await getDriverSession();
         const driverHash = session?.passcodeHash;
-        const dateStr = typeof params.date === 'string' ? params.date : '';
-        if (!driverHash || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
-        const docId = `${driverHash}_${dateStr}`;
-        const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/jsa_day_status/${docId}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
-        const resp = await fetch(url);
-        if (!resp.ok) return;
-        const doc = await resp.json();
-        const f = doc.fields || {};
-        // wells[] map array
-        const wellsArr = (f.wells?.arrayValue?.values || [])
-          .map((v: any) => {
+        if (!driverHash) return;
+        const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
+        const BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
+
+        // SSO shift mode: shiftId is parent truth, operator-scoped docs
+        // are child detail buckets. RunQuery jsa_day_status WHERE
+        // shiftId == currentShiftId so the review screen shows wells +
+        // locations from ALL operator docs the driver worked this shift.
+        // Standalone mode: fall back to the legacy date-keyed single doc.
+        const shiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+        const isShiftMode = !!shiftId;
+
+        const docs: any[] = [];
+
+        if (isShiftMode) {
+          const queryBody = {
+            structuredQuery: {
+              from: [{ collectionId: 'jsa_day_status' }],
+              where: {
+                compositeFilter: {
+                  op: 'AND',
+                  filters: [
+                    { fieldFilter: { field: { fieldPath: 'driverHash' }, op: 'EQUAL', value: { stringValue: driverHash } } },
+                    { fieldFilter: { field: { fieldPath: 'shiftId' }, op: 'EQUAL', value: { stringValue: shiftId } } },
+                  ],
+                },
+              },
+              limit: 50,
+            },
+          };
+          const resp = await fetch(`${BASE}:runQuery?key=${API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(queryBody),
+          });
+          if (resp.ok) {
+            const arr: any[] = await resp.json();
+            for (const r of arr) if (r.document) docs.push(r.document);
+          }
+          console.log(`[JSA-current-shift] viewJsa mode=sso shiftId=${shiftId} matchedStatusDocs=${docs.length}`);
+        } else {
+          const dateStr = typeof params.date === 'string' ? params.date : '';
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+          const docId = `${driverHash}_${dateStr}`;
+          const resp = await fetch(`${BASE}/jsa_day_status/${docId}?key=${API_KEY}`);
+          if (resp.ok) {
+            const d = await resp.json();
+            if (d?.fields) docs.push(d);
+          }
+          console.log(`[JSA-current-shift] viewJsa mode=standalone date=${dateStr} found=${docs.length}`);
+        }
+
+        if (docs.length === 0) return;
+
+        // Merge wells/locations across every matched doc, dedup by
+        // case-insensitive trimmed name (preserve first occurrence).
+        const wellsByName = new Map<string, { name: string; type: string; jobType: string; stampedAt: string }>();
+        const locsByName = new Map<string, string>();
+        for (const doc of docs) {
+          const f = doc.fields || {};
+          const wellValues = f.wells?.arrayValue?.values || [];
+          for (const v of wellValues) {
             const fld = v?.mapValue?.fields;
-            if (!fld) return null;
-            return {
-              name: fld.name?.stringValue || '',
+            if (!fld) continue;
+            const name = fld.name?.stringValue || '';
+            if (!name) continue;
+            const key = name.trim().toUpperCase();
+            if (wellsByName.has(key)) continue;
+            wellsByName.set(key, {
+              name,
               type: fld.type?.stringValue || '',
               jobType: fld.jobType?.stringValue || '',
               stampedAt: fld.stampedAt?.timestampValue || fld.stampedAt?.stringValue || '',
-            };
-          })
-          .filter((w: any) => w && w.name);
-        // locations[] is sometimes string[] (legacy) or map[] (newer signoff writes)
-        const locsRaw = f.locations?.arrayValue?.values || [];
-        const locs = locsRaw
-          .map((v: any) => {
-            if (typeof v?.stringValue === 'string') return v.stringValue;
-            if (v?.mapValue?.fields?.name?.stringValue) return v.mapValue.fields.name.stringValue;
-            return '';
-          })
-          .filter(Boolean);
+            });
+          }
+          const locValues = f.locations?.arrayValue?.values || [];
+          for (const v of locValues) {
+            let name = '';
+            if (typeof v?.stringValue === 'string') name = v.stringValue;
+            else if (v?.mapValue?.fields?.name?.stringValue) name = v.mapValue.fields.name.stringValue;
+            if (!name) continue;
+            const key = name.trim().toUpperCase();
+            if (locsByName.has(key)) continue;
+            locsByName.set(key, name);
+          }
+        }
+        const wellsArr = Array.from(wellsByName.values());
+        const locs = Array.from(locsByName.values());
+        console.log(`[JSA-current-shift] viewJsa merged wells=${wellsArr.length} locations=${locs.length}`);
+
         if (!cancelled) {
           setStampedWells(wellsArr);
           setStampedLocations(locs);
