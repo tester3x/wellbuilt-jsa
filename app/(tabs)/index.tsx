@@ -267,18 +267,44 @@ export default function JsaHomeScreen() {
         const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${docId}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
         const resp = await fetch(url);
         let serverShiftId: string | null = null;
+        let shiftEnded = false;
         if (resp.ok) {
           const doc = await resp.json();
           serverShiftId = doc?.fields?.currentShiftId?.stringValue || null;
+          // Detect shift-ended state. WB S confirmArrival appends a
+          // 'logout' event to the shift doc but cannot null the
+          // currentShiftId field (logout's recordShiftEvent doesn't pass
+          // shiftId). So the field stays as the last shift's id even
+          // after end-shift. Without this check, WB JSA reads
+          // currentShiftId, goes SSO mode, and auto-opens the just-
+          // ended shift's JSA — the bug Mike hit by tapping the JSA
+          // card on the day-summary screen.
+          //
+          // Rule: if the LAST event in events[] is type='logout', the
+          // shift has ended. Treat as standalone. A subsequent startShift
+          // appends a new login event AND writes a fresh currentShiftId,
+          // which will once again be the latest event so the gate
+          // re-opens correctly.
+          const events = doc?.fields?.events?.arrayValue?.values || [];
+          if (Array.isArray(events) && events.length > 0) {
+            const last = events[events.length - 1];
+            const lastType = last?.mapValue?.fields?.type?.stringValue;
+            if (lastType === 'logout') {
+              shiftEnded = true;
+            }
+          }
         }
-        if (serverShiftId) {
+        if (serverShiftId && !shiftEnded) {
           await AsyncStorage.setItem('wellbuilt-current-shift-id', serverShiftId);
           console.log('[JSA-shift-refresh] server=' + serverShiftId + ' written to AsyncStorage');
         } else {
           await AsyncStorage.removeItem('wellbuilt-current-shift-id');
-          console.log('[JSA-shift-refresh] server=(none) — AsyncStorage cleared (no active shift)');
+          console.log(
+            '[JSA-shift-refresh] AsyncStorage cleared — shiftEnded=' + shiftEnded +
+            ' serverShiftId=' + (serverShiftId || '(none)'),
+          );
         }
-        return serverShiftId;
+        return shiftEnded ? null : serverShiftId;
       } catch (err) {
         console.warn('[JSA-shift-refresh] failed:', err);
         return null;

@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
     Alert,
     Image,
+    Linking,
     ScrollView,
     StyleSheet,
     Text,
@@ -72,6 +73,39 @@ export default function ViewJsaScreen() {
   const router = useRouter();
   const { t } = useLanguage();
   const { accent } = useTheme();
+
+  // Read launch origin so the header chip can return the driver to the
+  // app that launched WB JSA (WB T / WB S / WB eW). The previous "Home"
+  // button called router.replace("/(tabs)"); when an active-shift JSA
+  // existed, the home tab's operator-aware snap effect immediately
+  // re-focused that JSA tab — visually a flash + bounce. Replacing with
+  // a deep link to the launch origin makes the button do something the
+  // driver can actually feel. If origin is unknown (standalone), the
+  // chip is hidden so back-arrow alone handles dismissal.
+  const [launchScheme, setLaunchScheme] = useState<string | null>(null);
+  const [launchLabel, setLaunchLabel] = useState<string>('');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('jsa_returnTo');
+        if (cancelled) return;
+        switch (raw) {
+          case 'wbs':
+          case 'wellbuilt-suite':
+            setLaunchScheme('wellbuilt-suite://'); setLaunchLabel('Return to WB S'); break;
+          case 'wbt':
+          case 'wellbuilt-tickets':
+            setLaunchScheme('wellbuilt-tickets://'); setLaunchLabel('Return to WB T'); break;
+          case 'wellbuilt-ewallet':
+            setLaunchScheme('wellbuilt-ewallet://'); setLaunchLabel('Return to WB eW'); break;
+          default:
+            setLaunchScheme(null); setLaunchLabel('');
+        }
+      } catch { /* keep default null */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Edit mode state - start in edit mode if editMode param is passed
   const [isEditing, setIsEditing] = useState(params.editMode === "true");
@@ -399,10 +433,24 @@ export default function ViewJsaScreen() {
         options={{
           title: isEditing ? t("Edit JSA") : t("Job Safety Analysis"),
           headerBackTitle: t("Saved JSAs"),
+          // Return-to-origin chip only renders when WB JSA was launched from
+          // another WB app. Standalone launch hides the chip and the user
+          // navigates via the back arrow (already in the header).
           headerRight: () => (
-            <TouchableOpacity onPress={() => router.replace("/(tabs)")} style={{ paddingHorizontal: 10 }}>
-              <Text style={{ color: '#fff', fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
-            </TouchableOpacity>
+            launchScheme ? (
+              <TouchableOpacity
+                onPress={async () => {
+                  try { await Linking.openURL(launchScheme); }
+                  catch (err) { console.warn('[JSA-viewJsa] return-to-origin failed:', err); }
+                }}
+                style={{ paddingHorizontal: 10 }}
+                accessibilityLabel="Return to origin app"
+              >
+                <Text style={{ color: '#fff', fontWeight: "700", fontSize: 14 }}>
+                  {t(launchLabel)}
+                </Text>
+              </TouchableOpacity>
+            ) : null
           ),
         }}
       />
