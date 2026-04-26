@@ -63,8 +63,11 @@ export default function CompletedScreen() {
         const { getDriverSession } = await import('../services/driverAuth');
         const session = await getDriverSession();
         if (!session?.passcodeHash) return;
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const docId = `${session.passcodeHash}_${todayStr}`;
+        // Prefer the current shiftId scope (matches WB T stamps + signoff
+        // writes); fall back to today's UTC date for standalone mode.
+        const shiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+        const scope = shiftId || new Date().toISOString().slice(0, 10);
+        const docId = `${session.passcodeHash}_${scope}`;
         const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/jsa_day_status/${docId}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
         const resp = await fetch(url);
         if (!resp.ok) return;

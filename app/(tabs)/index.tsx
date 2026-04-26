@@ -105,7 +105,7 @@ export default function JsaHomeScreen() {
   // (the saved-JSA record, not draft/resume/form state). This is the source
   // of truth for "did the driver submit a JSA today on this device?",
   // independent of activeJsas tabs (which get dismissed on submit by design).
-  // Drives the persistent "View Today's JSA" banner so drivers can always
+  // Drives the persistent "View Current Shift JSA" banner so drivers can always
   // produce today's JSA for safety, even after submit-dismiss stranded them
   // on the new-form screen.
   const [todaysJsaSave, setTodaysJsaSave] = useState<any | null>(null);
@@ -169,23 +169,24 @@ export default function JsaHomeScreen() {
           AsyncStorage.setItem('jsa_returnTo', String(params.returnTo)).catch(() => {});
         }
 
-        // Well/jobType routing: if a today's JSA tab already exists, focus it
-        // and append the well to its list (deduped). Otherwise populate the new
-        // form the old way.
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const todayTabIdx = activeJsas.findIndex(j => (j.signedAt || '').startsWith(todayStr));
-        if (todayTabIdx >= 0) {
-          setActiveJsaIndex(todayTabIdx);
+        // Well/jobType routing: if an activeJsa tab already exists, focus it
+        // and append the well to its list (deduped). Otherwise populate the
+        // new form the old way. Tab identity is now shift-scoped — hydrateAllJsas
+        // already filters activeJsas to only saves matching the current shiftId,
+        // so "any existing tab" === "current shift's tab". Pick the most recent.
+        const currentShiftTabIdx = activeJsas.length > 0 ? activeJsas.length - 1 : -1;
+        if (currentShiftTabIdx >= 0) {
+          setActiveJsaIndex(currentShiftTabIdx);
           if (params.wellName) {
             setActiveJsas(prev => {
-              const target = prev[todayTabIdx];
+              const target = prev[currentShiftTabIdx];
               if (!target) return prev;
               const already = target.wells.some(
                 w => w.name.trim().toUpperCase() === String(params.wellName).trim().toUpperCase(),
               );
               if (already) return prev;
               const updated = [...prev];
-              updated[todayTabIdx] = {
+              updated[currentShiftTabIdx] = {
                 ...target,
                 wells: [
                   ...target.wells,
@@ -215,10 +216,60 @@ export default function JsaHomeScreen() {
         }
 
         AsyncStorage.removeItem('jsa_autofill').catch(() => {});
-        console.log('[JSA] Auto-filled from deep link — todayTabIdx:', todayTabIdx);
+        console.log('[JSA] Auto-filled from deep link — currentShiftTabIdx:', currentShiftTabIdx);
       } catch {}
     }).catch(() => {});
   }, [hydrationDone, activeJsas]);
+
+  // Authoritative shiftId refresh from server. WB S is the sole shift
+  // authority and writes `currentShiftId` to driver_shifts/{driverId}_{localDate}
+  // at Start Shift. WB JSA's local AsyncStorage shiftId is only written
+  // by SSO entry (start.tsx / login.tsx) — a manual app-icon launch
+  // after WB S started a NEW shift would keep the previous shift's
+  // shiftId, causing every downstream loader (loadTodaysSave,
+  // hydrateAllJsas, fetchJsaDayStatus) to resolve to the wrong shift.
+  //
+  // Pull the live currentShiftId here on every mount/focus/foreground
+  // event. Date is LOCAL (matches WB S shiftTracking.dateString — UTC
+  // would skew across midnight). In-flight cache prevents triple-fetch
+  // when the three loaders all fire on the same launch.
+  const refreshShiftIdInFlight = useRef<Promise<string | null> | null>(null);
+  const refreshShiftIdFromServer = React.useCallback(async (): Promise<string | null> => {
+    if (refreshShiftIdInFlight.current) return refreshShiftIdInFlight.current;
+    const work = (async (): Promise<string | null> => {
+      try {
+        const driverHash = session?.passcodeHash;
+        if (!driverHash) return null;
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const localDate = `${yyyy}-${mm}-${dd}`;
+        const docId = `${driverHash}_${localDate}`;
+        const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${docId}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
+        const resp = await fetch(url);
+        let serverShiftId: string | null = null;
+        if (resp.ok) {
+          const doc = await resp.json();
+          serverShiftId = doc?.fields?.currentShiftId?.stringValue || null;
+        }
+        if (serverShiftId) {
+          await AsyncStorage.setItem('wellbuilt-current-shift-id', serverShiftId);
+          console.log('[JSA-shift-refresh] server=' + serverShiftId + ' written to AsyncStorage');
+        } else {
+          await AsyncStorage.removeItem('wellbuilt-current-shift-id');
+          console.log('[JSA-shift-refresh] server=(none) — AsyncStorage cleared (no active shift)');
+        }
+        return serverShiftId;
+      } catch (err) {
+        console.warn('[JSA-shift-refresh] failed:', err);
+        return null;
+      }
+    })();
+    refreshShiftIdInFlight.current = work;
+    work.finally(() => { refreshShiftIdInFlight.current = null; });
+    return work;
+  }, [session?.passcodeHash]);
 
   // Read the active shiftId — minted by WB S at Start Shift, passed via
   // SSO deep link in start.tsx / login.tsx. JSA scope is per-shift now:
@@ -279,6 +330,9 @@ export default function JsaHomeScreen() {
   // Date-keyed docs are NOT read in SSO mode.
   const fetchJsaDayStatus = React.useCallback(async () => {
     if (!session?.passcodeHash) return;
+    // Refresh shiftId from server first — AsyncStorage is stale across
+    // shift boundaries when WB JSA is launched without a fresh SSO.
+    await refreshShiftIdFromServer();
     const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
     const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
 
@@ -424,7 +478,17 @@ export default function JsaHomeScreen() {
               if (!stored) return;
               const list = JSON.parse(stored);
               if (!Array.isArray(list) || list.length === 0) return;
-              const latest = list[0];
+              // SSO mode: pick the newest save matching THIS shift, not list[0]
+              // (saves are newest-first regardless of shift, so list[0] could
+              // be a previous-shift JSA that hasn't been dismissed yet).
+              // Standalone mode: keep the legacy list[0] behavior.
+              const latest = isShiftMode
+                ? list.find((s: any) => s?.shiftId === shiftIdInStorage)
+                : list[0];
+              if (!latest) {
+                console.log('[JSA-current-shift] hydrate-skip: no save matches shiftId=' + shiftIdInStorage);
+                return;
+              }
               // Respect dismissedIds — signed + dismissed JSAs must not return as active.
               let dismissedIds: Set<string> = dismissedIdsRef.current ?? new Set();
               if (dismissedIds.size === 0) {
@@ -503,7 +567,7 @@ export default function JsaHomeScreen() {
     } catch (err) {
       console.warn('[JSA] Failed to fetch jsa_day_status:', err);
     }
-  }, [session?.passcodeHash]);
+  }, [session?.passcodeHash, refreshShiftIdFromServer]);
 
   // Pre-populate locations from jsa_day_status (jobs done before JSA)
   // If driver deferred JSA and worked jobs, those locations auto-appear here.
@@ -525,6 +589,9 @@ export default function JsaHomeScreen() {
   // Unified JSA hydration — loads persisted tabs + merges new saves
   const hydrateAllJsas = React.useCallback(async () => {
     try {
+      // Refresh shiftId from server first — keeps scope authoritative
+      // even when WB JSA is launched without a fresh SSO deep link.
+      await refreshShiftIdFromServer();
       // Load dismissed IDs
       const dismissedRaw = await AsyncStorage.getItem('@jsa/dismissedIds');
       if (dismissedRaw) {
@@ -605,7 +672,7 @@ export default function JsaHomeScreen() {
     // Signal to the autofill effect that it can safely decide where to route
     // the deep-link params (existing tab vs new form).
     setHydrationDone(true);
-  }, [activeJsaIndex, getJsaScope]);
+  }, [activeJsaIndex, getJsaScope, refreshShiftIdFromServer]);
 
   // Hydrate on mount AND when screen gains focus (e.g. returning from submit)
   useFocusEffect(
@@ -622,6 +689,9 @@ export default function JsaHomeScreen() {
   // so old data still surfaces during the rollout window.
   const loadTodaysSave = React.useCallback(async () => {
     try {
+      // Refresh shiftId from server first — AsyncStorage is stale across
+      // shift boundaries when WB JSA is launched without a fresh SSO.
+      await refreshShiftIdFromServer();
       const shiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
       const isShiftMode = !!shiftId;
 
@@ -753,7 +823,7 @@ export default function JsaHomeScreen() {
       console.warn('[JSA] loadTodaysSave failed:', err);
       setTodaysJsaSave(null);
     }
-  }, []);
+  }, [refreshShiftIdFromServer]);
   useEffect(() => { loadTodaysSave(); }, [loadTodaysSave]);
   useFocusEffect(useCallback(() => { loadTodaysSave(); }, [loadTodaysSave]));
   useEffect(() => {
@@ -1267,9 +1337,10 @@ export default function JsaHomeScreen() {
         // Previously the filter was just `!item.signature` — a submitted JSA with
         // an empty typed name field (image-only signature) slipped through and
         // re-appeared as "Pick Up Where I Left Off" after redirect.
-        const [stored, dismissedRaw] = await Promise.all([
+        const [stored, dismissedRaw, draftShiftId] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.saves),
           AsyncStorage.getItem('@jsa/dismissedIds'),
+          AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null),
         ]);
         let dismissedIds: Set<string> = new Set();
         if (dismissedRaw) {
@@ -1282,11 +1353,15 @@ export default function JsaHomeScreen() {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed)) {
             const today = new Date().toISOString().slice(0, 10);
+            const isDraftShiftMode = !!draftShiftId;
             const matches = parsed.filter(
               (item) =>
                 (item.driverName || "").trim() === name &&
                 (item.truckNumber || "").trim() === truck &&
-                item.date === today &&
+                // SSO mode: must match current shiftId so a previous-shift
+                // unsigned draft doesn't resurface as "Pick Up Where I Left Off".
+                // Standalone mode: legacy date matching.
+                (isDraftShiftMode ? item.shiftId === draftShiftId : item.date === today) &&
                 !dismissedIds.has(String(item.id || '')) &&
                 !item.signature &&
                 !item.signatureImage
@@ -1508,7 +1583,7 @@ export default function JsaHomeScreen() {
           </View>
         </View>
 
-        {/* Persistent "View Today's JSA" entry — shows when a JSA was
+        {/* Persistent "View Current Shift JSA" entry — shows when a JSA was
             submitted today (STORAGE_KEYS.saves has today's record) but no
             tab is currently open (activeJsas empty). Covers the
             post-submit-dismiss case where the driver needs to produce
@@ -1519,7 +1594,7 @@ export default function JsaHomeScreen() {
           <TouchableOpacity
             onPress={openTodaysJsa}
             activeOpacity={0.8}
-            accessibilityLabel={t("View Today's JSA")}
+            accessibilityLabel={t("View Current Shift JSA")}
             style={{
               backgroundColor: '#166534',
               borderRadius: 12,
@@ -1539,7 +1614,7 @@ export default function JsaHomeScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>
-                {t("View Today's JSA")}
+                {t("View Current Shift JSA")}
               </Text>
               <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 }}>
                 {todaysJsaSave?.timestamp
