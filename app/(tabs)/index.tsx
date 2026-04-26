@@ -353,7 +353,11 @@ export default function JsaHomeScreen() {
       let jsaCompletedToday = false;
       let mostRecentCompletedAt: string | null = null;
       let bestPdfUrl = '';
-      const allStamped = new Set<string>();
+      // Map keyed by name (preserves jobType + type from the stamp so the
+      // pre-populator can carry activity through to the form / signoff write
+      // path; previously a Set<string> dropped jobType, leaving JsaSummaryCard
+      // rendering empty `[]` for activity).
+      const allStamped = new Map<string, { jobType: string; type: string }>();
 
       for (const doc of docs) {
         const f = doc.fields;
@@ -372,20 +376,33 @@ export default function JsaHomeScreen() {
         const wellValues = f.wells?.arrayValue?.values;
         if (Array.isArray(wellValues)) {
           for (const v of wellValues) {
-            const name = v?.mapValue?.fields?.name?.stringValue;
-            if (name) allStamped.add(name);
+            const fld = v?.mapValue?.fields;
+            const name = fld?.name?.stringValue;
+            if (!name) continue;
+            if (allStamped.has(name)) continue;
+            allStamped.set(name, {
+              jobType: fld?.jobType?.stringValue || '',
+              type: fld?.type?.stringValue || '',
+            });
           }
         }
         // Legacy location stamps from WB T
         const locValues = f.locations?.arrayValue?.values;
         if (Array.isArray(locValues)) {
           for (const v of locValues) {
-            const name = v?.mapValue?.fields?.name?.stringValue;
-            if (name) allStamped.add(name);
+            const fld = v?.mapValue?.fields;
+            const name = fld?.name?.stringValue;
+            if (!name) continue;
+            if (allStamped.has(name)) continue;
+            allStamped.set(name, {
+              jobType: fld?.jobType?.stringValue || '',
+              type: fld?.type?.stringValue || '',
+            });
           }
         }
       }
-      const wellsCount = [...allStamped].filter(n => /\d/.test(n)).length;
+      const stampedNames = [...allStamped.keys()];
+      const wellsCount = stampedNames.filter(n => /\d/.test(n)).length;
       const locsCount = allStamped.size - wellsCount;
       console.log(`[JSA-current-shift] merged locations=${locsCount} wells=${wellsCount}`);
       console.log(`[JSA-current-shift] existingSubmitted=${jsaCompletedToday}`);
@@ -453,9 +470,9 @@ export default function JsaHomeScreen() {
             const idx = prev.length - 1; // latest JSA
             const current = prev[idx];
             const existingNames = new Set(current.wells.map(w => w.name.toUpperCase()));
-            const newWells = [...allStamped]
+            const newWells = stampedNames
               .filter(name => !existingNames.has(name.toUpperCase()) && /\d/.test(name))
-              .map(name => ({ name, operator: '', county: '' }));
+              .map(name => ({ name, operator: '', county: '', jobType: allStamped.get(name)?.jobType || '' }));
             if (newWells.length === 0) return prev;
             const updated = [...prev];
             updated[idx] = { ...current, wells: [...current.wells, ...newWells] };
@@ -468,14 +485,14 @@ export default function JsaHomeScreen() {
           setHydrationSource('stamped_wells');
           setAddedWells(prev => {
             const existingNames = new Set(prev.map(w => w.name.toUpperCase()));
-            const newWells = [...allStamped]
+            const newWells = stampedNames
               .filter(name => !existingNames.has(name.toUpperCase()) && /\d/.test(name))
-              .map(name => ({ name, operator: '', county: '' }));
+              .map(name => ({ name, operator: '', county: '', jobType: allStamped.get(name)?.jobType || '' }));
             return newWells.length > 0 ? [...prev, ...newWells] : prev;
           });
           setAddedLocations(prev => {
             const existingLocs = new Set(prev.map(l => l.toUpperCase()));
-            const newLocs = [...allStamped]
+            const newLocs = stampedNames
               .filter(name => !existingLocs.has(name.toUpperCase()) && !/\d/.test(name));
             return newLocs.length > 0 ? [...prev, ...newLocs] : prev;
           });
