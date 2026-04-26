@@ -68,6 +68,15 @@ export default function JsaHomeScreen() {
   // Track whether app was opened via deep link (SSO from WB S or WB T)
   const [deepLinked, setDeepLinked] = useState(false);
 
+  // SSO mode = a shiftId is present in AsyncStorage (mint by WB S Start
+  // Shift, propagated via SSO deep link). In SSO mode, WB T is acting as
+  // the JSA secretary — driver does NOT fill out the form fields. They
+  // just read the safety steps and acknowledge. Wells/locations come from
+  // WB T stamps already in jsa_day_status. In standalone mode (no shiftId)
+  // the driver fills the full form and manages their own JSA.
+  const [isSsoMode, setIsSsoMode] = useState(false);
+  const [ssoShiftId, setSsoShiftId] = useState<string | null>(null);
+
   // Multi-JSA: array of active JSAs for today
   type ActiveJsa = {
     id: string;
@@ -231,32 +240,157 @@ export default function JsaHomeScreen() {
     return dateScope;
   }, []);
 
-  // Reusable function to fetch jsa_day_status and update wells/locations
+  // Resolve SSO vs standalone mode on mount + on focus. SSO mode = a
+  // shiftId is in AsyncStorage. Reruns on focus so a logout-and-relaunch
+  // (which clears shiftId) flips back to standalone correctly.
+  const resolveMode = React.useCallback(async () => {
+    try {
+      const id = await AsyncStorage.getItem('wellbuilt-current-shift-id');
+      if (id) {
+        setIsSsoMode(true);
+        setSsoShiftId(id);
+        console.log('[JSA-mode] resolved=sso shiftId=' + id);
+      } else {
+        setIsSsoMode(false);
+        setSsoShiftId(null);
+        console.log('[JSA-mode] resolved=standalone (no shiftId)');
+      }
+    } catch {
+      setIsSsoMode(false);
+      setSsoShiftId(null);
+    }
+  }, []);
+  useEffect(() => { resolveMode(); }, [resolveMode]);
+  useFocusEffect(useCallback(() => { resolveMode(); }, [resolveMode]));
+
+  // Reusable function to fetch jsa_day_status and update wells/locations.
+  //
+  // SSO shift mode (shiftId in AsyncStorage): WB T writes per-operator
+  // docs of the form `{hash}_{shiftId}__{operatorSlug}`. WB JSA's submit
+  // path also writes a doc keyed by scope. Multiple docs can exist for
+  // the same shift — one per operator the driver worked for, plus the
+  // shift-default acknowledgment doc. We MUST runQuery the collection
+  // by `shiftId == currentShiftId` and merge wells[] across every
+  // matching doc; otherwise WB T stamps land in operator docs we never
+  // read, and the home tab shows stale or empty wells.
+  //
+  // Standalone mode (no shiftId): falls back to a single-doc fetch by
+  // today's UTC date — same behavior as before per-shift rollout.
+  // Date-keyed docs are NOT read in SSO mode.
   const fetchJsaDayStatus = React.useCallback(async () => {
     if (!session?.passcodeHash) return;
-    const scope = await getJsaScope();
-    const docId = `${session.passcodeHash}_${scope}`;
     const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
     const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
 
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10000);
-      const resp = await fetch(
-        `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`,
-        { signal: controller.signal },
-      );
-      clearTimeout(timer);
-      if (!resp.ok) return;
+    // Detect SSO shift mode by direct AsyncStorage check (don't go through
+    // getJsaScope which collapses the distinction).
+    const shiftIdInStorage = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+    const isShiftMode = !!shiftIdInStorage;
 
-      const doc = await resp.json();
-      const jsaCompletedToday = doc.fields?.jsaCompleted?.booleanValue === true;
+    try {
+      // Collect docs to merge across.
+      const docs: any[] = [];
+
+      if (isShiftMode) {
+        // RunQuery for every doc with shiftId == currentShiftId — captures
+        // shift-default doc + every operator-scoped doc for the same shift.
+        const queryBody = {
+          structuredQuery: {
+            from: [{ collectionId: 'jsa_day_status' }],
+            where: {
+              compositeFilter: {
+                op: 'AND',
+                filters: [
+                  { fieldFilter: { field: { fieldPath: 'driverHash' }, op: 'EQUAL', value: { stringValue: session.passcodeHash } } },
+                  { fieldFilter: { field: { fieldPath: 'shiftId' }, op: 'EQUAL', value: { stringValue: shiftIdInStorage } } },
+                ],
+              },
+            },
+            limit: 50,
+          },
+        };
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+        const queryResp = await fetch(`${FIRESTORE_BASE}:runQuery?key=${API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(queryBody),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (queryResp.ok) {
+          const queryResults: any[] = await queryResp.json();
+          for (const r of queryResults) {
+            if (r.document) docs.push(r.document);
+          }
+        }
+        console.log(`[JSA-fetch] mode=sso shiftId=${shiftIdInStorage} matchedDocs=${docs.length}`);
+      } else {
+        // Standalone mode: single-doc fetch by today's UTC date.
+        const dateScope = new Date().toISOString().slice(0, 10);
+        const docId = `${session.passcodeHash}_${dateScope}`;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+        const resp = await fetch(
+          `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`,
+          { signal: controller.signal },
+        );
+        clearTimeout(timer);
+        if (resp.ok) {
+          const d = await resp.json();
+          if (d?.fields) docs.push(d);
+        }
+        console.log(`[JSA-fetch] mode=standalone date=${dateScope} found=${docs.length}`);
+      }
+
+      if (docs.length === 0) return;
+
+      // Collapse merged-state across all matched docs:
+      //   jsaCompletedToday = TRUE if ANY doc has jsaCompleted=true
+      //   mostRecentCompletedAt / bestPdfUrl from the latest completed doc
+      //   allStamped = union of every doc's wells[] and locations[]
+      let jsaCompletedToday = false;
+      let mostRecentCompletedAt: string | null = null;
+      let bestPdfUrl = '';
+      const allStamped = new Set<string>();
+
+      for (const doc of docs) {
+        const f = doc.fields;
+        if (!f) continue;
+        if (f.jsaCompleted?.booleanValue === true) {
+          jsaCompletedToday = true;
+          const ca = f.jsaCompletedAt?.timestampValue || f.jsaCompletedAt?.stringValue || '';
+          if (ca && (!mostRecentCompletedAt || ca > mostRecentCompletedAt)) {
+            mostRecentCompletedAt = ca;
+            const purl = f.pdfUrl?.stringValue || '';
+            if (purl) bestPdfUrl = purl;
+          }
+          if (!bestPdfUrl) bestPdfUrl = f.pdfUrl?.stringValue || '';
+        }
+        // Wells written by JSA app on submit OR WB T stamps
+        const wellValues = f.wells?.arrayValue?.values;
+        if (Array.isArray(wellValues)) {
+          for (const v of wellValues) {
+            const name = v?.mapValue?.fields?.name?.stringValue;
+            if (name) allStamped.add(name);
+          }
+        }
+        // Legacy location stamps from WB T
+        const locValues = f.locations?.arrayValue?.values;
+        if (Array.isArray(locValues)) {
+          for (const v of locValues) {
+            const name = v?.mapValue?.fields?.name?.stringValue;
+            if (name) allStamped.add(name);
+          }
+        }
+      }
+      console.log(`[JSA-fetch] merged jsaCompleted=${jsaCompletedToday} totalStamped=${allStamped.size}`);
 
       // Check completion status — if JSA signed in Firestore but no active JSAs loaded, hydrate from saved data
       if (jsaCompletedToday) {
-        const completedAt = doc.fields?.jsaCompletedAt?.timestampValue || doc.fields?.jsaCompletedAt?.stringValue;
+        const completedAt = mostRecentCompletedAt;
         if (completedAt) setJsaCompletedTime(completedAt);
-        const pdfUrl = doc.fields?.pdfUrl?.stringValue || '';
+        const pdfUrl = bestPdfUrl;
         if (pdfUrl) setJsaPdfUrl(pdfUrl);
 
         // If no active JSAs in state, hydrate from AsyncStorage saves
@@ -299,27 +433,6 @@ export default function JsaHomeScreen() {
           })();
           return prev;
         });
-      }
-
-      // Merge wells/locations from Firestore into the current active JSA
-      const allStamped = new Set<string>();
-
-      // Wells written by JSA app on submit
-      const wellValues = doc.fields?.wells?.arrayValue?.values;
-      if (Array.isArray(wellValues)) {
-        for (const v of wellValues) {
-          const name = v?.mapValue?.fields?.name?.stringValue;
-          if (name) allStamped.add(name);
-        }
-      }
-
-      // Location stamps from WB T (pickup/dropoff)
-      const locValues = doc.fields?.locations?.arrayValue?.values;
-      if (Array.isArray(locValues)) {
-        for (const v of locValues) {
-          const name = v?.mapValue?.fields?.name?.stringValue;
-          if (name) allStamped.add(name);
-        }
       }
 
       // Add new stamps to the current active JSA's wells (or to form addedWells if no active JSA).
@@ -1435,8 +1548,49 @@ export default function JsaHomeScreen() {
           </>
         )}
 
-        {/* Card — hidden when JSA active (unless adding new via + tab) */}
-        {(jsaCompletedToday && activeJsaIndex >= 0) ? null : (
+        {/* SSO mode CTA — shown when shiftId is present (driver came in
+            from WB S / WB T) and no JSA is active yet. WB T acts as the
+            JSA secretary, so the driver doesn't fill out the form — they
+            just read the safety steps and acknowledge. Tapping the
+            button drops them into the same /steps → /ppe → /signoff flow
+            standalone uses, but with empty params (wells/locations come
+            from jsa_day_status stamps written by WB T at job-close). */}
+        {isSsoMode && !jsaCompletedToday && (
+          <View style={[styles.card, { borderColor: accent, borderWidth: 1 }]}>
+            <Text style={styles.cardTitle}>{t("Read & Acknowledge JSA")}</Text>
+            <Text style={styles.cardSubtitle}>
+              {t("Your shift is active. WellBuilt will record each pickup and drop-off automatically as you work. Read the safety steps below to acknowledge today's JSA.")}
+            </Text>
+            <View style={{ marginTop: 12, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 2 }}>{t("Driver")}</Text>
+              <Text style={{ color: colors.textDark, fontSize: 16, fontWeight: '600', marginBottom: 8 }}>{driverName || (session?.legalName || session?.displayName || '')}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 2 }}>{t("Shift")}</Text>
+              <Text style={{ color: colors.textDark, fontSize: 14, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>{ssoShiftId || '—'}</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: accent, marginTop: 16 }]}
+              onPress={() => {
+                router.push({
+                  pathname: '/steps',
+                  params: {
+                    driverName: driverName || (session?.legalName || session?.displayName || ''),
+                    truckNumber: truckNumber || '',
+                    date,
+                    jsaSessionId: Date.now().toString(),
+                  },
+                });
+              }}
+            >
+              <Text style={styles.buttonText}>{t("Read Safety Steps")}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Card — hidden when JSA active (unless adding new via + tab),
+            AND hidden in SSO mode (driver doesn't fill the form — WB T
+            acts as the JSA secretary; the SSO CTA card above takes
+            them straight to /steps). */}
+        {(jsaCompletedToday && activeJsaIndex >= 0) || isSsoMode ? null : (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t("Job Details")}</Text>
           <Text style={styles.cardSubtitle}>
