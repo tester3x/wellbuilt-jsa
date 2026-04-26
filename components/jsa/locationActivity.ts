@@ -53,7 +53,13 @@ export function resolveActivity(
  */
 export function buildLocationActivityRows(
   wells: Array<{ name?: string; jobType?: string } | string | null | undefined>,
-  locations: Array<string | null | undefined>,
+  // Locations may carry their own jobType — drop-offs stamped by WB T's
+  // FlowController (type='dropoff' in jsa_day_status.wells[]) bring the
+  // close-time jobType with them. Treat them through the SAME fallback
+  // chain as wells: row.jobType → form.jobActivityName → form.task →
+  // form.jsaType. Pre-existing string[] callers (signoff.tsx, steps.tsx)
+  // still work — the resolver accepts undefined rows and falls through.
+  locations: Array<{ name?: string; jobType?: string } | string | null | undefined>,
   form: ActivityFormLike,
 ): LocationActivityRow[] {
   const rows: LocationActivityRow[] = [];
@@ -71,13 +77,13 @@ export function buildLocationActivityRows(
   }
   for (const l of locations || []) {
     if (!l) continue;
-    const name = String(l).trim();
+    const name = (typeof l === 'string' ? l : (l?.name || '')).trim();
     if (!name) continue;
-    const activity = resolveActivity(undefined, form);
+    const activity = resolveActivity(typeof l === 'string' ? undefined : l, form);
     if (!activity) {
       console.warn(
         '[JSA][resolvedActivity MISSING] location row has no activity:',
-        JSON.stringify({ name, form }),
+        JSON.stringify({ row: l, form }),
       );
     }
     rows.push({ name, resolvedActivity: activity });

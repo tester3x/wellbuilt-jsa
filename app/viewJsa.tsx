@@ -300,9 +300,19 @@ export default function ViewJsaScreen() {
     return merged;
   }, [wellsListSnapshot, stampedWells]);
 
+  // Locations now carry an optional jobType so stamped drop-offs (SWD, yard)
+  // surface their close-time activity in the JSA review row, not just the
+  // pickup wells. buildLocationActivityRows resolves through the same
+  // fallback chain (row.jobType → form.jobActivityName → form.task) for
+  // both wells and locations.
   const locationsList = useMemo(() => {
-    const merged: string[] = [...locationsListFromParams];
-    const seen = new Set(merged.map((l) => l.trim().toUpperCase()).filter(Boolean));
+    const merged: Array<string | { name: string; jobType?: string }> = [...locationsListFromParams];
+    const seen = new Set(
+      merged
+        .map((l: any) => (typeof l === 'string' ? l : l?.name || ''))
+        .map((n: string) => n.trim().toUpperCase())
+        .filter(Boolean),
+    );
     // Add manually-typed locations from jsa_day_status.locations[]
     for (const l of stampedLocations) {
       const norm = l.trim().toUpperCase();
@@ -310,19 +320,22 @@ export default function ViewJsaScreen() {
       seen.add(norm);
       merged.push(l);
     }
-    // Add any wells stamped as dropoff (SWDs, yards) — these are locations, not pickups
+    // Add any wells stamped as dropoff (SWDs, yards) — these are locations, not pickups.
+    // Carry their jobType forward so the activity tag renders on the row.
     for (const w of stampedWells) {
       if (w.type !== 'dropoff') continue;
       const norm = w.name.trim().toUpperCase();
       if (!norm || seen.has(norm)) continue;
       seen.add(norm);
-      merged.push(w.name);
+      merged.push({ name: w.name, jobType: w.jobType || '' });
     }
     return merged;
   }, [locationsListFromParams, stampedLocations, stampedWells]);
 
   const allLocationsText =
-    locationsList.length > 0 ? locationsList.join(", ") : params.location || "-";
+    locationsList.length > 0
+      ? locationsList.map((l: any) => (typeof l === 'string' ? l : l?.name || '')).filter(Boolean).join(", ")
+      : params.location || "-";
 
   const locationAcks = useMemo(() => {
     try {
@@ -457,11 +470,13 @@ export default function ViewJsaScreen() {
                 <View style={styles.row}>
                   <Text style={styles.label}>{t("Locations")}</Text>
                   <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                    {locationsList.map((l: string, i: number) => {
-                      const locJob = jobActivityName || (params.task as string) || (params.jsaType as string) || '';
+                    {locationsList.map((l: any, i: number) => {
+                      const lName = typeof l === 'string' ? l : (l?.name || '');
+                      const lJob = typeof l === 'string' ? '' : (l?.jobType || '');
+                      const locJob = lJob || jobActivityName || (params.task as string) || (params.jsaType as string) || '';
                       return (
                         <View key={`ed-l-${i}`} style={{ flexDirection: 'row', gap: 8, marginBottom: 2 }}>
-                          <Text style={styles.value} numberOfLines={1}>{l}</Text>
+                          <Text style={styles.value} numberOfLines={1}>{lName}</Text>
                           {locJob ? (
                             <Text style={{ fontSize: 12, color: '#888' }}>{locJob}</Text>
                           ) : null}

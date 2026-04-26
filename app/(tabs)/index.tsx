@@ -93,6 +93,16 @@ export default function JsaHomeScreen() {
   const [hydrationDone, setHydrationDone] = useState(false);
   const autofillConsumedRef = useRef(false);
 
+  // Operator the driver is currently working under, captured from the SSO
+  // deep-link payload (jsa_autofill.operator). Used by the "+" tab guard so
+  // that mid-shift operator changes (oilfield reality: hauler runs for two
+  // operators in one shift) trigger a fresh JSA instead of being blocked by
+  // the previous operator's JSA. Empty string = shift-default scope (single-
+  // operator shift). No persistence — captured once per WB JSA session from
+  // the existing `jsa_autofill` AsyncStorage payload (no new storage). Falls
+  // back to the most-recently-signed JSA's operator if no fresh deep link.
+  const [currentOperator, setCurrentOperator] = useState<string>('');
+
   // Derived: is there at least one active JSA?
   const jsaCompletedToday = activeJsas.length > 0;
   const currentJsa = activeJsas[activeJsaIndex] || null;
@@ -167,6 +177,14 @@ export default function JsaHomeScreen() {
         if (params.returnTo) {
           setDeepLinked(true);
           AsyncStorage.setItem('jsa_returnTo', String(params.returnTo)).catch(() => {});
+        }
+
+        // Capture the deep-link operator into session state so the "+" tab
+        // guard can compare against existing JSAs. WB T already sends this
+        // alongside wellName/jobType. Empty / missing = shift-default scope.
+        if (typeof params.operator === 'string' && params.operator.trim()) {
+          setCurrentOperator(params.operator.trim());
+          console.log('[JSA-operator] captured currentOperator from autofill:', params.operator.trim());
         }
 
         // Well/jobType routing: if an activeJsa tab already exists, focus it
@@ -313,6 +331,56 @@ export default function JsaHomeScreen() {
   }, []);
   useEffect(() => { resolveMode(); }, [resolveMode]);
   useFocusEffect(useCallback(() => { resolveMode(); }, [resolveMode]));
+
+  // Slugify operator names the same way signoff.tsx writes operatorSlug —
+  // jsa_day_status doc keys use this exact transform. Keeps comparison
+  // consistent without introducing a new identity scheme.
+  const slugifyOperator = (s: string): string =>
+    (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+  // Resolve the operator scope this JSA session is operating under. Order:
+  // 1) deep-link autofill (just captured into currentOperator state),
+  // 2) most-recently-signed JSA's operator (covers app-icon reopen with no
+  //    fresh deep link — the latest tab's operator is the driver's last
+  //    known operator).
+  // Empty result = shift-default scope (driver hasn't started a job yet,
+  // or single-operator shift — matches activeJsas with empty operatorSlug).
+  const currentOperatorSlug = React.useMemo(() => {
+    const fromState = slugifyOperator(currentOperator);
+    if (fromState) return fromState;
+    const mostRecent = activeJsas[activeJsas.length - 1];
+    const sd = mostRecent?.savedData;
+    return (sd?.operatorSlug as string) || slugifyOperator(sd?.operator || mostRecent?.wells?.[0]?.operator || '');
+  }, [currentOperator, activeJsas]);
+
+  // Does any existing tab match the current operator? Treats no-operator
+  // (== shift-default scope) as a real value: shift-default JSA matches
+  // shift-default current operator, so single-operator shifts behave
+  // identically to before. A different operator with no matching tab
+  // returns false — "+" stays visible.
+  const hasJsaForCurrentOperator = React.useMemo(() => {
+    return activeJsas.some(j => {
+      const sd = j.savedData;
+      const jSlug = (sd?.operatorSlug as string) || slugifyOperator(sd?.operator || j.wells?.[0]?.operator || '');
+      return jSlug === currentOperatorSlug;
+    });
+  }, [activeJsas, currentOperatorSlug]);
+
+  // Index-snap second-line-of-defense. SSO + form mode (-1) + an existing
+  // JSA matches the current operator → snap to that JSA. If no JSA matches,
+  // leave activeJsaIndex at -1 so the new-JSA form (and "+" tab) remain
+  // accessible — this is the operator-change escape hatch.
+  useEffect(() => {
+    if (!isSsoMode || activeJsaIndex >= 0) return;
+    if (hasJsaForCurrentOperator) {
+      const idx = activeJsas.findIndex(j => {
+        const sd = j.savedData;
+        const jSlug = (sd?.operatorSlug as string) || slugifyOperator(sd?.operator || j.wells?.[0]?.operator || '');
+        return jSlug === currentOperatorSlug;
+      });
+      if (idx >= 0) setActiveJsaIndex(idx);
+    }
+  }, [isSsoMode, hasJsaForCurrentOperator, currentOperatorSlug, activeJsas, activeJsaIndex]);
 
   // Reusable function to fetch jsa_day_status and update wells/locations.
   //
@@ -1668,31 +1736,41 @@ export default function JsaHomeScreen() {
                       </Text>
                     </TouchableOpacity>
                   ))}
-                  {/* + tab for new JSA */}
-                  <TouchableOpacity
-                    onPress={() => {
-                      // Switch to form mode for new JSA
-                      setAddedWells([]);
-                      setAddedLocations([]);
-                      setJobActivityName('');
-                      setPusher('');
-                      setWellName('');
-                      setOtherInfo('');
-                      setDate(new Date().toISOString().slice(0, 10));
-                      // Temporarily hide active JSAs to show form
-                      setActiveJsaIndex(-1);
-                    }}
-                    style={{
-                      paddingHorizontal: 16,
-                      paddingVertical: 10,
-                      backgroundColor: activeJsaIndex === -1 ? '#fff' : '#e5e5e5',
-                      borderBottomLeftRadius: 8,
-                      borderBottomRightRadius: 8,
-                      marginLeft: 2,
-                    }}
-                  >
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: accent }}>+</Text>
-                  </TouchableOpacity>
+                  {/* + tab for new JSA — operator-scoped guard. Hidden ONLY
+                      when SSO shift is active AND a JSA already exists for
+                      the CURRENT operator (compared by slug — same transform
+                      signoff.tsx uses to write operatorSlug into
+                      jsa_day_status doc keys). When operator changes mid-
+                      shift (oilfield reality: hauler runs Slawson at 6 AM,
+                      Hess at noon), no JSA matches the new operator yet, so
+                      "+" stays visible and the driver can sign a fresh JSA.
+                      Standalone mode (no shiftId) is unaffected. */}
+                  {!(isSsoMode && hasJsaForCurrentOperator) && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        // Switch to form mode for new JSA
+                        setAddedWells([]);
+                        setAddedLocations([]);
+                        setJobActivityName('');
+                        setPusher('');
+                        setWellName('');
+                        setOtherInfo('');
+                        setDate(new Date().toISOString().slice(0, 10));
+                        // Temporarily hide active JSAs to show form
+                        setActiveJsaIndex(-1);
+                      }}
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 10,
+                        backgroundColor: activeJsaIndex === -1 ? '#fff' : '#e5e5e5',
+                        borderBottomLeftRadius: 8,
+                        borderBottomRightRadius: 8,
+                        marginLeft: 2,
+                      }}
+                    >
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: accent }}>+</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </ScrollView>
             )}
