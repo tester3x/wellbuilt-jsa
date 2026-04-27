@@ -34,6 +34,7 @@ import {
 } from "../../services/wellData";
 import { fetchDriverProfile, getDriverSession } from "../../services/driverAuth";
 import { resolveActivity } from "../../components/jsa/locationActivity";
+import { wbDiagLog } from "../../services/wbDiagLog";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -287,9 +288,27 @@ export default function JsaHomeScreen() {
           await AsyncStorage.removeItem('wellbuilt-current-shift-id');
           console.log('[JSA-shift-refresh] server=(none) — AsyncStorage cleared (no active shift)');
         }
+        wbDiagLog({
+          area: 'jsa',
+          event: 'shiftId.refreshFromServer',
+          source: 'tabs/index.refreshShiftIdFromServer',
+          result: 'ok',
+          reason: serverShiftId ? 'shiftId resolved from driver_shifts' : 'no active shift on driver_shifts',
+          driverHash,
+          shiftId: serverShiftId || undefined,
+          extra: { localDate, hadShiftId: !!serverShiftId },
+        });
         return serverShiftId;
       } catch (err) {
         console.warn('[JSA-shift-refresh] failed:', err);
+        wbDiagLog({
+          area: 'jsa',
+          event: 'shiftId.refreshFromServer',
+          source: 'tabs/index.refreshShiftIdFromServer',
+          result: 'error',
+          reason: (err as any)?.message || String(err).slice(0, 200),
+          driverHash: session?.passcodeHash,
+        });
         return null;
       }
     })();
@@ -310,11 +329,28 @@ export default function JsaHomeScreen() {
       const id = await AsyncStorage.getItem('wellbuilt-current-shift-id');
       if (id) {
         console.log('[JSA-scope] resolved=shiftId scope=' + id + ' fallbackUsed=false');
+        wbDiagLog({
+          area: 'jsa',
+          event: 'jsaScope.resolved',
+          source: 'tabs/index.getJsaScope',
+          result: 'ok',
+          reason: 'shiftId path',
+          shiftId: id,
+          extra: { fallbackUsed: false, scope: id },
+        });
         return id;
       }
     } catch {}
     const dateScope = new Date().toISOString().slice(0, 10);
     console.warn('[JSA-scope] resolved=date scope=' + dateScope + ' fallbackUsed=true (no shiftId in AsyncStorage)');
+    wbDiagLog({
+      area: 'jsa',
+      event: 'jsaScope.resolved',
+      source: 'tabs/index.getJsaScope',
+      result: 'skipped',
+      reason: 'no shiftId in AsyncStorage — date fallback',
+      extra: { fallbackUsed: true, scope: dateScope },
+    });
     return dateScope;
   }, []);
 
@@ -457,6 +493,17 @@ export default function JsaHomeScreen() {
         }
         console.log(`[JSA-current-shift] mode=sso shiftId=${shiftIdInStorage} driverHash=${session.passcodeHash.slice(0, 8)}...`);
         console.log(`[JSA-current-shift] matchedStatusDocs=${docs.length}`);
+        wbDiagLog({
+          area: 'jsa',
+          event: 'fetchJsaDayStatus.result',
+          source: 'tabs/index.fetchJsaDayStatus',
+          result: 'ok',
+          reason: 'sso shift mode — collection runQuery by shiftId',
+          driverHash: session.passcodeHash,
+          shiftId: shiftIdInStorage || undefined,
+          counts: { matchedDocs: docs.length },
+          extra: { mode: 'sso' },
+        });
       } else {
         // Standalone mode: single-doc fetch by today's UTC date.
         const dateScope = new Date().toISOString().slice(0, 10);
@@ -473,6 +520,16 @@ export default function JsaHomeScreen() {
           if (d?.fields) docs.push(d);
         }
         console.log(`[JSA-current-shift] mode=standalone date=${dateScope} matchedStatusDocs=${docs.length}`);
+        wbDiagLog({
+          area: 'jsa',
+          event: 'fetchJsaDayStatus.result',
+          source: 'tabs/index.fetchJsaDayStatus',
+          result: 'ok',
+          reason: 'standalone date fallback — single-doc fetch',
+          driverHash: session.passcodeHash,
+          counts: { matchedDocs: docs.length },
+          extra: { mode: 'standalone', dateScope, docId },
+        });
       }
 
       if (docs.length === 0) return;
@@ -745,7 +802,30 @@ export default function JsaHomeScreen() {
         setJsaCompletedTime(null);
         setJsaPdfUrl(null);
       }
-    } catch {}
+      wbDiagLog({
+        area: 'jsa',
+        event: 'hydrateAllJsas.result',
+        source: 'tabs/index.hydrateAllJsas',
+        result: 'ok',
+        reason: existing.length > 0 ? 'matched saves found for current scope' : 'no matched saves for current scope',
+        driverHash: session?.passcodeHash,
+        shiftId: scope !== today ? scope : undefined,
+        counts: {
+          matched: existing.length,
+          dismissed: dismissedIdsRef.current.size,
+        },
+        extra: { scope, scopeIsDate: scope === today },
+      });
+    } catch (err) {
+      wbDiagLog({
+        area: 'jsa',
+        event: 'hydrateAllJsas.result',
+        source: 'tabs/index.hydrateAllJsas',
+        result: 'error',
+        reason: (err as any)?.message || String(err).slice(0, 200),
+        driverHash: session?.passcodeHash,
+      });
+    }
     // Signal to the autofill effect that it can safely decide where to route
     // the deep-link params (existing tab vs new form).
     setHydrationDone(true);

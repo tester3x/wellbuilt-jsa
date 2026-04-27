@@ -26,6 +26,7 @@ import {
 } from "../constants/jsaTemplate";
 import { STORAGE_KEYS } from "../constants/storageKeys";
 import { fetchDriverProfile, getDriverSession } from "../services/driverAuth";
+import { wbDiagLog } from "../services/wbDiagLog";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 
@@ -511,11 +512,48 @@ export default function SignoffScreen() {
             if (!resp.ok) {
               const body = await resp.text().catch(() => '');
               console.warn(`[JSA] jsa_day_status write failed: HTTP ${resp.status} ${body.slice(0, 200)}`);
+              wbDiagLog({
+                area: 'jsa',
+                event: 'signoff.dayStatusWrite',
+                source: 'signoff.saveAndGo',
+                result: 'error',
+                reason: `HTTP ${resp.status}`,
+                driverHash,
+                shiftId: shiftIdForPayload || undefined,
+                operatorSlug: operatorSlug || undefined,
+                extra: { docId, scope: scopeForPayload, status: resp.status },
+              });
             } else {
               console.log(`[JSA] jsa_day_status/${docId} written (pdfUrl=${pdfUrl ? 'set' : 'empty'})`);
+              wbDiagLog({
+                area: 'jsa',
+                event: 'signoff.dayStatusWrite',
+                source: 'signoff.saveAndGo',
+                result: 'ok',
+                reason: 'jsa_day_status PATCH succeeded',
+                driverHash,
+                shiftId: shiftIdForPayload || undefined,
+                operatorSlug: operatorSlug || undefined,
+                counts: {
+                  wells: wellsForFirestore.length,
+                  locations: locationsForFirestore.length,
+                },
+                extra: { docId, scope: scopeForPayload, hasPdfUrl: !!pdfUrl },
+              });
             }
           } catch (err) {
             console.warn('[JSA] jsa_day_status write error (non-fatal):', err);
+            wbDiagLog({
+              area: 'jsa',
+              event: 'signoff.dayStatusWrite',
+              source: 'signoff.saveAndGo',
+              result: 'error',
+              reason: (err as any)?.message || String(err).slice(0, 200),
+              driverHash,
+              shiftId: shiftIdForPayload || undefined,
+              operatorSlug: operatorSlug || undefined,
+              extra: { docId, scope: scopeForPayload, threw: true },
+            });
           }
         } else {
           console.warn('[JSA] No driverHash — skipping jsa_day_status + jsas cloud write');
@@ -592,11 +630,48 @@ export default function SignoffScreen() {
             if (!resp.ok) {
               const body = await resp.text().catch(() => '');
               console.warn(`[JSA] jsas/${payload.id} write failed: HTTP ${resp.status} ${body.slice(0, 200)}`);
+              wbDiagLog({
+                area: 'jsa',
+                event: 'signoff.jsasWrite',
+                source: 'signoff.saveAndGo',
+                result: 'error',
+                reason: `HTTP ${resp.status}`,
+                driverHash,
+                shiftId: shiftIdForPayload || undefined,
+                operatorSlug: operatorSlug || undefined,
+                extra: { jsaDocId: payload.id, status: resp.status },
+              });
             } else {
               console.log(`[JSA] jsas/${payload.id} written with linkage (driverHash=${driverHash.slice(0, 8)}..., companyId=${companyId})`);
+              wbDiagLog({
+                area: 'jsa',
+                event: 'signoff.jsasWrite',
+                source: 'signoff.saveAndGo',
+                result: 'ok',
+                reason: 'jsas/{id} PATCH succeeded',
+                driverHash,
+                shiftId: shiftIdForPayload || undefined,
+                operatorSlug: operatorSlug || undefined,
+                counts: {
+                  wells: (payload.wells || []).length,
+                  locations: (payload.locations || []).length,
+                },
+                extra: { jsaDocId: payload.id, companyId },
+              });
             }
           } catch (err) {
             console.warn('[JSA] jsas direct write error (non-fatal):', err);
+            wbDiagLog({
+              area: 'jsa',
+              event: 'signoff.jsasWrite',
+              source: 'signoff.saveAndGo',
+              result: 'error',
+              reason: (err as any)?.message || String(err).slice(0, 200),
+              driverHash,
+              shiftId: shiftIdForPayload || undefined,
+              operatorSlug: operatorSlug || undefined,
+              extra: { jsaDocId: payload.id, threw: true },
+            });
           }
         }
       })();
