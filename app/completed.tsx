@@ -50,6 +50,35 @@ export default function CompletedScreen() {
   const { accent, emergencyContacts: themeEmergencyContacts, companyContacts: themeCompanyContacts, logoUrl } = useTheme();
   const [isExporting, setIsExporting] = useState(false);
 
+  // Return-to-origin chip — same launch-origin lookup viewJsa.tsx uses.
+  // Replaces the misleading "Home" header button which called
+  // router.replace("/(tabs)") and bounced back when an active JSA tab
+  // existed. Standalone launch hides the chip; back-arrow handles dismissal.
+  const [launchScheme, setLaunchScheme] = useState<string | null>(null);
+  const [launchLabel, setLaunchLabel] = useState<string>('');
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('jsa_returnTo');
+        if (cancelled) return;
+        switch (raw) {
+          case 'wbs':
+          case 'wellbuilt-suite':
+            setLaunchScheme('wellbuilt-suite://'); setLaunchLabel('Return to WB S'); break;
+          case 'wbt':
+          case 'wellbuilt-tickets':
+            setLaunchScheme('wellbuilt-tickets://'); setLaunchLabel('Return to WB T'); break;
+          case 'wellbuilt-ewallet':
+            setLaunchScheme('wellbuilt-ewallet://'); setLaunchLabel('Return to WB eW'); break;
+          default:
+            setLaunchScheme(null); setLaunchLabel('');
+        }
+      } catch { /* keep default null */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Auto-sync to Firestore on completion (fire-and-forget)
   React.useEffect(() => {
     syncToCloud().catch(() => {});
@@ -179,9 +208,20 @@ export default function CompletedScreen() {
           title: t("Completed"),
           headerBackTitle: t("Sign Off"),
           headerRight: () => (
-            <TouchableOpacity onPress={() => router.replace("/(tabs)")} style={{ paddingHorizontal: 10 }}>
-              <Text style={{ color: '#fff', fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
-            </TouchableOpacity>
+            launchScheme ? (
+              <TouchableOpacity
+                onPress={async () => {
+                  try { await Linking.openURL(launchScheme); }
+                  catch (err) { console.warn('[JSA-completed] return-to-origin failed:', err); }
+                }}
+                style={{ paddingHorizontal: 10 }}
+                accessibilityLabel="Return to origin app"
+              >
+                <Text style={{ color: '#fff', fontWeight: "700", fontSize: 14 }}>
+                  {t(launchLabel)}
+                </Text>
+              </TouchableOpacity>
+            ) : null
           ),
         }}
       />

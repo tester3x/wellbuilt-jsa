@@ -109,6 +109,21 @@ function AppContent() {
     try {
       const session = await getDriverSession();
       if (!session?.passcodeHash) return;
+      // Skip the unfinished-JSA nag entirely while a shift is active.
+      // The modal is for prior-day compliance ("you forgot to sign yesterday's
+      // JSA — finish or discard with reason"), NOT a mid-shift interrupt.
+      // 4/27 field-test regression: with active per-(shift, operator) docs
+      // legitimately sitting at jsaCompleted=false until signoff, three
+      // ghost JSAs surfaced during normal SSO flow and surfaced the discard
+      // audit prompt. The only path where this modal is appropriate is
+      // standalone WB JSA launch with no active shift in AsyncStorage.
+      const activeShiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+      if (activeShiftId) {
+        console.log('[JSA] skipping unfinished-JSA modal — shift active (shiftId=' + activeShiftId + ')');
+        setUnfinished([]);
+        setShowUnfinished(false);
+        return;
+      }
       const list = await getUnfinishedJsas(session.passcodeHash);
       setUnfinished(list);
       if (list.length > 0) setShowUnfinished(true);
