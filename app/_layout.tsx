@@ -109,18 +109,28 @@ function AppContent() {
     try {
       const session = await getDriverSession();
       if (!session?.passcodeHash) return;
-      // Skip the unfinished-JSA nag entirely while a shift is active.
-      // The modal is for prior-day compliance ("you forgot to sign yesterday's
-      // JSA — finish or discard with reason"), NOT a mid-shift interrupt.
-      // 4/27 field-test regression: with active per-(shift, operator) docs
-      // legitimately sitting at jsaCompleted=false until signoff, three
-      // ghost JSAs surfaced during normal SSO flow and surfaced the discard
-      // audit prompt. The only path where this modal is appropriate is
-      // standalone WB JSA launch with no active shift in AsyncStorage.
+      // Path A (4/28): NEVER auto-surface old unfinished JSAs in fallback
+      // mode (no active shiftId). Off-shift / post-logout / pre-shift
+      // launches must be quiet. The compliance nag was producing false
+      // positives in fallback because old date-keyed docs from prior days
+      // were treated as "active need-to-finish" — but they can't actually
+      // be resumed (only partial state was ever saved) so the prompt had
+      // no useful path forward. Manual recovery (if needed) is a
+      // separate surface, not auto-show.
       const activeShiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
-      if (activeShiftId) {
-        console.log('[JSA] skipping unfinished-JSA modal — shift active (shiftId=' + activeShiftId + ')');
+      if (!activeShiftId) {
+        console.log('[JSA] skipping unfinished-JSA modal — fallback mode (no active shift)');
         setUnfinished([]);
+        setShowUnfinished(false);
+        return;
+      }
+      // Path B (4/28): respect a per-day dismissal flag. "Remind me later"
+      // / close persists for the day so foreground resume / reload doesn't
+      // re-pop the same nag.
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const dismissedDate = await AsyncStorage.getItem('@jsa/unfinishedDismissedDate').catch(() => null);
+      if (dismissedDate === todayStr) {
+        console.log('[JSA] unfinished-JSA modal dismissed for today — skipping');
         setShowUnfinished(false);
         return;
       }
@@ -346,7 +356,13 @@ function AppContent() {
                   }, 0);
                 }
               }}
-              onClose={() => setShowUnfinished(false)}
+              onClose={async () => {
+                // Path B (4/28): persist dismiss for today so foreground/reload
+                // doesn't re-pop the same nag. Naturally re-arms tomorrow.
+                const todayStr = new Date().toISOString().slice(0, 10);
+                await AsyncStorage.setItem('@jsa/unfinishedDismissedDate', todayStr).catch(() => {});
+                setShowUnfinished(false);
+              }}
             />
           )}
 

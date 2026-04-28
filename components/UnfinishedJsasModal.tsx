@@ -159,12 +159,15 @@ export default function UnfinishedJsasModal({
                   </Text>
                 </View>
                 <View style={styles.btnCol}>
-                  <TouchableOpacity
-                    style={styles.resumeBtn}
-                    onPress={() => onResume(j.date, j.wellNames)}
-                  >
-                    <Text style={styles.resumeText}>Resume</Text>
-                  </TouchableOpacity>
+                  {/* Path C (4/28): Resume button removed. The previous Resume
+                      flow only restored date + wellNames into a fresh form —
+                      no signature, no PPE, no acknowledgments — which opened
+                      what looked like a blank screen and misled the driver
+                      into thinking they could "continue" a JSA that was never
+                      actually saved with full state. Discard-with-reason is
+                      the correct compliance path. The signed JSA history
+                      remains accessible via the History screen.
+                      onResume prop kept for type compatibility but unused. */}
                   <TouchableOpacity
                     style={styles.discardBtn}
                     onPress={() => setDiscardingDate(j.date)}
