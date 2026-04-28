@@ -635,6 +635,20 @@ export default function JsaHomeScreen() {
                 } catch {}
               }
               if (latest?.id && dismissedIds.has(latest.id)) return;
+              // Path D guard (2026-04-27): signed JSAs must NEVER re-enter
+              // activeJsas from any path. The hydrateAllJsas filter blocks
+              // the storage-seed path; this guard closes the second
+              // injection path so a signed save can't be pinned back as
+              // active just because Firestore reports jsaCompleted=true
+              // today. The signed JSA is still reachable via History
+              // and the "JSA Completed" banner still renders via
+              // jsaCompletedTime/jsaPdfUrl set above.
+              const sig = typeof latest?.signature === 'string' ? latest.signature.trim() : '';
+              const sigImg = typeof latest?.signatureImage === 'string' ? latest.signatureImage : '';
+              if (sig || sigImg) {
+                console.log('[JSA-current-shift] rehydrate-skip: latest save is signed — Path D guard');
+                return;
+              }
               const wellsList = Array.isArray(latest.wells) ? latest.wells.map((w: any) =>
                 typeof w === 'string' ? { name: w, operator: '', county: '' } : w
               ) : [];
@@ -788,6 +802,19 @@ export default function JsaHomeScreen() {
           });
         }
       }
+
+      // Path D (2026-04-27): signed JSAs are no longer treated as active
+      // tabs. Once a save has a signature OR signatureImage, the shift's
+      // JSA flow is considered complete from this device's view, and the
+      // signed save is reachable only via the History screen — not as a
+      // live editable tab. Resolves the WB S → WB JSA loop where signing
+      // once for a multi-doc shift left the signed JSA pinned as active.
+      existing = existing.filter((j) => {
+        const sd = j.savedData as any;
+        const sig = typeof sd?.signature === 'string' ? sd.signature.trim() : '';
+        const sigImg = typeof sd?.signatureImage === 'string' ? sd.signatureImage : '';
+        return !sig && !sigImg;
+      });
 
       if (existing.length > 0) {
         setActiveJsas(existing);
