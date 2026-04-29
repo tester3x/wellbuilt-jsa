@@ -706,6 +706,105 @@ export default function SignoffScreen() {
                 },
                 extra: { docId, scope: scopeForPayload, hasPdfUrl: !!pdfUrl },
               });
+
+              // MIRROR WRITE — date-scoped jsa_day_status for logout/standalone
+              // fallback. During an active shift, the canonical doc id is
+              // `${driverHash}_${shiftId}` where shiftId starts with YYYY-MM-DD
+              // (e.g. "abc123_2026-04-30_213045"). After logout, WB JSA has no
+              // shiftId in AsyncStorage and falls back to reading
+              // `jsa_day_status/{driverHash}_{localDate}` (e.g.
+              // "abc123_2026-04-30"). Without this mirror, fetchJsaDayStatus
+              // returns matchedDocs=0 and the standalone UI acts like no JSA
+              // exists. This is a compatibility mirror — never the canonical
+              // source. shiftId is captured as `sourceShiftId` (NOT `shiftId`)
+              // so the date doc isn't mistaken for a shift-scoped doc on read.
+              // Skipped when the canonical id already equals the date id (the
+              // pre-shift-mint legacy path where shiftIdForPayload itself is
+              // just YYYY-MM-DD).
+              const dateDocId = `${driverHash}_${jsaDate}`;
+              const mirrorNeeded = dateDocId !== docId;
+              let mirrorResult: 'ok' | 'fail' | 'skipped' = mirrorNeeded ? 'fail' : 'skipped';
+              let mirrorReason = '';
+              if (mirrorNeeded) {
+                try {
+                  const mirrorPatchUrl = `${FIRESTORE_BASE}/jsa_day_status/${dateDocId}?key=${API_KEY}`
+                    + '&updateMask.fieldPaths=driverHash'
+                    + '&updateMask.fieldPaths=driverName'
+                    + '&updateMask.fieldPaths=companyId'
+                    + '&updateMask.fieldPaths=sourceShiftId'
+                    + '&updateMask.fieldPaths=operatorSlug'
+                    + '&updateMask.fieldPaths=operatorName'
+                    + '&updateMask.fieldPaths=date'
+                    + '&updateMask.fieldPaths=dateScope'
+                    + '&updateMask.fieldPaths=jsaCompleted'
+                    + '&updateMask.fieldPaths=jsaCompletedAt'
+                    + '&updateMask.fieldPaths=jsaDocId'
+                    + '&updateMask.fieldPaths=pdfUrl'
+                    + '&updateMask.fieldPaths=wells'
+                    + '&updateMask.fieldPaths=locations'
+                    + '&updateMask.fieldPaths=updatedAt';
+                  const mirrorResp = await fetch(mirrorPatchUrl, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      fields: {
+                        driverHash: { stringValue: driverHash },
+                        driverName: { stringValue: driverLegalName },
+                        companyId: { stringValue: companyId },
+                        sourceShiftId: { stringValue: shiftIdForPayload },
+                        operatorSlug: { stringValue: operatorSlug },
+                        operatorName: { stringValue: operatorForPayload },
+                        date: { stringValue: jsaDate },
+                        dateScope: { stringValue: jsaDate },
+                        jsaCompleted: { booleanValue: true },
+                        jsaCompletedAt: { timestampValue: new Date().toISOString() },
+                        jsaDocId: { stringValue: payload.id },
+                        pdfUrl: { stringValue: pdfUrl },
+                        wells: { arrayValue: { values: wellsForFirestore } },
+                        locations: { arrayValue: { values: locationsForFirestore } },
+                        updatedAt: { timestampValue: new Date().toISOString() },
+                      },
+                    }),
+                  });
+                  if (mirrorResp.ok) {
+                    mirrorResult = 'ok';
+                    console.log(`[JSA] jsa_day_status/${dateDocId} mirror written (sourceShiftId=${shiftIdForPayload})`);
+                  } else {
+                    const body = await mirrorResp.text().catch(() => '');
+                    mirrorReason = `HTTP ${mirrorResp.status} ${body.slice(0, 200)}`;
+                    console.warn(`[JSA] jsa_day_status mirror write failed: ${mirrorReason}`);
+                  }
+                } catch (err) {
+                  mirrorReason = (err as any)?.message || String(err).slice(0, 200);
+                  console.warn('[JSA] jsa_day_status mirror write error (non-fatal):', err);
+                }
+              }
+              wbDiagLog({
+                area: 'jsa',
+                event: 'signoff.dayStatusDateMirrorWrite',
+                source: 'signoff.saveAndGo',
+                result: mirrorResult === 'fail' ? 'error' : 'ok',
+                reason: mirrorResult === 'skipped'
+                  ? 'shift-scoped docId already equals date-scoped docId — mirror skipped'
+                  : (mirrorResult === 'ok'
+                    ? 'date-scoped jsa_day_status mirror write for logout/date fallback'
+                    : mirrorReason || 'mirror write failed'),
+                driverHash,
+                shiftId: shiftIdForPayload || undefined,
+                counts: {
+                  wells: wellsForFirestore.length,
+                  locations: locationsForFirestore.length,
+                },
+                extra: {
+                  companyId,
+                  dateDocId,
+                  shiftDocId: docId,
+                  scope: jsaDate,
+                  sourceShiftId: shiftIdForPayload || null,
+                  hasPdfUrl: !!pdfUrl,
+                  mirrorStatus: mirrorResult,
+                },
+              });
             }
           } catch (err) {
             console.warn('[JSA] jsa_day_status write error (non-fatal):', err);
