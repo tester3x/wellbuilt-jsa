@@ -267,36 +267,72 @@ export default function JsaHomeScreen() {
         const docId = `${driverHash}_${localDate}`;
         const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${docId}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
         const resp = await fetch(url);
+        // Three distinct cases — collapsing them into one destructive
+        // branch is what caused the 4/28 field-test bug where AsyncStorage
+        // shiftId disappeared mid-shift:
+        //   (a) currentShiftId = "<id>"  → shift is active, sync to local
+        //   (b) currentShiftId = ""      → WB S explicitly cleared on logout
+        //                                  (per audit 2026-04-27), shift ended
+        //   (c) field missing / 404 / network error → AMBIGUOUS:
+        //                                  doc may not be written yet, the
+        //                                  recordShiftEvent commit may have
+        //                                  failed silently (GPS denied,
+        //                                  transient network), or the doc is
+        //                                  legacy. Local AsyncStorage minted
+        //                                  by WB S is the truth — DO NOT clear.
+        const docOk = resp.ok;
+        const docExists = docOk;
+        let docHasShiftIdField = false;
         let serverShiftId: string | null = null;
-        if (resp.ok) {
+        let explicitlyEnded = false;
+        if (docOk) {
           const doc = await resp.json();
-          serverShiftId = doc?.fields?.currentShiftId?.stringValue || null;
+          const raw = doc?.fields?.currentShiftId?.stringValue;
+          if (typeof raw === 'string') {
+            docHasShiftIdField = true;
+            if (raw.length > 0) {
+              serverShiftId = raw;
+            } else {
+              explicitlyEnded = true;
+            }
+          }
         }
-        // Field-test 4/27 regression: the post-logout "auto-open last JSA"
-        // guard previously tried to detect shift-ended via a 'logout' event
-        // sweep. That nuked WB JSA's shiftId in the same session the driver
-        // tapped the Day Summary JSA card, which then made hydrateAllJsas +
-        // fetchJsaDayStatus both fall back to the date scope — JSA tabs
-        // disappeared and viewJsa rendered "Location & Activity: -".
-        // Reverted to the simpler "trust currentShiftId" path. Issue 3 (auto-
-        // opening last shift's JSA after end-of-shift) needs a different fix
-        // that doesn't strand the in-session SSO flow.
+
         if (serverShiftId) {
           await AsyncStorage.setItem('wellbuilt-current-shift-id', serverShiftId);
           console.log('[JSA-shift-refresh] server=' + serverShiftId + ' written to AsyncStorage');
-        } else {
+        } else if (explicitlyEnded) {
           await AsyncStorage.removeItem('wellbuilt-current-shift-id');
-          console.log('[JSA-shift-refresh] server=(none) — AsyncStorage cleared (no active shift)');
+          console.log('[JSA-shift-refresh] server explicitly ended shift — AsyncStorage cleared');
+        } else {
+          // Ambiguous server response — preserve whatever AsyncStorage has.
+          const existing = await AsyncStorage.getItem('wellbuilt-current-shift-id');
+          console.log('[JSA-shift-refresh] server=(no signal, ' +
+            (docOk ? 'doc has no currentShiftId field' : `http ${resp.status}`) +
+            ') — preserving AsyncStorage=' + (existing || '(empty)'));
         }
+
         wbDiagLog({
           area: 'jsa',
           event: 'shiftId.refreshFromServer',
           source: 'tabs/index.refreshShiftIdFromServer',
           result: 'ok',
-          reason: serverShiftId ? 'shiftId resolved from driver_shifts' : 'no active shift on driver_shifts',
+          reason: serverShiftId
+            ? 'shiftId resolved from driver_shifts'
+            : explicitlyEnded
+              ? 'shift explicitly ended on server'
+              : 'no signal — preserved AsyncStorage',
           driverHash,
           shiftId: serverShiftId || undefined,
-          extra: { localDate, hadShiftId: !!serverShiftId },
+          extra: {
+            localDate,
+            docId,
+            exists: docExists,
+            httpStatus: resp.status,
+            docHasShiftIdField,
+            explicitlyEnded,
+            hadShiftId: !!serverShiftId,
+          },
         });
         return serverShiftId;
       } catch (err) {
