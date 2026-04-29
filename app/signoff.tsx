@@ -412,26 +412,119 @@ export default function SignoffScreen() {
           console.warn('[JSA] PDF generate/upload failed (non-fatal):', err);
         }
 
-        // Step 2 — jsa_day_status write with pdfUrl in hand. Doc id keyed
-        // by (shiftId, operatorSlug) — each oil company the driver works
-        // in this shift gets its own day-status doc. Falls back to plain
-        // shiftId (or today) when no operator/shift is active.
+        // Step 2 — jsa_day_status write with pdfUrl in hand.
+        //
+        // CANONICAL DOC RULE (post-2026-04-30 final alignment audit):
+        // ONE jsa_day_status doc per (driverHash + shiftId). Doc id is
+        // `${driverHash}_${shiftId}` — operatorSlug is NO LONGER part of
+        // the doc id. Operator + per-job tracking lives on the wells[]
+        // entries (each well has its own jobType/operator metadata) and
+        // in the per-job jsas/{id} sub-collection. This eliminates the
+        // multi-doc "matchedDocs=2" class of bug where closeJob couldn't
+        // tell which doc to read.
+        //
+        // Migration: any pre-existing operator-scoped sibling docs for
+        // this shift are queried and their wells[] + locations[] are
+        // merged into the canonical doc on this PATCH. Siblings are NOT
+        // deleted — they just stop being targeted by future writes and
+        // future reads. (Cleanup can land in a follow-up.)
         if (driverHash) {
           try {
-            const scope = scopeForPayload;
-            const docId = `${driverHash}_${scope}`;
+            const docId = `${driverHash}_${shiftIdForPayload}`;
 
-            // Read existing wells[] + locations[] so WB T-stamped entries aren't clobbered.
+            // Read canonical doc's existing wells/locations (don't clobber
+            // entries WB T already stamped to this canonical doc).
+            // canonicalExistedAtRead = true when the canonical doc was
+            // already present at the start of this signoff call. Used by
+            // the TASK 4 unexpected-duplicate guard below to distinguish
+            // first-signoff sibling-merge (expected once) from a later
+            // signoff that finds siblings reappeared (shouldn't happen).
             let existingWells: any[] = [];
             let existingLocations: any[] = [];
+            let canonicalExistedAtRead = false;
             try {
               const getResp = await fetch(`${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`);
               if (getResp.ok) {
+                canonicalExistedAtRead = true;
                 const doc = await getResp.json();
                 existingWells = doc.fields?.wells?.arrayValue?.values || [];
                 existingLocations = doc.fields?.locations?.arrayValue?.values || [];
               }
             } catch {}
+
+            // Sibling-merge — query any operator-scoped legacy docs for
+            // this shift and roll their wells/locations into the canonical
+            // doc. Idempotent: re-running signoff on a clean canonical doc
+            // is a no-op. Operator-scoped siblings are detected by query
+            // (shiftId field equality) — their docId differs from the
+            // canonical id so they show up as separate runQuery results.
+            const rejectedSiblingIds: string[] = [];
+            try {
+              const queryBody = {
+                structuredQuery: {
+                  from: [{ collectionId: 'jsa_day_status' }],
+                  where: {
+                    compositeFilter: {
+                      op: 'AND',
+                      filters: [
+                        { fieldFilter: { field: { fieldPath: 'driverHash' }, op: 'EQUAL', value: { stringValue: driverHash } } },
+                        { fieldFilter: { field: { fieldPath: 'shiftId' }, op: 'EQUAL', value: { stringValue: shiftIdForPayload } } },
+                      ],
+                    },
+                  },
+                  limit: 50,
+                },
+              };
+              const queryResp = await fetch(`${FIRESTORE_BASE}:runQuery?key=${API_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(queryBody),
+              });
+              if (queryResp.ok) {
+                const arr: any[] = await queryResp.json();
+                const docs = arr.filter(r => r.document);
+                for (const d of docs) {
+                  const docName: string = d.document?.name || '';
+                  const siblingId = docName.split('/').pop() || '';
+                  if (!siblingId || siblingId === docId) continue;
+                  // Sibling doc — pull its wells[] + locations[] forward.
+                  const f = d.document?.fields || {};
+                  const sibWells = f.wells?.arrayValue?.values || [];
+                  const sibLocs = f.locations?.arrayValue?.values || [];
+                  if (sibWells.length || sibLocs.length) {
+                    existingWells = [...existingWells, ...sibWells];
+                    existingLocations = [...existingLocations, ...sibLocs];
+                    rejectedSiblingIds.push(siblingId);
+                  }
+                }
+              }
+            } catch (err) {
+              console.warn('[JSA] sibling-merge runQuery failed (non-fatal):', err);
+            }
+            if (rejectedSiblingIds.length > 0) {
+              console.log(JSON.stringify({
+                tag: '[jsa-align][duplicate-detected]',
+                count: rejectedSiblingIds.length + 1,
+                chosenDocId: docId,
+                rejectedDocIds: rejectedSiblingIds,
+              }));
+              // TASK 4 — unexpected-duplicate. After the first signoff,
+              // sibling-merge runs once and rolls legacy operator-scoped
+              // docs forward into the canonical doc. On EVERY subsequent
+              // signoff for the same shift, sibling-merge should be a
+              // no-op because no new operator-scoped docs are being
+              // written (every site now targets the canonical id). If
+              // the canonical doc already existed at read time AND new
+              // siblings were just discovered, something is still
+              // writing operator-scoped docs — surface it loudly.
+              if (canonicalExistedAtRead) {
+                console.log(JSON.stringify({
+                  tag: '[jsa-align][unexpected-duplicate]',
+                  shiftId: shiftIdForPayload,
+                  count: rejectedSiblingIds.length,
+                }));
+              }
+            }
             // Cross-bucket dedup (TASK 3 from 2026-04-29 alignment audit):
             // a name must NOT appear in both wells[] and locations[] of the
             // same doc. Earlier code only deduped each bucket against its
@@ -499,6 +592,26 @@ export default function SignoffScreen() {
               }));
             const locationsForFirestore = [...existingLocations, ...formLocations];
 
+            // TASK 3 — write-empty-warning. Driver had wells in the form
+            // (wellsList) OR there was existing canonical/sibling content
+            // pre-merge, yet the outgoing array somehow comes out empty.
+            // Should never happen in normal flow (dedup never removes
+            // ALL entries unless they were duplicates of existing ones,
+            // in which case existingWells stays non-empty). Surface it
+            // loudly without blocking the write.
+            const _formWellCount = Array.isArray(wellsList) ? wellsList.length : 0;
+            const _formLocCount = Array.isArray(locations) ? locations.length : 0;
+            const _hadInputs = _formWellCount > 0 || _formLocCount > 0
+              || existingWells.length > 0 || existingLocations.length > 0;
+            if (_hadInputs && wellsForFirestore.length === 0 && locationsForFirestore.length === 0) {
+              console.log(JSON.stringify({
+                tag: '[jsa-align][write-empty-warning]',
+                shiftId: shiftIdForPayload,
+                formWellCount: _formWellCount,
+                outgoingWellCount: wellsForFirestore.length,
+              }));
+            }
+
             const patchUrl = `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`
               + '&updateMask.fieldPaths=driverHash'
               + '&updateMask.fieldPaths=driverName'
@@ -553,19 +666,30 @@ export default function SignoffScreen() {
               });
             } else {
               console.log(`[JSA] jsa_day_status/${docId} written (pdfUrl=${pdfUrl ? 'set' : 'empty'})`);
-              // Structured alignment diagnostic — pairs with WB T's
-              // [JSA-align][stamp.write] and [JSA-align][lookup] logs so
-              // a field log can confirm signoff and closeJob targeted
-              // the same docId with the same scopeSource.
+              // Defensive guard — verify the docId we just PATCHed
+              // matches the canonical `${driverHash}_${shiftId}`. If
+              // not, log a structured mismatch so a field log can flag
+              // any future drift that re-introduces operator-suffix or
+              // otherwise diverges from the expected scope.
+              const _expectedDocId = `${driverHash}_${shiftIdForPayload}`;
+              if (docId !== _expectedDocId) {
+                console.log(JSON.stringify({
+                  tag: '[jsa-align][write-mismatch]',
+                  expectedDocId: _expectedDocId,
+                  actualDocId: docId,
+                  source: 'signoff.saveAndGo',
+                }));
+              }
+              // Canonical-write diagnostic per Apr-30 spec. Single doc
+              // per (driverHash + shiftId); operatorSlug retained as
+              // metadata only, not part of doc id. Counts reported
+              // post-merge (existing + sibling-merged + form additions).
               console.log(JSON.stringify({
-                tag: '[JSA-align][signoff.dayStatusWrite]',
-                scopeUsed: scopeSource,
+                tag: '[jsa-align][write]',
                 docId,
-                shiftIdInStorage: shiftIdInStorage || null,
-                operatorSlug: operatorSlug || null,
+                shiftId: shiftIdForPayload,
                 wellCount: wellsForFirestore.length,
                 locationCount: locationsForFirestore.length,
-                jsaCompleted: true,
               }));
               wbDiagLog({
                 area: 'jsa',

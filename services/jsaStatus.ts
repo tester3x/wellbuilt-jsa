@@ -7,9 +7,19 @@ const FIRESTORE_BASE =
 const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
 
 export interface UnfinishedJsa {
-  date: string; // YYYY-MM-DD
+  id: string; // Firestore doc id (driverHash_scope) — used by the
+              // active-screen filter to dedupe + report which records
+              // were filtered out for which reason.
+  date: string; // YYYY-MM-DD (local-date field on the doc)
+  shiftId: string; // shiftId field on the doc; empty string when the
+                   // doc is a legacy date-keyed record with no shiftId
+                   // (those exist before the per-shift rollout). The
+                   // consumer's strict scope filter rejects empty
+                   // shiftId during an active shift.
   wellCount: number;
   wellNames: string[];
+  discarded?: boolean; // already filtered server-side via the result
+                       // post-filter, exposed for diagnostic logging.
 }
 
 /**
@@ -72,11 +82,17 @@ export async function getUnfinishedJsas(
     return docs
       .map((d: any) => {
         const fields = d.document?.fields || {};
+        // Doc resource name shape: projects/.../documents/jsa_day_status/{docId}
+        const docName: string = d.document?.name || '';
+        const id = docName.split('/').pop() || '';
         const date = fields.date?.stringValue || '';
+        const shiftId = fields.shiftId?.stringValue || '';
         const wellsArr = fields.wells?.arrayValue?.values || [];
         const discarded = fields.discarded?.booleanValue === true;
         return {
+          id,
           date,
+          shiftId,
           wellCount: wellsArr.length,
           wellNames: wellsArr
             .map((v: any) => v?.mapValue?.fields?.name?.stringValue)

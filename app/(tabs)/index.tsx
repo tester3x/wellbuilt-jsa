@@ -1267,19 +1267,55 @@ export default function JsaHomeScreen() {
   const [launchOrigin, setLaunchOrigin] = useState<'wbs' | 'wbt' | 'wbew' | 'standalone'>('standalone');
   const readLaunchOrigin = useCallback(async () => {
     const raw = await AsyncStorage.getItem('jsa_returnTo').catch(() => null);
-    if (!raw) { setLaunchOrigin('standalone'); return; }
-    switch (raw) {
-      case 'wbs':
-      case 'wellbuilt-suite':
-        setLaunchOrigin('wbs'); break;
-      case 'wbt':
-      case 'wellbuilt-tickets':
-        setLaunchOrigin('wbt'); break;
-      case 'wellbuilt-ewallet':
-        setLaunchOrigin('wbew'); break;
-      default:
-        setLaunchOrigin('standalone');
+    let origin: 'wbs' | 'wbt' | 'wbew' | 'standalone';
+    let returnUrl: string;
+    let buttonLabel: string;
+    let fallbackUsed = false;
+    if (!raw) {
+      origin = 'standalone';
+      returnUrl = '(none — staying in WB JSA)';
+      buttonLabel = '(none — Done button)';
+      fallbackUsed = true;
+      setLaunchOrigin('standalone');
+    } else {
+      switch (raw) {
+        case 'wbs':
+        case 'wellbuilt-suite':
+          origin = 'wbs';
+          returnUrl = 'wellbuilt-suite://resume';
+          buttonLabel = 'Return to WB S';
+          break;
+        case 'wbt':
+        case 'wellbuilt-tickets':
+          origin = 'wbt';
+          returnUrl = 'wellbuilt-tickets://resume';
+          buttonLabel = 'Return to WB T';
+          break;
+        case 'wellbuilt-ewallet':
+          origin = 'wbew';
+          returnUrl = 'wellbuilt-ewallet://resume';
+          buttonLabel = 'Return to WB eW';
+          break;
+        default:
+          origin = 'standalone';
+          returnUrl = '(unknown source — fallback to standalone)';
+          buttonLabel = '(none — Done button)';
+          fallbackUsed = true;
+      }
+      setLaunchOrigin(origin);
     }
+    // Diagnostic per Apr-29 follow-up — log the source app + URL + button
+    // label whenever the return chip is reconciled. Pairs with WB T's
+    // [InvoiceModule] launch log so a field test can prove which source
+    // was passed and which button rendered.
+    console.log(JSON.stringify({
+      tag: '[jsa-return][source]',
+      sourceApp: origin,
+      rawReturnTo: raw || null,
+      returnUrl,
+      buttonLabel,
+      fallbackUsed,
+    }));
   }, []);
   useEffect(() => { readLaunchOrigin(); }, [deepLinked, readLaunchOrigin]);
   useFocusEffect(useCallback(() => { readLaunchOrigin(); }, [readLaunchOrigin]));

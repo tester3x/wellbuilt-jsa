@@ -58,6 +58,14 @@ async function checkRtdbLogoutSignal(): Promise<boolean> {
 }
 import { colors } from '../constants/colors';
 
+// Module-scoped session flag — once "Remind me later" is tapped, the
+// unfinished-JSA modal stays suppressed for the remainder of this app
+// process even if the persistent AsyncStorage write loses or the modal
+// re-mounts. Cold-start of the app process resets the flag (intended:
+// at cold start we re-evaluate scope + persisted dismiss). Pairs with
+// the per-shift persistent key written by onClose below.
+let sessionUnfinishedSuppressed = false;
+
 export const unstable_settings = {
   anchor: '(tabs)',
 };
@@ -109,34 +117,65 @@ function AppContent() {
     try {
       const session = await getDriverSession();
       if (!session?.passcodeHash) return;
-      // Path A (4/28): NEVER auto-surface old unfinished JSAs in fallback
-      // mode (no active shiftId). Off-shift / post-logout / pre-shift
-      // launches must be quiet. The compliance nag was producing false
-      // positives in fallback because old date-keyed docs from prior days
-      // were treated as "active need-to-finish" — but they can't actually
-      // be resumed (only partial state was ever saved) so the prompt had
-      // no useful path forward. Manual recovery (if needed) is a
-      // separate surface, not auto-show.
-      const activeShiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
-      if (!activeShiftId) {
-        console.log('[JSA] skipping unfinished-JSA modal — fallback mode (no active shift)');
-        setUnfinished([]);
-        setShowUnfinished(false);
-        return;
-      }
-      // Path B (4/28): respect a per-day dismissal flag. "Remind me later"
-      // / close persists for the day so foreground resume / reload doesn't
-      // re-pop the same nag.
+
       const todayStr = new Date().toISOString().slice(0, 10);
-      const dismissedDate = await AsyncStorage.getItem('@jsa/unfinishedDismissedDate').catch(() => null);
-      if (dismissedDate === todayStr) {
-        console.log('[JSA] unfinished-JSA modal dismissed for today — skipping');
-        setShowUnfinished(false);
-        return;
-      }
+      const activeShiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+
+      // "Remind me later" persistence — keyed by current scope so a new
+      // shift on the same calendar day re-arms the prompt (driver
+      // explicitly started a new shift; we shouldn't carry over the
+      // prior shift's dismissal). Falls back to date keying when no
+      // shift is active.
+      //
+      // Two layers of suppression:
+      //   1. session-level (module-scoped sessionUnfinishedSuppressed)
+      //      — survives modal re-mount within the same app process,
+      //        immune to AsyncStorage write failures.
+      //   2. persistent (AsyncStorage @jsa/unfinishedDismissed:{scope})
+      //      — survives app restart within the same shift/day.
+      const dismissKey = activeShiftId
+        ? `@jsa/unfinishedDismissed:${activeShiftId}`
+        : `@jsa/unfinishedDismissed:date:${todayStr}`;
+      const persistedDismissAt = await AsyncStorage.getItem(dismissKey).catch(() => null);
+      const remindLaterSuppressed = sessionUnfinishedSuppressed || !!persistedDismissAt;
+
       const list = await getUnfinishedJsas(session.passcodeHash);
-      setUnfinished(list);
-      if (list.length > 0) setShowUnfinished(true);
+
+      // Strict scope filter — fixes fresh-install bug where prior-date
+      // unfinished JSAs surfaced during an active shift. The active
+      // screen shows ONLY current-shift records; prior days remain
+      // accessible from the Saved JSAs tab.
+      //
+      //   activeShiftId present → keep j.shiftId === activeShiftId
+      //   activeShiftId absent  → keep j.date    === todayStr
+      //
+      // Records failing the predicate are counted as historicalSuppressed
+      // (not deleted, not auto-discarded — just hidden from the active
+      // surface, accessible via Saved JSAs).
+      const filtered: UnfinishedJsa[] = [];
+      let historicalSuppressed = 0;
+      for (const j of list) {
+        const passes = activeShiftId
+          ? !!j.shiftId && j.shiftId === activeShiftId
+          : j.date === todayStr;
+        if (passes) filtered.push(j);
+        else historicalSuppressed++;
+      }
+
+      const willShow = filtered.length > 0 && !remindLaterSuppressed;
+      console.log(JSON.stringify({
+        tag: '[JSA-unfinished.modal]',
+        totalFetched: list.length,
+        currentScopeShown: filtered.length,
+        historicalSuppressed,
+        remindLaterSuppressed,
+        currentShiftId: activeShiftId || null,
+        currentDate: todayStr,
+        willShow,
+      }));
+
+      setUnfinished(filtered);
+      setShowUnfinished(willShow);
     } catch (err) {
       console.warn('[JSA] checkUnfinishedJsas failed:', err);
     }
@@ -226,7 +265,7 @@ function AppContent() {
           AsyncStorage.setItem('jsa_returnTo', 'wellbuilt-suite').catch(() => {});
         }
 
-        // JSA auto-fill from WB T: jsaapp://start?driverName=...&wellName=...&...
+        // JSA auto-fill from WB T / WB S / WB M: jsaapp://start?driverName=...&wellName=...&returnTo=...
         if (parsed.path === 'start' && parsed.queryParams) {
           console.log('[JSA] Start deep link received with params:', Object.keys(parsed.queryParams));
           // SSO login if hash provided
@@ -235,6 +274,16 @@ function AppContent() {
           }
           // Store params for auto-fill — home screen reads these on mount
           await AsyncStorage.setItem('jsa_autofill', JSON.stringify(parsed.queryParams));
+          // ALSO persist jsa_returnTo here (in addition to (tabs)/index.tsx
+          // line 180 which reads from autofill on hydration). This is the
+          // canonical write path for the source-app return label — landing
+          // here from WB T was previously relying on autofill consumption,
+          // which was gated on autofillConsumedRef and only fired once per
+          // mount. Writing the key immediately at deep-link-arrival makes
+          // the label correct regardless of (tabs) mount state.
+          if (parsed.queryParams.returnTo) {
+            await AsyncStorage.setItem('jsa_returnTo', String(parsed.queryParams.returnTo)).catch(() => {});
+          }
           // Navigate to home tab to start the JSA
           if (router.canDismiss()) router.dismissAll();
           router.replace('/(tabs)');
@@ -269,6 +318,13 @@ function AppContent() {
         if (parsed.queryParams?.hash && parsed.queryParams?.name) {
           // SSO login included — suppress login overlay while auth settles
           await ssoLogin(parsed.queryParams.hash as string, parsed.queryParams.name as string);
+        }
+        // Persist returnTo immediately on cold start too (mirrors warm-
+        // start handler above). start.tsx also writes this, but it only
+        // fires when start.tsx is the routed screen — _layout.tsx warm
+        // start path bypasses start.tsx entirely.
+        if (parsed.queryParams?.returnTo) {
+          await AsyncStorage.setItem('jsa_returnTo', String(parsed.queryParams.returnTo)).catch(() => {});
         }
         setSsoInProgress(false);
         return;
@@ -357,10 +413,21 @@ function AppContent() {
                 }
               }}
               onClose={async () => {
-                // Path B (4/28): persist dismiss for today so foreground/reload
-                // doesn't re-pop the same nag. Naturally re-arms tomorrow.
+                // Two-layer "Remind me later" suppression:
+                //   1. Module-scoped session flag — instant, immune to
+                //      AsyncStorage failure, and short-circuits any
+                //      subsequent re-check within this app process.
+                //   2. Persistent AsyncStorage flag keyed by the
+                //      current scope (shiftId when active, date when
+                //      not) so the suppression survives app restart
+                //      but a NEW shift legitimately re-arms the prompt.
+                sessionUnfinishedSuppressed = true;
                 const todayStr = new Date().toISOString().slice(0, 10);
-                await AsyncStorage.setItem('@jsa/unfinishedDismissedDate', todayStr).catch(() => {});
+                const activeShiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+                const dismissKey = activeShiftId
+                  ? `@jsa/unfinishedDismissed:${activeShiftId}`
+                  : `@jsa/unfinishedDismissed:date:${todayStr}`;
+                await AsyncStorage.setItem(dismissKey, new Date().toISOString()).catch(() => {});
                 setShowUnfinished(false);
               }}
             />
