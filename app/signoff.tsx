@@ -258,10 +258,18 @@ export default function SignoffScreen() {
 
       // shiftId — scopes this JSA to the active shift. WB T / WB JSA local
       // hydration filters saves by shiftId so old shifts' JSAs don't bleed
-      // into a fresh shift. Falls back to today's UTC date when no shift is
-      // active (legacy / standalone mode).
-      const shiftIdForPayload = (await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null))
-        || new Date().toISOString().slice(0, 10);
+      // into a fresh shift.
+      //
+      // ALIGNMENT RULE (post-2026-04-29 audit):
+      //   - shiftId IS in AsyncStorage  → scopeSource='shiftId', use it
+      //   - shiftId is NOT in AsyncStorage → scopeSource='date', use today (legacy)
+      //
+      // The choice is stamped into a diagnostic so a post-mortem can prove
+      // the write side and the close-job read side picked the same scope.
+      const shiftIdInStorage = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+      const dateForPayload = new Date().toISOString().slice(0, 10);
+      const scopeSource: 'shiftId' | 'date' = shiftIdInStorage ? 'shiftId' : 'date';
+      const shiftIdForPayload = shiftIdInStorage || dateForPayload;
 
       // operator — scopes the JSA WITHIN a shift. A driver running for two
       // oil companies in one shift gets two distinct JSAs. Source order:
@@ -424,16 +432,24 @@ export default function SignoffScreen() {
                 existingLocations = doc.fields?.locations?.arrayValue?.values || [];
               }
             } catch {}
-            const existingNames = new Set(
-              existingWells
-                .map((v: any) => v?.mapValue?.fields?.name?.stringValue?.trim().toUpperCase())
-                .filter(Boolean)
-            );
-            const existingLocationNames = new Set(
-              existingLocations
-                .map((v: any) => v?.mapValue?.fields?.name?.stringValue?.trim().toUpperCase())
-                .filter(Boolean)
-            );
+            // Cross-bucket dedup (TASK 3 from 2026-04-29 alignment audit):
+            // a name must NOT appear in both wells[] and locations[] of the
+            // same doc. Earlier code only deduped each bucket against its
+            // own existing entries, so a JSA where the form added "Well A"
+            // to locations[] while WB T already stamped "Well A" to wells[]
+            // ended up with both entries (ghost duplicate). Now we maintain
+            // a single union of "names already in this doc" across both
+            // buckets, and form additions are filtered against that union
+            // — duplicates are dropped pre-storage, not just at UI dedup.
+            const allKnownNames = new Set<string>();
+            for (const v of existingWells) {
+              const n = v?.mapValue?.fields?.name?.stringValue?.trim().toUpperCase();
+              if (n) allKnownNames.add(n);
+            }
+            for (const v of existingLocations) {
+              const n = v?.mapValue?.fields?.name?.stringValue?.trim().toUpperCase();
+              if (n) allKnownNames.add(n);
+            }
 
             const formWells = wellsList
               .map((w: any) => {
@@ -443,7 +459,13 @@ export default function SignoffScreen() {
                   : (w?.jobType || params.jobActivityName || '');
                 return { name, jobType };
               })
-              .filter(w => w.name && !existingNames.has(w.name.trim().toUpperCase()))
+              .filter(w => {
+                const k = w.name?.trim().toUpperCase();
+                if (!k) return false;
+                if (allKnownNames.has(k)) return false;
+                allKnownNames.add(k); // claim the name so locations[] won't take it too
+                return true;
+              })
               .map(w => ({
                 mapValue: {
                   fields: {
@@ -458,7 +480,13 @@ export default function SignoffScreen() {
 
             const formLocations = (Array.isArray(locations) ? locations : [])
               .map((l: any) => (typeof l === 'string' ? l : (l?.name || '')))
-              .filter((name: string) => name && !existingLocationNames.has(name.trim().toUpperCase()))
+              .filter((name: string) => {
+                const k = name?.trim().toUpperCase();
+                if (!k) return false;
+                if (allKnownNames.has(k)) return false;
+                allKnownNames.add(k);
+                return true;
+              })
               .map((name: string) => ({
                 mapValue: {
                   fields: {
@@ -525,6 +553,20 @@ export default function SignoffScreen() {
               });
             } else {
               console.log(`[JSA] jsa_day_status/${docId} written (pdfUrl=${pdfUrl ? 'set' : 'empty'})`);
+              // Structured alignment diagnostic — pairs with WB T's
+              // [JSA-align][stamp.write] and [JSA-align][lookup] logs so
+              // a field log can confirm signoff and closeJob targeted
+              // the same docId with the same scopeSource.
+              console.log(JSON.stringify({
+                tag: '[JSA-align][signoff.dayStatusWrite]',
+                scopeUsed: scopeSource,
+                docId,
+                shiftIdInStorage: shiftIdInStorage || null,
+                operatorSlug: operatorSlug || null,
+                wellCount: wellsForFirestore.length,
+                locationCount: locationsForFirestore.length,
+                jsaCompleted: true,
+              }));
               wbDiagLog({
                 area: 'jsa',
                 event: 'signoff.dayStatusWrite',
