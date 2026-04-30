@@ -25,18 +25,27 @@ import WelcomeModal from '../components/WelcomeModal';
 const FIREBASE_DB = 'https://wellbuilt-sync-default-rtdb.firebaseio.com';
 
 /**
- * Check if WB S wrote a logoutAt signal to RTDB that's newer than our session.
- * Only applies to SSO sessions — manual logins are owned by the driver, not WB S.
+ * Check if WB S wrote a logoutAt signal to RTDB that should fire a cascade
+ * logout for the local session.
+ *
+ * Mirrors WB T's consumed-logoutAt baseline approach (post-2026-04-30
+ * redesign). Each session keeps a `jsa_lastConsumedLogoutAt` baseline
+ * snapshot in SecureStore. ANY logoutAt strictly newer than the baseline
+ * fires the cascade and bumps the baseline so subsequent foregrounds
+ * don't re-fire on the same signal. ISO-8601 sorts lex == chrono so we
+ * compare strings directly.
+ *
+ * Cascade-logout policy (post-2026-04-30): WB S is the global logout
+ * authority for the matching driverHash. Both manual AND SSO sessions
+ * honor the signal — the prior `authMethod !== 'sso'` gate was removed
+ * to match the same change made in WB T (4/27/2026 entry). If a driver
+ * is logged in to JSA on the same hash that WB S logs out, JSA also
+ * logs out, regardless of how JSA was logged in.
  */
 async function checkRtdbLogoutSignal(): Promise<boolean> {
   try {
-    // Only SSO sessions respond to WB S cascade logout
-    const authMethod = await SecureStore.getItemAsync('jsa_authMethod');
-    if (authMethod !== 'sso') return false;
-
     const hash = await SecureStore.getItemAsync('jsa_passcodeHash');
-    const verifiedAt = await SecureStore.getItemAsync('jsa_driverVerifiedAt');
-    if (!hash || !verifiedAt) return false;
+    if (!hash) return false;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
@@ -46,12 +55,26 @@ async function checkRtdbLogoutSignal(): Promise<boolean> {
     clearTimeout(timer);
     if (!resp.ok) return false;
 
-    const logoutAt = await resp.json();
+    const logoutAtRaw = await resp.json();
+    const logoutAt = (typeof logoutAtRaw === 'string' && logoutAtRaw.length > 0) ? logoutAtRaw : null;
     if (!logoutAt) return false;
 
-    const logoutTime = new Date(logoutAt).getTime();
-    const sessionTime = parseInt(verifiedAt, 10);
-    return logoutTime > sessionTime;
+    const baseline = await SecureStore.getItemAsync('jsa_lastConsumedLogoutAt');
+
+    if (!baseline) {
+      // Race window: saveDriverSession's baseline seed never landed
+      // (offline at login). Conservative fallback — compare to NOW.
+      const nowIso = new Date().toISOString();
+      const fireOnSeed = logoutAt > nowIso;
+      await SecureStore.setItemAsync('jsa_lastConsumedLogoutAt', fireOnSeed ? logoutAt : nowIso);
+      return fireOnSeed;
+    }
+
+    const shouldLogout = logoutAt > baseline;
+    if (shouldLogout) {
+      await SecureStore.setItemAsync('jsa_lastConsumedLogoutAt', logoutAt);
+    }
+    return shouldLogout;
   } catch {
     return false;
   }

@@ -280,9 +280,41 @@ export const saveDriverSession = async (
   } else {
     await SecureStore.deleteItemAsync("jsa_legalName");
   }
-  // Track how driver logged in — SSO sessions are owned by WB S (cascade logout applies),
-  // manual sessions are owned by the driver (WB S logout is ignored).
+  // Track how driver logged in. Audit-only post-2026-04-30 — the cascade
+  // logout policy is now driver-hash-scoped regardless of authMethod
+  // (manual + SSO both honor the WB S signal, mirroring WB T).
   if (authMethod) await SecureStore.setItemAsync("jsa_authMethod", authMethod);
+
+  // Cascade-logout baseline: snapshot the current RTDB logoutAt for this
+  // hash so checkRtdbLogoutSignal in _layout.tsx can fire on any
+  // STRICTLY NEWER logoutAt going forward. Best-effort; falls back to
+  // NOW if the seed fetch fails (offline). Stale signals from before
+  // this moment will never fire (they're <= baseline).
+  try {
+    const FIREBASE_DB = 'https://wellbuilt-sync-default-rtdb.firebaseio.com';
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    let baseline: string;
+    try {
+      const resp = await fetch(`${FIREBASE_DB}/drivers/approved/${passcodeHash}/logoutAt.json`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (resp.ok) {
+        const v = await resp.json();
+        baseline = (typeof v === 'string' && v.length > 0) ? v : new Date().toISOString();
+      } else {
+        baseline = new Date().toISOString();
+      }
+    } catch {
+      clearTimeout(timer);
+      baseline = new Date().toISOString();
+    }
+    await SecureStore.setItemAsync('jsa_lastConsumedLogoutAt', baseline);
+  } catch {
+    // Best-effort; if SecureStore write fails, the no-baseline fallback
+    // in checkRtdbLogoutSignal will compare against NOW on first check.
+  }
 
   // Clear any pending registration data
   await clearPendingRegistration();
@@ -413,6 +445,10 @@ export const clearDriverSession = async (): Promise<void> => {
   await SecureStore.deleteItemAsync("jsa_companyName");
   await SecureStore.deleteItemAsync("jsa_legalName");
   await SecureStore.deleteItemAsync("jsa_authMethod");
+  // Cascade-logout baseline — must be cleared so the next login's
+  // saveDriverSession seeds a fresh snapshot from RTDB rather than
+  // carrying forward a stale baseline from the prior session.
+  await SecureStore.deleteItemAsync("jsa_lastConsumedLogoutAt");
   await clearPendingRegistration();
 };
 
