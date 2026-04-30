@@ -1008,14 +1008,55 @@ export default function SignoffScreen() {
   const dismissStack = () => {
     try { if (router.canDismiss()) router.dismissAll(); } catch {}
   };
+  // Map completion-modal origin to the structured action label that goes
+  // into the jsa.returnRouting diagnostic. Single source of truth so the
+  // three handlers below all emit consistent event payloads.
+  const routeAction = (
+    handler: 'stay' | 'return' | 'done'
+  ): 'return_to_wbt' | 'return_to_wbs' | 'return_to_wbew' | 'stay_in_jsa' | 'standalone' => {
+    if (handler === 'stay') return 'stay_in_jsa';
+    if (handler === 'done') return 'standalone';
+    if (completeOrigin === 'wbt') return 'return_to_wbt';
+    if (completeOrigin === 'wbs') return 'return_to_wbs';
+    if (completeOrigin === 'wbew') return 'return_to_wbew';
+    return 'standalone';
+  };
+
   const handleStayInJsa = () => {
     // Staying — but PRESERVE jsa_returnTo so the persistent header chip on
     // the home screen can still deep-link back later.
+    wbDiagLog({
+      area: 'jsa',
+      event: 'jsa.returnRouting',
+      source: 'signoff.handleStayInJsa',
+      result: 'ok',
+      reason: 'driver chose to stay in WB JSA — origin preserved for later return chip',
+      extra: {
+        origin: completeOrigin,
+        returnTo: completeReturnScheme,
+        action: routeAction('stay'),
+      },
+    });
     setShowCompleteModal(false);
     dismissStack();
     router.replace('/(tabs)');
   };
   const handleReturnToOrigin = async () => {
+    const action = routeAction('return');
+    wbDiagLog({
+      area: 'jsa',
+      event: 'jsa.returnRouting',
+      source: 'signoff.handleReturnToOrigin',
+      result: completeReturnScheme ? 'ok' : 'skipped',
+      reason: completeReturnScheme
+        ? `opening ${completeReturnScheme} to return to ${completeOrigin}`
+        : 'no return scheme — fallback to home tabs',
+      extra: {
+        origin: completeOrigin,
+        returnTo: completeReturnScheme,
+        action,
+      },
+    });
     setShowCompleteModal(false);
     await AsyncStorage.removeItem('jsa_returnTo').catch(() => {});
     dismissStack();
@@ -1032,6 +1073,18 @@ export default function SignoffScreen() {
   const handleDoneStandalone = () => {
     // Standalone exit — make sure the driver can always leave the JSA flow
     // cleanly. Dismiss stack, then replace to home tab.
+    wbDiagLog({
+      area: 'jsa',
+      event: 'jsa.returnRouting',
+      source: 'signoff.handleDoneStandalone',
+      result: 'ok',
+      reason: 'standalone exit — no origin app',
+      extra: {
+        origin: 'standalone',
+        returnTo: null,
+        action: routeAction('done'),
+      },
+    });
     setShowCompleteModal(false);
     dismissStack();
     router.replace('/(tabs)');
