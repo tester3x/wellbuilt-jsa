@@ -220,6 +220,10 @@ export default function JsaHomeScreen() {
               return updated;
             });
           }
+          // Mirror the no-active-tab branch: surface the incoming jobType to
+          // the top-level jobActivityName so the validator's hasActivity gate
+          // is satisfied and the warning text reflects reality.
+          if (params.jobType) setJobActivityName(params.jobType);
         } else {
           if (params.wellName) {
             setWellName(params.wellName);
@@ -2429,9 +2433,11 @@ export default function JsaHomeScreen() {
 
               {isNextDisabled && (
                 <Text style={styles.warningText}>
-                  {deepLinked
+                  {!driverName.trim() || !truckNumber.trim()
                     ? t("Fill in driver and truck # to continue.")
-                    : t("Fill in driver, truck #, and a well or location to continue.")}
+                    : (hasWellOrLocation && !hasActivity)
+                      ? t("Enter a Job Type to continue.")
+                      : t("Add a well or location to continue.")}
                 </Text>
               )}
             </>
