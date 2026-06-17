@@ -238,6 +238,43 @@ export default function JsaHomeScreen() {
           if (params.jobType) setJobActivityName(params.jobType);
         }
 
+        // Priority 3 (6/17) — JSA forced-read DIAGNOSTICS ONLY (no behavior change).
+        // Correlates with WB T's jsa.forced_read.open. Reveals which branch the
+        // forced read takes (existing shift tab → read-only summary path; no tab →
+        // new editable form — the long-vs-short screen the field report saw), the
+        // incoming params (today: a single wellName + jobType only, NO shiftId /
+        // operator / disposal / location-list), and — when an existing tab is
+        // focused — that tab's wells[] vs locations[]. The append path above
+        // updates wells[] but leaves locations[] frozen, the suspected cause of
+        // the summary showing only the first location. Lands in dashboard
+        // /admin/diagnostics (app=wbjsa area=jsa).
+        try {
+          const existingTab = currentShiftTabIdx >= 0 ? activeJsas[currentShiftTabIdx] : null;
+          wbDiagLog({
+            area: 'jsa',
+            event: 'jsa.forced_read.resolve',
+            source: '(tabs)/index.tsx autofill',
+            result: 'ok',
+            reason: currentShiftTabIdx >= 0 ? 'existing shift JSA tab focused (summary path)' : 'no existing tab — new editable form',
+            extra: {
+              branch: currentShiftTabIdx >= 0 ? 'existing' : 'new',
+              isSsoMode,
+              jsaCompletedToday,
+              activeJsaIndexBefore: activeJsaIndex,
+              currentShiftTabIdx,
+              incomingWellName: params.wellName ?? null,
+              incomingJobType: params.jobType ?? null,
+              incomingOperator: params.operator ?? null,
+              incomingDisposal: params.disposal ?? null,
+              incomingReturnTo: params.returnTo ?? null,
+              incomingShiftId: params.shiftId ?? null,
+              hadShiftIdParam: !!params.shiftId,
+              allParamKeys: Object.keys(params),
+              existingTabWells: existingTab ? existingTab.wells.map((w: any) => w?.name ?? null) : null,
+              existingTabLocations: existingTab ? (existingTab.locations || []) : null,
+            },
+          });
+        } catch {}
         AsyncStorage.removeItem('jsa_autofill').catch(() => {});
         console.log('[JSA] Auto-filled from deep link — currentShiftTabIdx:', currentShiftTabIdx);
       } catch {}
