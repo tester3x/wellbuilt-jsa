@@ -33,6 +33,8 @@ const getDriverIdentity: any = async () => null;
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'wbt_app_switcher_pos';
+import { normalizeAppRegistryList } from '../utils/normalizeAppRegistry';
+
 const REGISTRY_CACHE_KEY = 'wbt_app_registry_cache';
 const LONG_PRESS_DURATION = 400;
 const DOUBLE_TAP_DELAY = 300;
@@ -100,7 +102,7 @@ const FALLBACK_APPS: AppEntry[] = [
   { id: 'wbm', name: 'WellBuilt Mobile', shortName: 'Mobile', iconUrl: '', deepLinkScheme: 'wellbuilt-mobile', requiredTier: 'free', sortOrder: 1, enabled: true },
   { id: 'wbt', name: 'WaterTicket', shortName: 'Tickets', iconUrl: '', deepLinkScheme: 'wellbuilt-tickets', requiredTier: 'field', sortOrder: 2, enabled: true },
   { id: 'wbjsa', name: 'WB JSA', shortName: 'JSA', iconUrl: '', deepLinkScheme: 'jsaapp', requiredTier: 'free', sortOrder: 3, enabled: true },
-  { id: 'wbew', name: 'WB eQuipment', shortName: 'eQuip', iconUrl: '', deepLinkScheme: 'wbewallet', requiredTier: 'field', sortOrder: 4, enabled: true },
+  { id: 'wbew', name: 'WellBuilt eQuipment', shortName: 'eQuip', iconUrl: '', deepLinkScheme: 'wbequipment', requiredTier: 'field', sortOrder: 4, enabled: true },
 ];
 
 export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getIdentity }: Props) {
@@ -268,7 +270,12 @@ export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getI
         // Try cache first for instant render
         const cached = await AsyncStorage.getItem(REGISTRY_CACHE_KEY);
         if (cached) {
-          setApps(JSON.parse(cached));
+          // 7/30 identity normalization: an OLD cache may still carry legacy
+          // eWallet branding — normalize before render and REWRITE the cache
+          // so offline/restart startups can never resurface it. Idempotent.
+          const normalizedCached = normalizeAppRegistryList(JSON.parse(cached) as AppEntry[]);
+          setApps(normalizedCached);
+          AsyncStorage.setItem(REGISTRY_CACHE_KEY, JSON.stringify(normalizedCached)).catch(() => {});
         }
 
         // Fetch fresh from Firestore if available
@@ -281,11 +288,13 @@ export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getI
               entries.push({ id: d.id, ...data } as AppEntry);
             }
           });
-          entries.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+          // 7/30: normalize BEFORE render/cache — the cache stores canonical labels.
+          const normalizedEntries = normalizeAppRegistryList(entries);
+          normalizedEntries.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
           console.log('[AppSwitcher] Loaded', entries.length, 'apps from Firestore');
 
-          setApps(entries);
-          AsyncStorage.setItem(REGISTRY_CACHE_KEY, JSON.stringify(entries)).catch(() => {});
+          setApps(normalizedEntries);
+          AsyncStorage.setItem(REGISTRY_CACHE_KEY, JSON.stringify(normalizedEntries)).catch(() => {});
         } else if (!cached) {
           // No Firestore, no cache — use hardcoded fallback
           console.log('[AppSwitcher] No Firestore — using fallback app list');
