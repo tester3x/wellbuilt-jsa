@@ -542,9 +542,9 @@ export const isPasscodeAvailable = async (
 };
 
 /**
- * Register as a standalone/free-tier driver — auto-approved, no admin needed.
- * Writes directly to drivers/approved/{hash} and creates immediate session.
- * Also notifies WB admin of the new standalone registration.
+ * Register as a standalone/free-tier driver.
+ * SECURITY: never client-write drivers/approved. Server callable mints
+ * credentials + profile via Admin SDK (registerStandaloneDriver).
  */
 export const registerStandalone = async (params: {
   passcode: string;
@@ -554,56 +554,42 @@ export const registerStandalone = async (params: {
   console.log("[DriverAuth-JSA] Standalone registration for:", params.displayName);
 
   try {
-    const hash = await hashPasscode(params.passcode, params.displayName);
-
-    // Check if hash already exists
-    try {
-      const existing = await firebaseGet(`${DRIVERS_APPROVED}/${hash}`);
-      if (existing) {
-        return { success: false, error: "This name and passcode combination is already registered." };
-      }
-    } catch {
-      // 404 or network error — hash doesn't exist, proceed with registration
+    const CALLABLE =
+      'https://us-central1-wellbuilt-sync.cloudfunctions.net/registerStandaloneDriver';
+    const resp = await fetch(CALLABLE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        data: {
+          displayName: params.displayName,
+          passcode: params.passcode,
+          legalName: params.legalName,
+        },
+      }),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok || body.error) {
+      const msg = body?.error?.message || `Registration failed (${resp.status})`;
+      // During dual-run, if function not deployed yet, fail closed (no self-approve).
+      return { success: false, error: msg };
     }
-
-    // Write directly to approved — auto-approve for free tier
-    const approvedData: Record<string, any> = {
-      displayName: params.displayName,
-      legalName: params.legalName || params.displayName,
-      active: true,
-      tier: 'free',
-      source: 'wbjsa-standalone',
-      approvedAt: new Date().toISOString(),
-      registeredAt: new Date().toISOString(),
-    };
-
-    await firebasePatch(`${DRIVERS_APPROVED}/${hash}`, approvedData);
-
-    // Create immediate session
-    await SecureStore.setItemAsync("jsa_passcodeHash", hash);
-    await SecureStore.setItemAsync("jsa_driverName", params.displayName);
-    await SecureStore.setItemAsync("jsa_driverVerifiedAt", Date.now().toString());
-    await SecureStore.setItemAsync("jsa_authMethod", "manual");
+    const result = body.result || {};
+    const driverId = result.driverId || result.displayName;
+    await SecureStore.setItemAsync('jsa_passcodeHash', driverId);
+    await SecureStore.setItemAsync('jsa_driverName', result.displayName || params.displayName);
+    await SecureStore.setItemAsync('jsa_driverVerifiedAt', Date.now().toString());
+    await SecureStore.setItemAsync('jsa_authMethod', 'manual');
     if (params.legalName) {
-      await SecureStore.setItemAsync("jsa_legalName", params.legalName);
+      await SecureStore.setItemAsync('jsa_legalName', params.legalName);
     }
-
-    // Notify WB admin (fire-and-forget)
-    firebasePost('notifications/standalone_registrations', {
-      displayName: params.displayName,
-      hash,
-      source: 'wbjsa',
-      registeredAt: new Date().toISOString(),
-    }).catch(() => {});
-
-    console.log("[DriverAuth-JSA] Standalone registration complete — auto-approved");
+    if (result.driverId) {
+      await SecureStore.setItemAsync('jsa_secureDriverId', result.driverId);
+    }
+    console.log('[DriverAuth-JSA] Standalone registration complete via server');
     return { success: true };
   } catch (error: any) {
-    console.error("[DriverAuth-JSA] Standalone registration error:", error);
-    if (error?.message?.includes('404')) {
-      // 404 from GET means hash doesn't exist — that's expected, retry
-    }
-    return { success: false, error: "Connection error" };
+    console.error('[DriverAuth-JSA] Standalone registration error:', error);
+    return { success: false, error: 'Connection error' };
   }
 };
 
