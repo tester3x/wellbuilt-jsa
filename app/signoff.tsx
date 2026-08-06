@@ -346,18 +346,33 @@ export default function SignoffScreen() {
         }
       } catch {}
 
-      // Post-submit cloud write: single sequential IIFE that (1) generates
-      // the PDF + uploads to Storage, then (2) writes jsa_day_status with
-      // the resolved pdfUrl, then (3) writes jsas/{id} with full linkage.
+      // WB-T fresh-read RECEIPT context (8/6): resolved ONCE at submit.
+      // A usable context makes this a receipt-backed submission — success
+      // UI is then gated on AWAITED core persistence + receipt. An
+      // expired/absent context runs the ordinary flow (and is cleared so
+      // it can never be satisfied by a later unrelated submission).
+      const { loadReadRequestContext, isReadRequestContextUsable, clearReadRequestContext, writeReadReceipt } = await import('../services/wbtReadRequest');
+      const readCtxAtSubmit = await loadReadRequestContext();
+      const receiptFlow = isReadRequestContextUsable(readCtxAtSubmit, Date.now());
+      if (readCtxAtSubmit && !receiptFlow) {
+        console.warn('[JSA][wbtReadRequest] stored request expired before submit — ordinary flow, no receipt');
+        await clearReadRequestContext();
+      }
+
+      // Post-submit cloud write: single sequential closure that (1)
+      // generates the PDF + uploads to Storage, then (2) writes
+      // jsa_day_status with the resolved pdfUrl, then (3) writes jsas/{id}
+      // with full linkage, and reports the CORE outcome (the jsas write —
+      // the record that establishes the submission). PDF / day-status /
+      // date mirror / jsa_completions are ANCILLARY: best-effort, logged,
+      // never awaited as proof and never claimed as succeeded.
       //
-      // Previously two parallel IIFEs raced: the PDF IIFE stashed the URL
-      // in AsyncStorage while the jsa_day_status IIFE read AsyncStorage
-      // immediately, so jsa_day_status.pdfUrl was always empty. WB T read
-      // that empty pdfUrl and couldn't attach the JSA PDF to invoices.
-      //
-      // Still fire-and-forget at the top level so the branded completion
-      // modal renders immediately; sequencing is internal to the IIFE.
-      (async () => {
+      // Ordinary (non-receipt) flow keeps the legacy fire-and-forget
+      // invocation; the receipt flow AWAITS it and retries with the SAME
+      // payload id (idempotent jsas PATCH; GET-first receipt) so no
+      // duplicate logical submission or receipt can exist.
+      let coreJsasOk = false;
+      const runCloudPersist = async (): Promise<{ jsasOk: boolean }> => {
         const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
         const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
         const driverHash = driverHashForPayload;
@@ -907,6 +922,7 @@ export default function SignoffScreen() {
                 extra: { jsaDocId: payload.id, status: resp.status },
               });
             } else {
+              coreJsasOk = true;
               console.log(`[JSA] jsas/${payload.id} written with linkage (driverHash=${driverHash.slice(0, 8)}..., companyId=${companyId})`);
               wbDiagLog({
                 area: 'jsa',
@@ -939,7 +955,54 @@ export default function SignoffScreen() {
             });
           }
         }
-      })();
+        return { jsasOk: coreJsasOk };
+      };
+
+      // ── Receipt-backed flow: AWAIT core submission, then the receipt ──
+      // Success UI and the return link exist ONLY after BOTH durable
+      // writes land. Failure keeps the driver on signoff with the entered
+      // form + signature intact and an honest Retry (same payload id →
+      // idempotent jsas PATCH; GET-first receipt → no duplicates). The
+      // request context is cleared only after the receipt persists.
+      if (receiptFlow && readCtxAtSubmit) {
+        const attemptReceiptPersist = async (): Promise<boolean> => {
+          coreJsasOk = false;
+          const core = await runCloudPersist().catch(() => ({ jsasOk: false }));
+          if (!core.jsasOk) return false;
+          const receiptOk = await writeReadReceipt(readCtxAtSubmit, payload.id);
+          if (!receiptOk) return false;
+          await clearReadRequestContext();
+          return true;
+        };
+        const succeed = async () => {
+          try { await AsyncStorage.setItem('@jsa/clearFormOnNextFocus', '1'); } catch {}
+          try { await AsyncStorage.removeItem('jsa_resume'); } catch {}
+          setCompleteReturnScheme(
+            `wellbuilt-tickets://jsa-return?requestId=${encodeURIComponent(readCtxAtSubmit.requestId)}&version=1`,
+          );
+          setCompleteOrigin('wbt');
+          setShowCompleteModal(true);
+        };
+        const failHonestly = () => {
+          Alert.alert(
+            t('Submission Not Complete') || 'Submission Not Complete',
+            t('Your JSA could not be saved to the cloud yet, so WB Tickets cannot verify it. Check connectivity and tap Retry — your entries and signature are kept.')
+              || 'Your JSA could not be saved to the cloud yet, so WB Tickets cannot verify it. Check connectivity and tap Retry — your entries and signature are kept.',
+            [
+              {
+                text: t('Retry') || 'Retry',
+                onPress: () => { void attemptReceiptPersist().then((ok) => (ok ? succeed() : failHonestly())); },
+              },
+              { text: t('OK') || 'OK' },
+            ],
+          );
+        };
+        const ok = await attemptReceiptPersist();
+        if (ok) { await succeed(); } else { failHonestly(); }
+        return; // receipt flow fully handled — no fall-through success
+      }
+
+      void runCloudPersist();
 
       // NOTE: do NOT call router.dismissAll() here. Dismissing the stack
       // unmounts this signoff screen; subsequent setState calls on an

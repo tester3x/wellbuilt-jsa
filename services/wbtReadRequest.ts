@@ -146,6 +146,64 @@ export async function clearReadRequestContext(): Promise<void> {
   try { await AsyncStorage.removeItem(WBT_READ_REQUEST_KEY); } catch {}
 }
 
+// ── Durable receipt write (called ONLY after the core jsas write) ───────────
+
+const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
+const FIRESTORE_API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
+const RECEIPT_TIMEOUT_MS = 10_000;
+
+/**
+ * Write jsa_read_receipts/{requestId}. MUST be called only after the core
+ * jsas/{jsaRecordId} persistence succeeded — the receipt is a claim that
+ * the submission durably exists. Idempotent: an existing receipt for this
+ * requestId counts as success (retries and the immutable-rules model both
+ * land here), so no duplicate success receipts are possible.
+ */
+export async function writeReadReceipt(
+  ctx: WbtReadRequestContext,
+  jsaRecordId: string,
+): Promise<boolean> {
+  try {
+    if (!REQUEST_ID_RE.test(ctx?.requestId || '') || !jsaRecordId) return false;
+    const url = `${FIRESTORE_BASE}/jsa_read_receipts/${ctx.requestId}?key=${FIRESTORE_API_KEY}`;
+    // GET-first idempotence: a prior successful attempt already wrote the
+    // (immutable) receipt.
+    try {
+      const c0 = new AbortController();
+      const t0 = setTimeout(() => c0.abort(), RECEIPT_TIMEOUT_MS);
+      const g = await fetch(url, { signal: c0.signal });
+      clearTimeout(t0);
+      if (g.ok) {
+        const doc = await g.json();
+        if (doc?.fields?.requestId?.stringValue === ctx.requestId) {
+          console.log('[JSA][wbtReadRequest] receipt already exists — idempotent success');
+          return true;
+        }
+      }
+    } catch {}
+    const fields = buildReadReceiptFields(ctx, jsaRecordId, new Date().toISOString());
+    const c1 = new AbortController();
+    const t1 = setTimeout(() => c1.abort(), RECEIPT_TIMEOUT_MS);
+    const resp = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields }),
+      signal: c1.signal,
+    });
+    clearTimeout(t1);
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      console.warn(`[JSA][wbtReadRequest] receipt write failed: HTTP ${resp.status} ${body.slice(0, 160)}`);
+      return false;
+    }
+    console.log(`[JSA][wbtReadRequest] receipt written for request ${ctx.requestId.slice(0, 8)}… (jsaRecordId=${jsaRecordId})`);
+    return true;
+  } catch (err) {
+    console.warn('[JSA][wbtReadRequest] receipt write error:', (err as any)?.message || err);
+    return false;
+  }
+}
+
 /**
  * Handle a /start deep link's params — the ONLY writer of the stored
  * context. A valid request replaces whatever was stored (explicit
