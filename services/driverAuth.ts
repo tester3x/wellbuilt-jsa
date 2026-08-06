@@ -15,6 +15,7 @@
 
 import * as SecureStore from "expo-secure-store";
 import * as Crypto from "expo-crypto";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Firebase configuration (same project as WB M / WB S: wellbuilt-sync)
 const FIREBASE_DATABASE_URL = "https://wellbuilt-sync-default-rtdb.firebaseio.com";
@@ -450,6 +451,23 @@ export const clearDriverSession = async (): Promise<void> => {
   // carrying forward a stale baseline from the prior session.
   await SecureStore.deleteItemAsync("jsa_lastConsumedLogoutAt");
   await clearPendingRegistration();
+  // vc51.9B defence in depth: a VERIFIED logout (the only path here —
+  // ambiguous network failures never reach clearDriverSession) must not
+  // leak the prior driver's period or pending request into the next
+  // session. Cached shift ids are hints, never authority — and a hint
+  // from a logged-out session is pure poison. Saved/historical JSAs
+  // (@jsa/saves, @jsa/activeJsas) are deliberately preserved.
+  try {
+    await AsyncStorage.multiRemove([
+      "wellbuilt-current-shift-id",
+      "@jsa/wbtReadRequest",
+      "jsa_autofill",
+      "jsa_returnTo",
+      "jsa_resume",
+    ]);
+  } catch (err) {
+    console.warn("[logout] period-cache clear failed (non-fatal):", err);
+  }
 };
 
 // --- Profile / Vehicle Info ---
