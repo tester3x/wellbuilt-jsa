@@ -307,6 +307,14 @@ function AppContent() {
           if (parsed.queryParams.returnTo) {
             await AsyncStorage.setItem('jsa_returnTo', String(parsed.queryParams.returnTo)).catch(() => {});
           }
+          // WB-T fresh-read RECEIPT request (8/6) — same capture as the
+          // cold-start route: valid → replace stored context (explicit
+          // restart); absent/invalid → clear it (one request can never be
+          // satisfied by another flow's parameters).
+          {
+            const { captureReadRequestFromParams } = await import('../services/wbtReadRequest');
+            await captureReadRequestFromParams(parsed.queryParams as Record<string, unknown>);
+          }
           // Navigate to home tab to start the JSA
           if (router.canDismiss()) router.dismissAll();
           router.replace('/(tabs)');

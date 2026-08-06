@@ -38,6 +38,14 @@ export default function StartScreen() {
         if (params.returnTo) {
           await AsyncStorage.setItem('jsa_returnTo', String(params.returnTo));
         }
+        // WB-T fresh-read RECEIPT request (8/6): validate + persist the
+        // request context (or clear a stale one — every /start is an
+        // explicit restart). Malformed requests never become shift-only
+        // completion claims; the flow just runs as an ordinary launch.
+        {
+          const { captureReadRequestFromParams } = await import('../services/wbtReadRequest');
+          await captureReadRequestFromParams(params as Record<string, unknown>);
+        }
         console.log('[JSA] Start screen — stored autofill params, redirecting to home');
       } catch (err) {
         console.error('[JSA] Start screen error:', err);
