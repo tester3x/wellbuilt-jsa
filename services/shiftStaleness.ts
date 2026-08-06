@@ -38,6 +38,38 @@ export interface OriginDayShiftDoc {
   currentShiftId?: string;
 }
 
+/**
+ * Authoritative lifecycle verdict for a cached explicit shift (vc51.8).
+ *
+ * vc51.7's first correction validated only PRIOR-DAY caches, leaving a
+ * same-day close unverified: shift A starts and ends on the same calendar
+ * day, the logout signal is missed (backgrounded/offline), WB-JSA reopens
+ * later that day, and the cached id's date still equals today. Staleness
+ * is therefore NOT a date question — it is a lifecycle question, and every
+ * cached explicit shift must be answerable against its origin day.
+ *
+ *   'verified_open'   — the origin day names exactly this shift: current.
+ *   'verified_closed' — explicitly ended ('') or superseded by another id.
+ *   'unverified'      — origin day unreadable/absent/field missing. NOT a
+ *                       licence to proceed: ordinary historical UI may
+ *                       continue with honest status, but request-bound
+ *                       completion (signing/filing/receipt) must fail
+ *                       closed rather than bind to an unproven period.
+ */
+export type PeriodVerdict = 'verified_open' | 'verified_closed' | 'unverified';
+
+/** Lifecycle verdict from the shift's own day document — date-independent. */
+export function verifyCachedShift(
+  cachedShiftId: string | null | undefined,
+  doc: OriginDayShiftDoc,
+): PeriodVerdict {
+  if (!cachedShiftId) return 'verified_closed';
+  if (!doc || !doc.readable) return 'unverified';
+  const cur = doc.currentShiftId;
+  if (typeof cur !== 'string') return 'unverified';
+  return cur === cachedShiftId ? 'verified_open' : 'verified_closed';
+}
+
 /** 'YYYY-MM-DD' prefix of a shift id, or null when it has none. */
 export function shiftDateOf(shiftId: string | null | undefined): string | null {
   const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(shiftId || ''));
@@ -84,23 +116,32 @@ export async function resolveCachedShift(
   cachedShiftId: string | null | undefined,
   todayLocalDate: string,
   fetchOriginDay: (shiftDate: string) => Promise<OriginDayShiftDoc>,
-): Promise<{ action: 'preserve' | 'clear'; reason: string }> {
-  if (!cachedShiftId) return { action: 'preserve', reason: 'no_cached_shift' };
-  if (!needsOriginDayCheck(cachedShiftId, todayLocalDate)) {
-    return { action: 'preserve', reason: 'same_day_cache' };
+): Promise<{ action: 'preserve' | 'clear'; verdict: PeriodVerdict; reason: string }> {
+  if (!cachedShiftId) {
+    return { action: 'preserve', verdict: 'verified_closed', reason: 'no_cached_shift' };
   }
-  const shiftDate = shiftDateOf(cachedShiftId) as string;
+  // vc51.8: EVERY cached explicit shift is validated — same-day included.
+  // A shift that opened and closed within one calendar day is exactly the
+  // case a date-only rule missed. The caller may satisfy a same-day lookup
+  // from the day document it already read, so this costs no extra request.
+  const shiftDate = shiftDateOf(cachedShiftId) || todayLocalDate;
   let doc: OriginDayShiftDoc = { readable: false };
   try {
     doc = await fetchOriginDay(shiftDate);
   } catch {
     doc = { readable: false };
   }
-  const action = decideFromOriginDay(cachedShiftId, doc);
+  const verdict = verifyCachedShift(cachedShiftId, doc);
+  if (verdict === 'verified_closed') {
+    return {
+      action: 'clear',
+      verdict,
+      reason: doc.currentShiftId === '' ? 'origin_day_explicitly_ended' : 'origin_day_superseded',
+    };
+  }
   return {
-    action,
-    reason: action === 'clear'
-      ? (doc.currentShiftId === '' ? 'origin_day_explicitly_ended' : 'origin_day_superseded')
-      : (doc.readable ? 'origin_day_still_open' : 'origin_day_unreadable'),
+    action: 'preserve',
+    verdict,
+    reason: verdict === 'verified_open' ? 'origin_day_still_open' : 'origin_day_unverified',
   };
 }

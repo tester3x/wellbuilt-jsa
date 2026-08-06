@@ -23,6 +23,7 @@ import {
   shiftDateOf,
   needsOriginDayCheck,
   decideFromOriginDay,
+  verifyCachedShift,
   resolveCachedShift,
 } from '../services/shiftStaleness.ts';
 
@@ -69,11 +70,21 @@ expect(decideFromOriginDay(STALE, { readable: true }) === 'preserve',
   expect(calls.length === 1 && calls[0] === '2026-08-05',
     'the ORIGIN day is queried (not today) — that is where the closure lives');
 
-  const sameDay = await resolveCachedShift('2026-08-06_060000', TODAY, async () => {
-    throw new Error('must not be called');
-  });
-  expect(sameDay.action === 'preserve' && sameDay.reason === 'same_day_cache',
-    'same-day caches never hit the network');
+  // vc51.8 SAME-DAY CLOSE (the gap 3eaf7e7 left): a shift that opened AND
+  // closed today, with the logout signal missed, must NOT stay current
+  // merely because its date equals today.
+  const sameDayClosed = await resolveCachedShift('2026-08-06_060000', TODAY,
+    async () => ({ readable: true, currentShiftId: '' }));
+  expect(sameDayClosed.action === 'clear' && sameDayClosed.verdict === 'verified_closed',
+    'SAME-DAY CLOSE: a closed same-day shift is cleared, not preserved by date');
+  const sameDayOpen = await resolveCachedShift('2026-08-06_060000', TODAY,
+    async () => ({ readable: true, currentShiftId: '2026-08-06_060000' }));
+  expect(sameDayOpen.action === 'preserve' && sameDayOpen.verdict === 'verified_open',
+    'a genuinely open same-day shift stays current');
+  const sameDaySuperseded = await resolveCachedShift('2026-08-06_060000', TODAY,
+    async () => ({ readable: true, currentShiftId: '2026-08-06_143000' }));
+  expect(sameDaySuperseded.action === 'clear',
+    'a same-day shift superseded by a later shift is cleared');
 
   const overnight = await resolveCachedShift(STALE, TODAY,
     async () => ({ readable: true, currentShiftId: STALE }));
@@ -81,11 +92,32 @@ expect(decideFromOriginDay(STALE, { readable: true }) === 'preserve',
     'overnight shifts survive the day boundary');
 
   const offline = await resolveCachedShift(STALE, TODAY, async () => { throw new Error('offline'); });
-  expect(offline.action === 'preserve' && offline.reason === 'origin_day_unreadable',
-    'offline/failed origin-day reads never destroy a live shift');
+  expect(offline.action === 'preserve' && offline.verdict === 'unverified',
+    'offline/failed origin-day reads never destroy a live shift (but stay unverified)');
 
   const none = await resolveCachedShift(null, TODAY, async () => ({ readable: true }));
   expect(none.action === 'preserve' && none.reason === 'no_cached_shift', 'no cache, nothing to do');
+}
+
+// ── Verification verdicts (request-bound flows consult these) ───────────────
+{
+  expect(verifyCachedShift(STALE, { readable: true, currentShiftId: STALE }) === 'verified_open',
+    'named by its origin day → verified_open');
+  expect(verifyCachedShift(STALE, { readable: true, currentShiftId: '' }) === 'verified_closed',
+    'explicitly ended → verified_closed');
+  expect(verifyCachedShift(STALE, { readable: true, currentShiftId: 'other' }) === 'verified_closed',
+    'superseded → verified_closed');
+  // UNVERIFIED is never an implicit licence to proceed — offline/unreadable
+  // must be distinguishable so request-bound completion can fail closed.
+  expect(verifyCachedShift(STALE, { readable: false }) === 'unverified',
+    'unreadable origin day → unverified (never silently open)');
+  expect(verifyCachedShift(STALE, { readable: true }) === 'unverified',
+    'missing field → unverified');
+  expect(verifyCachedShift(null, { readable: true, currentShiftId: 'x' }) === 'verified_closed',
+    'no cached shift is not an open period');
+  const offlineVerdict = (await resolveCachedShift(STALE, TODAY, async () => { throw new Error('offline'); })).verdict;
+  expect(offlineVerdict === 'unverified',
+    'offline resolution surfaces unverified while preserving the cache');
 }
 
 // No invented boundary anywhere: the module must not encode hour windows.
