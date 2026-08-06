@@ -123,7 +123,12 @@ export function buildReadReceiptFields(
     operator: { stringValue: ctx.operator },
     jsaRecordId: { stringValue: jsaRecordId },
     completedAt: { stringValue: completedAtIso },
-    completionType: { stringValue: 'full_flow' },
+    // 'signed_submission' (vc51.4 honesty audit): the signature-gated
+    // submission at the end of the guided flow. Step traversal is
+    // UI-enforced on the primary path but NOT durably attested (an
+    // unfinished-JSA resume lands on signoff directly), so the label
+    // claims exactly what is proven — the signed submission.
+    completionType: { stringValue: 'signed_submission' },
   };
 }
 

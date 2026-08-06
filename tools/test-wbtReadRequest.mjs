@@ -81,9 +81,9 @@ const good = {
   const fields = buildReadReceiptFields(ctx, '1754470000000', new Date(NOW + 12 * 60_000).toISOString());
   expect(fields.requestId.stringValue === RID && fields.jobDocId.stringValue === 'INV_123'
     && fields.jsaRecordId.stringValue === '1754470000000'
-    && fields.completionType.stringValue === 'full_flow'
+    && fields.completionType.stringValue === 'signed_submission'
     && fields.receiptVersion.integerValue === '1',
-    'receipt echoes request identity + core submission id + full_flow type');
+    'receipt echoes request identity + core submission id + signed_submission type');
   const keys = Object.keys(fields);
   expect(!keys.some((k) => /template|hazard|content|reviewed/i.test(k)),
     'no template/hazard-content claim rides on the receipt');
