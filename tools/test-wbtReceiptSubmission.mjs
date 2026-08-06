@@ -35,13 +35,17 @@ expect(so.includes('stored request expired before submit — ordinary flow, no r
   expect(region.length > 200, 'receipt-flow region located');
   const iCore = region.indexOf('await runCloudPersist()');
   const iGate = region.indexOf('if (!core.jsasOk) return false;');
-  const iReceipt = region.indexOf('await writeReadReceipt(readCtxAtSubmit, payload.id)');
+  // vc51.9B: the canonical period proof sits between the durable core
+  // write and the receipt — a v2 request without a proven binding never
+  // produces a receipt.
+  const iProof = region.indexOf('await proveV2Binding();');
+  const iReceipt = region.indexOf('await writeReadReceipt(readCtxAtSubmit, payload.id, proof.binding)');
   const iClear = region.indexOf('await clearReadRequestContext();');
   const iModal = region.indexOf('setShowCompleteModal(true);');
-  expect(iCore >= 0 && iGate > iCore && iReceipt > iGate && iClear > iReceipt && iModal > iClear,
-    'order: await core jsas → gate → await receipt → clear context → success UI');
-  expect(region.includes('jsa-return?requestId=') && region.includes('&version=1'),
-    'return link carries only the request id + version (lookup hint)');
+  expect(iCore >= 0 && iGate > iCore && iProof > iGate && iReceipt > iProof && iClear > iReceipt && iModal > iClear,
+    'order: await core jsas → gate → period proof → await receipt → clear context → success UI');
+  expect(region.includes('jsa-return?requestId=') && /&version=\$\{readCtxAtSubmit\.receiptVersion === 2 \? 2 : 1\}/.test(region),
+    'return link carries only the request id + negotiated version (lookup hint)');
   expect(region.includes('Submission Not Complete') && region.includes("text: t('Retry')"),
     'failure shows an honest blocking Retry — no success modal, no receipt');
   expect(region.includes('return; // receipt flow fully handled'),

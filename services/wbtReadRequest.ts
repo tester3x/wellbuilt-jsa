@@ -24,7 +24,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const WBT_READ_REQUEST_KEY = '@jsa/wbtReadRequest';
 export const READ_RECEIPT_VERSION = 1;
+// vc51.9B receipt contract v2 — canonical period binding. Negotiated by
+// the REQUEST: a legacy v1 request receives v1 (old installed WB-T
+// understands v1 only); a v2-capable request REQUIRES v2 with period
+// proof and never downgrades.
+export const READ_RECEIPT_VERSION_2 = 2;
 export const REQUEST_ID_RE = /^[A-Za-z0-9_-]{43}$/;
+
+export type RequestWorkPeriodMode = 'explicit_shift' | 'company_defined_period';
 
 export interface WbtReadRequestContext {
   receiptVersion: number;
@@ -37,6 +44,16 @@ export interface WbtReadRequestContext {
   operator: string;
   expiresAt: string;
   receivedAt: string;
+  /** v2 only — the canonical period the request binds to. */
+  periodId?: string | null;
+  workPeriodMode?: RequestWorkPeriodMode | null;
+  requestContractVersion?: number | null;
+}
+
+/** Proven by the caller through requestPeriodBinding before any v2 write. */
+export interface ReceiptV2Binding {
+  submissionPeriodId: string;
+  workPeriodMode: RequestWorkPeriodMode;
 }
 
 export interface ParseResult {
@@ -60,7 +77,10 @@ export function parseWbtReadRequestParams(
   const version = s(params.readRequestVersion);
   const requestId = s(params.readRequestId);
   if (!version && !requestId) return { ctx: null, reason: 'no_request' };
-  if (version !== String(READ_RECEIPT_VERSION)) return { ctx: null, reason: 'unsupported_version' };
+  const isV2 = version === String(READ_RECEIPT_VERSION_2);
+  if (version !== String(READ_RECEIPT_VERSION) && !isV2) {
+    return { ctx: null, reason: 'unsupported_version' };
+  }
   if (!REQUEST_ID_RE.test(requestId)) return { ctx: null, reason: 'bad_request_id' };
   const jobDocId = s(params.readRequestJobId);
   if (!jobDocId || jobDocId.length > 120) return { ctx: null, reason: 'bad_job_id' };
@@ -72,9 +92,24 @@ export function parseWbtReadRequestParams(
   const exp = Date.parse(expiresAt);
   if (Number.isNaN(exp)) return { ctx: null, reason: 'bad_expiry' };
   if (nowMs > exp) return { ctx: null, reason: 'expired_at_arrival' };
+  // v2 requests must carry their canonical period claims — a v2 request
+  // without them is malformed, never silently downgraded to v1.
+  const periodId = s(params.readRequestPeriodId);
+  const mode = s(params.readRequestMode);
+  if (isV2) {
+    if (!periodId || periodId.length > 120) return { ctx: null, reason: 'no_period' };
+    if (mode !== 'explicit_shift' && mode !== 'company_defined_period') {
+      return { ctx: null, reason: 'bad_mode' };
+    }
+  }
   return {
     ctx: {
-      receiptVersion: READ_RECEIPT_VERSION,
+      receiptVersion: isV2 ? READ_RECEIPT_VERSION_2 : READ_RECEIPT_VERSION,
+      ...(isV2 ? {
+        periodId,
+        workPeriodMode: mode as RequestWorkPeriodMode,
+        requestContractVersion: Number(s(params.readRequestContract) || '1'),
+      } : {}),
       requestId,
       jobDocId,
       haulGroupId: s(params.readRequestGroupId) || null,
@@ -144,6 +179,43 @@ export function buildReadReceiptFields(
   };
 }
 
+/**
+ * Receipt v2 (vc51.9B): the v1 identity claims PLUS the canonical
+ * period proof — the request's claimed period, the INDEPENDENTLY
+ * resolved submission period (proven equal by requestPeriodBinding
+ * before this builder runs), and the mode needed to interpret them.
+ * Same honesty scope: 'signed_submission', nothing more.
+ */
+export function buildReadReceiptFieldsV2(
+  ctx: WbtReadRequestContext,
+  jsaRecordId: string,
+  completedAtIso: string,
+  binding: ReceiptV2Binding,
+): Record<string, { stringValue: string } | { integerValue: string }> {
+  if (!jsaRecordId) throw new Error('receipt requires the core submission id');
+  if (ctx.receiptVersion !== READ_RECEIPT_VERSION_2 || !ctx.periodId) {
+    throw new Error('v2 receipt requires a v2 request context');
+  }
+  if (binding.submissionPeriodId !== ctx.periodId) {
+    throw new Error('v2 receipt requires proven request/submission period equality');
+  }
+  return {
+    receiptVersion: { integerValue: String(READ_RECEIPT_VERSION_2) },
+    requestId: { stringValue: ctx.requestId },
+    jobDocId: { stringValue: ctx.jobDocId },
+    ...(ctx.haulGroupId ? { haulGroupId: { stringValue: ctx.haulGroupId } } : {}),
+    companyId: { stringValue: ctx.companyId },
+    driverHash: { stringValue: ctx.driverHash },
+    operator: { stringValue: ctx.operator },
+    requestPeriodId: { stringValue: ctx.periodId },
+    submissionPeriodId: { stringValue: binding.submissionPeriodId },
+    workPeriodMode: { stringValue: binding.workPeriodMode },
+    jsaRecordId: { stringValue: jsaRecordId },
+    completedAt: { stringValue: completedAtIso },
+    completionType: { stringValue: 'signed_submission' },
+  };
+}
+
 // ── Persistence (survives navigation/background/rerender) ───────────────────
 
 export async function persistReadRequestContext(ctx: WbtReadRequestContext): Promise<void> {
@@ -179,9 +251,16 @@ const RECEIPT_TIMEOUT_MS = 10_000;
 export async function writeReadReceipt(
   ctx: WbtReadRequestContext,
   jsaRecordId: string,
+  v2Binding?: ReceiptV2Binding,
 ): Promise<boolean> {
   try {
     if (!REQUEST_ID_RE.test(ctx?.requestId || '') || !jsaRecordId) return false;
+    // Downgrade resistance: a v2 request without a PROVEN binding never
+    // produces any receipt — v1 fields are not an acceptable fallback.
+    if (ctx.receiptVersion === READ_RECEIPT_VERSION_2 && !v2Binding) {
+      console.warn('[JSA][wbtReadRequest] v2 request without proven period binding — no receipt');
+      return false;
+    }
     const url = `${FIRESTORE_BASE}/jsa_read_receipts/${ctx.requestId}?key=${FIRESTORE_API_KEY}`;
     // GET-first idempotence: a prior successful attempt already wrote the
     // (immutable) receipt.
@@ -198,7 +277,9 @@ export async function writeReadReceipt(
         }
       }
     } catch {}
-    const fields = buildReadReceiptFields(ctx, jsaRecordId, new Date().toISOString());
+    const fields = ctx.receiptVersion === READ_RECEIPT_VERSION_2 && v2Binding
+      ? buildReadReceiptFieldsV2(ctx, jsaRecordId, new Date().toISOString(), v2Binding)
+      : buildReadReceiptFields(ctx, jsaRecordId, new Date().toISOString());
     const c1 = new AbortController();
     const t1 = setTimeout(() => c1.abort(), RECEIPT_TIMEOUT_MS);
     const resp = await fetch(url, {

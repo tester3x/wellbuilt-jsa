@@ -52,7 +52,11 @@ const good = {
   expect(parseWbtReadRequestParams({ hash: 'x', wellName: 'W' }, NOW).reason === 'no_request',
     'ordinary launches (no request params) stay ordinary');
   const bads = [
-    [{ ...good, readRequestVersion: '2' }, 'unsupported_version'],
+    // vc51.9B: '2' is now a SUPPORTED negotiated version — a v2 request
+    // missing its period claims is malformed (no_period), never treated
+    // as v1; genuinely unknown versions stay refused.
+    [{ ...good, readRequestVersion: '2' }, 'no_period'],
+    [{ ...good, readRequestVersion: '3' }, 'unsupported_version'],
     [{ ...good, readRequestId: 'short' }, 'bad_request_id'],
     [{ ...good, readRequestId: `${'A'.repeat(42)}=` }, 'bad_request_id'],
     [{ ...good, readRequestJobId: '' }, 'bad_job_id'],

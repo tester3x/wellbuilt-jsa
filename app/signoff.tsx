@@ -971,11 +971,71 @@ export default function SignoffScreen() {
       // idempotent jsas PATCH; GET-first receipt → no duplicates). The
       // request context is cleared only after the receipt persists.
       if (receiptFlow && readCtxAtSubmit) {
+        // vc51.9B: a v2 request demands the canonical period proof BEFORE
+        // any receipt — the submission's period is resolved independently
+        // through @tester3x/wellbuilt-contracts (deep-link fields are wake
+        // hints, never authority) and must equal the request's period.
+        // Any mismatch/closed/unverified verdict → no receipt, honest
+        // retry. v1 requests keep the legacy inert path.
+        const proveV2Binding = async () => {
+          if (readCtxAtSubmit.receiptVersion !== 2) return { ok: true as const, binding: undefined };
+          const { resolveSubmissionPeriod, validateRequestPeriodBinding } =
+            await import('../services/requestPeriodBinding');
+          const mode = readCtxAtSubmit.workPeriodMode ?? 'explicit_shift';
+          const now = new Date();
+          const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+          const cachedShiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id');
+          const resolution = await resolveSubmissionPeriod({
+            companyId: readCtxAtSubmit.companyId,
+            driverHash: readCtxAtSubmit.driverHash,
+            mode,
+            nowMs: now.getTime(),
+            localDate,
+            cachedShiftId,
+            fetchDayDoc: async (date: string) => {
+              try {
+                const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${readCtxAtSubmit.driverHash}_${date}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
+                const resp = await fetch(url);
+                if (resp.status === 404) return { readable: true, present: false };
+                if (!resp.ok) return { readable: false, present: false };
+                const docJson = await resp.json();
+                const raw = docJson?.fields?.currentShiftId?.stringValue;
+                return { readable: true, present: true, ...(typeof raw === 'string' ? { currentShiftId: raw } : {}) };
+              } catch {
+                return { readable: false, present: false };
+              }
+            },
+          }).catch(() => null);
+          const verdictResult = validateRequestPeriodBinding(
+            {
+              receiptVersion: 2,
+              contractVersion: readCtxAtSubmit.requestContractVersion ?? 1,
+              companyId: readCtxAtSubmit.companyId,
+              driverHash: readCtxAtSubmit.driverHash,
+              periodId: readCtxAtSubmit.periodId,
+              workPeriodMode: readCtxAtSubmit.workPeriodMode,
+            },
+            { companyId: readCtxAtSubmit.companyId, driverHash: readCtxAtSubmit.driverHash },
+            resolution,
+          );
+          if (!verdictResult.ok) {
+            console.warn(`[JSA][wbtReadRequest] v2 period binding refused: ${verdictResult.reason}`);
+            return { ok: false as const, binding: undefined };
+          }
+          return {
+            ok: true as const,
+            binding: verdictResult.receiptVersion === 2
+              ? { submissionPeriodId: verdictResult.submissionPeriodId, workPeriodMode: verdictResult.workPeriodMode }
+              : undefined,
+          };
+        };
         const attemptReceiptPersist = async (): Promise<boolean> => {
           coreJsasOk = false;
           const core = await runCloudPersist().catch(() => ({ jsasOk: false }));
           if (!core.jsasOk) return false;
-          const receiptOk = await writeReadReceipt(readCtxAtSubmit, payload.id);
+          const proof = await proveV2Binding();
+          if (!proof.ok) return false;
+          const receiptOk = await writeReadReceipt(readCtxAtSubmit, payload.id, proof.binding);
           if (!receiptOk) return false;
           await clearReadRequestContext();
           return true;
@@ -985,7 +1045,7 @@ export default function SignoffScreen() {
           try { await AsyncStorage.removeItem('jsa_resume'); } catch {}
           setCompleteCloudPending(false);
           setCompleteReturnScheme(
-            `wellbuilt-tickets://jsa-return?requestId=${encodeURIComponent(readCtxAtSubmit.requestId)}&version=1`,
+            `wellbuilt-tickets://jsa-return?requestId=${encodeURIComponent(readCtxAtSubmit.requestId)}&version=${readCtxAtSubmit.receiptVersion === 2 ? 2 : 1}`,
           );
           setCompleteOrigin('wbt');
           setShowCompleteModal(true);
