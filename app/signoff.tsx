@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { JsaSummaryCard, buildLocationActivityRows } from "../components/jsa";
+import { redactRequestIds } from "../services/wbtReadRequest";
 import SignatureModal from "../components/SignatureModal";
 import { colors } from "../constants/colors";
 import {
@@ -1117,7 +1118,8 @@ export default function SignoffScreen() {
       reason: 'driver chose to stay in WB JSA — origin preserved for later return chip',
       extra: {
         origin: completeOrigin,
-        returnTo: completeReturnScheme,
+        // vc51.5 — receipt-flow schemes carry the nonce; redacted for diag.
+        returnTo: completeReturnScheme ? redactRequestIds(completeReturnScheme) : null,
         action: routeAction('stay'),
       },
     });
@@ -1127,17 +1129,20 @@ export default function SignoffScreen() {
   };
   const handleReturnToOrigin = async () => {
     const action = routeAction('return');
+    // vc51.5 leakage audit — for receipt flows the return scheme carries
+    // the read-receipt nonce; diagnostics get the redacted form only.
+    const safeScheme = completeReturnScheme ? redactRequestIds(completeReturnScheme) : null;
     wbDiagLog({
       area: 'jsa',
       event: 'jsa.returnRouting',
       source: 'signoff.handleReturnToOrigin',
       result: completeReturnScheme ? 'ok' : 'skipped',
-      reason: completeReturnScheme
-        ? `opening ${completeReturnScheme} to return to ${completeOrigin}`
+      reason: safeScheme
+        ? `opening ${safeScheme} to return to ${completeOrigin}`
         : 'no return scheme — fallback to home tabs',
       extra: {
         origin: completeOrigin,
-        returnTo: completeReturnScheme,
+        returnTo: safeScheme,
         action,
       },
     });

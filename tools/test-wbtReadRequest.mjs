@@ -110,4 +110,18 @@ const good = {
     'context persists under one durable key across the whole flow');
 }
 
+// ── vc51.5 leakage audit — the nonce never reaches logs/telemetry ───────────
+{
+  const { redactRequestIds } = await import('../services/wbtReadRequest.ts');
+  const id = 'Q'.repeat(20) + 'r'.repeat(20) + '-_s';
+  const ret = `wellbuilt-tickets://jsa-return?requestId=${id}&version=1`;
+  expect(!redactRequestIds(ret).includes(id) && redactRequestIds(ret).includes(`${id.slice(0, 8)}…`),
+    'return-link URLs redact to an 8-char prefix');
+  const so = readFileSync(join(root, 'app/signoff.tsx'), 'utf8');
+  expect(so.includes('redactRequestIds(completeReturnScheme)'),
+    'returnRouting diagnostics log the redacted scheme only');
+  expect(!/returnTo: completeReturnScheme,/.test(so),
+    'no diagnostic extra carries the raw return scheme');
+}
+
 console.log('wbtReadRequest tests passed');

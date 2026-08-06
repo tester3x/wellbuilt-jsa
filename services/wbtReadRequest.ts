@@ -89,6 +89,18 @@ export function parseWbtReadRequestParams(
   };
 }
 
+/**
+ * Redact full request ids from any text bound for logs/telemetry (vc51.5
+ * leakage audit). The id is the read-receipt capability — diagnostics get
+ * an 8-char prefix, never the whole nonce.
+ */
+export function redactRequestIds(text: string): string {
+  return String(text).replace(
+    /((?:readR|r)equestId=)([A-Za-z0-9_-]{43})/g,
+    (_m, p, id) => `${p}${id.slice(0, 8)}…`,
+  );
+}
+
 /** Usable at submit time: parses and is not expired. */
 export function isReadRequestContextUsable(
   ctx: WbtReadRequestContext | null | undefined,
