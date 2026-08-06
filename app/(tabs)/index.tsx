@@ -35,6 +35,12 @@ import {
 import { fetchDriverProfile, getDriverSession } from "../../services/driverAuth";
 import { resolveActivity } from "../../components/jsa/locationActivity";
 import { wbDiagLog } from "../../services/wbDiagLog";
+import {
+  decideAutoNavigation,
+  currentJsaBannerLabel,
+  HISTORICAL_JSA_LABEL,
+  type ShiftVerdictKind,
+} from "../../services/jsaAutoNav";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -294,6 +300,11 @@ export default function JsaHomeScreen() {
   // would skew across midnight). In-flight cache prevents triple-fetch
   // when the three loaders all fire on the same launch.
   const refreshShiftIdInFlight = useRef<Promise<string | null> | null>(null);
+  // vc51.9B: the TYPED verdict from the last refresh — auto-navigation and
+  // the "Current" banner label consume it; 'unverified' never presents a
+  // record as current (cached state is a hint, never authority).
+  const [shiftVerdict, setShiftVerdict] = useState<ShiftVerdictKind>('none');
+  const [verifiedShiftId, setVerifiedShiftId] = useState<string | null>(null);
   const refreshShiftIdFromServer = React.useCallback(async (): Promise<string | null> => {
     if (refreshShiftIdInFlight.current) return refreshShiftIdInFlight.current;
     const work = (async (): Promise<string | null> => {
@@ -341,9 +352,13 @@ export default function JsaHomeScreen() {
 
         if (serverShiftId) {
           await AsyncStorage.setItem('wellbuilt-current-shift-id', serverShiftId);
+          setShiftVerdict('server_open');
+          setVerifiedShiftId(serverShiftId);
           console.log('[JSA-shift-refresh] server=' + serverShiftId + ' written to AsyncStorage');
         } else if (explicitlyEnded) {
           await AsyncStorage.removeItem('wellbuilt-current-shift-id');
+          setShiftVerdict('server_ended');
+          setVerifiedShiftId(null);
           console.log('[JSA-shift-refresh] server explicitly ended shift — AsyncStorage cleared');
         } else {
           // Ambiguous server response for TODAY. Before falling back to the
@@ -373,6 +388,8 @@ export default function JsaHomeScreen() {
             const raw = originDoc?.fields?.currentShiftId?.stringValue;
             return { readable: true, currentShiftId: typeof raw === 'string' ? raw : undefined };
           });
+          setShiftVerdict(verdict.verdict as ShiftVerdictKind);
+          setVerifiedShiftId(verdict.action === 'clear' ? null : existing);
           if (verdict.action === 'clear') {
             await AsyncStorage.removeItem('wellbuilt-current-shift-id');
             console.log('[JSA-shift-refresh] cached shift ' + existing +
@@ -1199,28 +1216,39 @@ export default function JsaHomeScreen() {
           } catch {}
         }
 
-        // Routing decision per the SSO product rule:
-        //   A. Current shift JSA exists/submitted → route=review (open viewJsa)
-        //   B. Current shift JSA exists but incomplete → route=resume (not yet
-        //      implemented separately; falls through to start because we
-        //      don't currently track partial-state JSAs at the shift level)
-        //   C. No current shift JSA → route=start (stay on home / SSO CTA)
-        if (todaysJsaSave) {
+        // vc51.9B: the routing decision is the PURE decideAutoNavigation
+        // matrix — a record auto-opens only when the typed verdict proves
+        // an open period whose shift id matches the record. Pending WB-T
+        // requests suppress unrelated prior records; 'unverified' never
+        // opens stale detail (blocked/suppressed instead). Standalone
+        // date-scoped behavior stays legacy.
+        const { loadReadRequestContext, isReadRequestContextUsable } =
+          await import('../../services/wbtReadRequest');
+        const pendingCtx = await loadReadRequestContext();
+        const currentShiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id');
+        const decision = decideAutoNavigation({
+          pendingRequestUsable: isReadRequestContextUsable(pendingCtx, Date.now()),
+          verdict: shiftVerdict,
+          saveExists: !!todaysJsaSave,
+          saveShiftId: todaysJsaSave?.shiftId ?? null,
+          currentShiftId,
+          isSsoMode,
+        });
+        if (decision.action === 'open_current' && todaysJsaSave) {
           autoRoutedRef.current = true;
           console.log(`[JSA-current-shift] route=review id=${todaysJsaSave?.id} synthetic=${!!todaysJsaSave?._syntheticFromServer}`);
           openTodaysJsa();
         } else {
-          // Stay on home tab; SSO CTA card or standalone form will render.
-          // Phase 1 — no resume state tracked, so missing save = start.
-          if (isSsoMode) {
-            console.log('[JSA-current-shift] route=start (no current-shift JSA found)');
-          }
+          // suppress/blocked: stay on home. Historical records remain
+          // reachable through History; a blocked pending request renders
+          // the bounded home state instead of stale detail.
+          console.log(`[JSA-current-shift] route=start (${decision.action === 'open_current' ? 'no record' : decision.action + ':' + (decision as { reason?: string }).reason})`);
         }
       } catch (err) {
         console.warn('[JSA][auto-route] check failed:', err);
       }
     })();
-  }, [hydrationDone, todaysJsaSave, openTodaysJsa, isSsoMode]);
+  }, [hydrationDone, todaysJsaSave, openTodaysJsa, isSsoMode, shiftVerdict]);
 
   // Debug: log the open-mode decision on every state change that affects it.
   // Field-test signal for proving how WB JSA resolved the driver's situation:
@@ -1919,11 +1947,30 @@ export default function JsaHomeScreen() {
             today's JSA for safety/DOT. Loads from saves (authoritative),
             routes into /viewJsa in read mode. When activeJsas.length > 0
             the inline "JSA Active" card below already handles this. */}
-        {todaysJsaSave && activeJsas.length === 0 && (
+        {todaysJsaSave && activeJsas.length === 0 && (() => {
+          // vc51.9B: "Current" wording ONLY for a verified open matching
+          // period; anything else is honestly labeled a previous JSA
+          // (still viewable — viewJsa shows its saved date). Standalone
+          // date-scoped records keep the legacy current label (inert).
+          const isVerifiedCurrent =
+            (!isSsoMode && !todaysJsaSave?.shiftId) ||
+            ((shiftVerdict === 'server_open' || shiftVerdict === 'verified_open') &&
+              !!todaysJsaSave?.shiftId && todaysJsaSave.shiftId === verifiedShiftId);
+          const bannerTitle = isVerifiedCurrent
+            ? currentJsaBannerLabel('explicit_shift')
+            : HISTORICAL_JSA_LABEL;
+          const bannerSubtitle = isVerifiedCurrent
+            ? (todaysJsaSave?.timestamp
+              ? `${t('Submitted')} ${new Date(todaysJsaSave.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`
+              : t('Already submitted today'))
+            : (todaysJsaSave?.timestamp
+              ? `${t('Submitted')} ${new Date(todaysJsaSave.timestamp).toLocaleString()}`
+              : t('Previous period'));
+          return (
           <TouchableOpacity
             onPress={openTodaysJsa}
             activeOpacity={0.8}
-            accessibilityLabel={t("View Current Shift JSA")}
+            accessibilityLabel={t(bannerTitle)}
             style={{
               backgroundColor: '#166534',
               borderRadius: 12,
@@ -1943,17 +1990,16 @@ export default function JsaHomeScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>
-                {t("View Current Shift JSA")}
+                {t(bannerTitle)}
               </Text>
               <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 }}>
-                {todaysJsaSave?.timestamp
-                  ? `${t('Submitted')} ${new Date(todaysJsaSave.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`
-                  : t('Already submitted today')}
+                {bannerSubtitle}
               </Text>
             </View>
             <Text style={{ color: '#fff', fontSize: 20, fontWeight: '300' }}>›</Text>
           </TouchableOpacity>
-        )}
+          );
+        })()}
 
         {/* JSA Active Banner + Tabs */}
         {jsaCompletedToday && (
