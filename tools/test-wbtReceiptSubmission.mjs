@@ -31,7 +31,7 @@ expect(so.includes('stored request expired before submit — ordinary flow, no r
 
 // Awaited boundary + ordering: core jsas → receipt → clear → success.
 {
-  const region = so.slice(so.indexOf('if (receiptFlow && readCtxAtSubmit) {'), so.indexOf('void runCloudPersist();'));
+  const region = so.slice(so.indexOf('if (receiptFlow && readCtxAtSubmit) {'), so.indexOf('// Ordinary flow (8/6 honesty)'));
   expect(region.length > 200, 'receipt-flow region located');
   const iCore = region.indexOf('await runCloudPersist()');
   const iGate = region.indexOf('if (!core.jsasOk) return false;');
@@ -58,9 +58,20 @@ expect(so.includes('return { jsasOk: coreJsasOk };'),
   'the cloud closure reports the core outcome');
 expect(so.includes('ANCILLARY: best-effort, logged,'),
   'ancillary-write decision documented in place');
-// Ordinary flow keeps the legacy invocation (tightened in its own commit).
-expect(so.includes('void runCloudPersist();'),
-  'ordinary submissions keep their established flow');
+// Ordinary flow (own commit): the smallest awaited boundary — the core
+// jsas write — and an honest modal. No false success anywhere:
+// completeCloudPending switches the completion copy to saved-on-device,
+// and the top-level failure catch forces the HONEST modal (no return
+// link, no receipt, WB-T stays gated).
+expect(so.includes('const core = await runCloudPersist().catch(() => ({ jsasOk: false }));')
+  && so.includes('setCompleteCloudPending(!core.jsasOk);'),
+  'ordinary submissions await the core outcome');
+expect(so.includes("cloud sync hasn't finished yet"),
+  'the completion modal tells the truth about the cloud outcome');
+expect(so.includes('forcing HONEST modal') && !so.includes("forcing modal:'"),
+  'the forced failure modal no longer claims success');
+expect(!so.includes('void runCloudPersist();'),
+  'no fire-and-forget success path remains');
 
 // Receipt writer: called only after core persistence (contract comment),
 // GET-first idempotent, never without the submission id.

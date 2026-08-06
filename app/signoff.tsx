@@ -67,6 +67,11 @@ export default function SignoffScreen() {
   // Branded post-submit modal. Shown ONCE after saveAndGo completes —
   // replaces the two-Alert double-confirm flow. Buttons adapt to launch origin.
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+  // 8/6 honesty — true when the cloud submission did NOT finish: the
+  // completion modal then says saved-on-device instead of claiming a
+  // successful cloud submission (the old modal showed success even when
+  // every cloud write failed).
+  const [completeCloudPending, setCompleteCloudPending] = useState(false);
   const [completeOrigin, setCompleteOrigin] = useState<'wbs' | 'wbt' | 'wbew' | 'standalone'>('standalone');
   const [completeReturnScheme, setCompleteReturnScheme] = useState<string | null>(null);
 
@@ -977,6 +982,7 @@ export default function SignoffScreen() {
         const succeed = async () => {
           try { await AsyncStorage.setItem('@jsa/clearFormOnNextFocus', '1'); } catch {}
           try { await AsyncStorage.removeItem('jsa_resume'); } catch {}
+          setCompleteCloudPending(false);
           setCompleteReturnScheme(
             `wellbuilt-tickets://jsa-return?requestId=${encodeURIComponent(readCtxAtSubmit.requestId)}&version=1`,
           );
@@ -1002,7 +1008,18 @@ export default function SignoffScreen() {
         return; // receipt flow fully handled — no fall-through success
       }
 
-      void runCloudPersist();
+      // Ordinary flow (8/6 honesty) — the smallest awaited boundary: the
+      // core jsas write. The local save above is already durable; the
+      // completion modal now tells the truth about the cloud outcome
+      // instead of claiming success while every write failed. Ancillary
+      // writes stay best-effort inside the closure.
+      {
+        const core = await runCloudPersist().catch(() => ({ jsasOk: false }));
+        setCompleteCloudPending(!core.jsasOk);
+        if (!core.jsasOk) {
+          console.warn('[JSA-Signoff] core cloud write did not finish — modal shows saved-on-device');
+        }
+      }
 
       // NOTE: do NOT call router.dismissAll() here. Dismissing the stack
       // unmounts this signoff screen; subsequent setState calls on an
@@ -1056,7 +1073,11 @@ export default function SignoffScreen() {
     // Wrap in a top-level catch so ANY failure in saveAndGo still surfaces
     // the modal (driver must not be stranded on signoff after tap).
     saveAndGo().catch((err) => {
-      console.error('[JSA-Signoff] saveAndGo failed — forcing modal:', err);
+      console.error('[JSA-Signoff] saveAndGo failed — forcing HONEST modal:', err);
+      // 8/6 — the forced modal no longer claims success: cloudPending copy
+      // renders (the local save is the first step and is best-effort
+      // durable); no return link, no receipt, WB-T stays gated.
+      setCompleteCloudPending(true);
       setCompleteReturnScheme(null);
       setCompleteOrigin('standalone');
       setShowCompleteModal(true);
@@ -1320,7 +1341,10 @@ export default function SignoffScreen() {
               <Text style={[brandedModalStyles.checkMark, { color: accent }]}>✓</Text>
             </View>
             <Text style={brandedModalStyles.bodyText}>
-              {t("Your JSA has been submitted and saved.")}
+              {completeCloudPending
+                ? (t("Saved on this device — cloud sync hasn't finished yet. It will remain in Saved JSAs.")
+                  || "Saved on this device — cloud sync hasn't finished yet. It will remain in Saved JSAs.")
+                : t("Your JSA has been submitted and saved.")}
             </Text>
             {completeOrigin !== 'standalone' ? (
               <Text style={brandedModalStyles.bodyTextSmall}>
