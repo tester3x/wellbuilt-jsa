@@ -346,11 +346,43 @@ export default function JsaHomeScreen() {
           await AsyncStorage.removeItem('wellbuilt-current-shift-id');
           console.log('[JSA-shift-refresh] server explicitly ended shift — AsyncStorage cleared');
         } else {
-          // Ambiguous server response — preserve whatever AsyncStorage has.
+          // Ambiguous server response for TODAY. Before falling back to the
+          // cached id, check whether that id even belongs to today.
+          //
+          // 8/6 field defect: WB-S ended 2026-08-05_091221 and recorded the
+          // closure on THAT shift's own day doc
+          // (driver_shifts/{hash}_2026-08-05.currentShiftId = ""), but this
+          // branch only ever saw today's 404 and preserved the cached
+          // prior-day id — resurrecting a closed shift as "current" and
+          // presenting yesterday's submitted JSA as the current-shift JSA.
+          //
+          // A prior-day cached id is now verified against its ORIGIN day,
+          // where the authoritative open/closed state lives. Ended or
+          // superseded → cleared (callers fail closed instead of reusing a
+          // closed shift). Still open → preserved, so genuine OVERNIGHT
+          // shifts survive the date change: no midnight boundary and no
+          // fixed hour window is assumed anywhere. Unreadable → preserved,
+          // keeping the 4/28 protection against transient failures.
           const existing = await AsyncStorage.getItem('wellbuilt-current-shift-id');
-          console.log('[JSA-shift-refresh] server=(no signal, ' +
-            (docOk ? 'doc has no currentShiftId field' : `http ${resp.status}`) +
-            ') — preserving AsyncStorage=' + (existing || '(empty)'));
+          const { resolveCachedShift } = await import('../../services/shiftStaleness');
+          const verdict = await resolveCachedShift(existing, localDate, async (shiftDate) => {
+            const originUrl = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${driverHash}_${shiftDate}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
+            const originResp = await fetch(originUrl);
+            if (!originResp.ok) return { readable: false };
+            const originDoc = await originResp.json();
+            const raw = originDoc?.fields?.currentShiftId?.stringValue;
+            return { readable: true, currentShiftId: typeof raw === 'string' ? raw : undefined };
+          });
+          if (verdict.action === 'clear') {
+            await AsyncStorage.removeItem('wellbuilt-current-shift-id');
+            console.log('[JSA-shift-refresh] cached shift ' + existing +
+              ' is NOT current (' + verdict.reason + ') — AsyncStorage cleared');
+          } else {
+            console.log('[JSA-shift-refresh] server=(no signal, ' +
+              (docOk ? 'doc has no currentShiftId field' : `http ${resp.status}`) +
+              ') — preserving AsyncStorage=' + (existing || '(empty)') +
+              ' [' + verdict.reason + ']');
+          }
         }
 
         wbDiagLog({
