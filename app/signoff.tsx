@@ -929,7 +929,7 @@ export default function SignoffScreen() {
               });
             } else {
               coreJsasOk = true;
-              console.log(`[JSA] jsas/${payload.id} written with linkage (driverHash=${driverHash.slice(0, 8)}..., companyId=${companyId})`);
+              console.log(`[JSA] jsas/${payload.id} written with linkage (driverHash=<redacted>, companyId=${companyId})`);
               wbDiagLog({
                 area: 'jsa',
                 event: 'signoff.jsasWrite',

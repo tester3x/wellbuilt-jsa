@@ -175,7 +175,7 @@ export const verifyLogin = async (
 
   try {
     const hash = await hashPasscode(passcode, displayName);
-    console.log("[DriverAuth-JSA] Hash:", hash.slice(0, 8) + "...");
+    console.log("[DriverAuth-JSA] Legacy hash lookup");
 
     // Look up by passcode hash
     const driverData = await firebaseGet(`${DRIVERS_APPROVED}/${hash}`);
@@ -373,7 +373,7 @@ export const revalidateDriverSession = async (): Promise<boolean> => {
       return false;
     }
 
-    console.log("[DriverAuth-JSA] Revalidating session for hash:", hash.slice(0, 8) + "...");
+    console.log("[DriverAuth-JSA] Revalidating session");
     const driverData = await firebaseGet(`${DRIVERS_APPROVED}/${hash}`);
 
     if (!driverData) {

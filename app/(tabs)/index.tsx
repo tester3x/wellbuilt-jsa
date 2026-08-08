@@ -617,7 +617,7 @@ export default function JsaHomeScreen() {
             if (r.document) docs.push(r.document);
           }
         }
-        console.log(`[JSA-current-shift] mode=sso shiftId=${shiftIdInStorage} driverHash=${session.passcodeHash.slice(0, 8)}...`);
+        console.log(`[JSA-current-shift] mode=sso shiftId=${shiftIdInStorage} driverHash=<redacted>`);
         console.log(`[JSA-current-shift] matchedStatusDocs=${docs.length}`);
         wbDiagLog({
           area: 'jsa',
