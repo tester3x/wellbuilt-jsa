@@ -293,6 +293,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    const { captureGovernedReturnBeforeLogout } = await import("../../services/shiftAuthorityStore");
+    await captureGovernedReturnBeforeLogout();
     await clearDriverSession();
     setSession(null);
     setError("");

@@ -41,6 +41,20 @@ import {
   HISTORICAL_JSA_LABEL,
   type ShiftVerdictKind,
 } from "../../services/jsaAutoNav";
+import {
+  decideShiftAuthority,
+  isExplicitShiftId,
+  type GovernedReturnTarget,
+  type OriginVerdict,
+  type ShiftSurface,
+} from "../../services/shiftAuthority";
+import {
+  persistShiftAuthorityDecision,
+  isCurrentShiftVerified,
+  readGovernedReturnTarget,
+} from "../../services/shiftAuthorityStore";
+import { loadReadRequestContext } from "../../services/wbtReadRequest";
+import ShiftAuthorityGate from "../../components/ShiftAuthorityGate";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -83,6 +97,9 @@ export default function JsaHomeScreen() {
   // the driver fills the full form and manages their own JSA.
   const [isSsoMode, setIsSsoMode] = useState(false);
   const [ssoShiftId, setSsoShiftId] = useState<string | null>(null);
+  const [authoritySurface, setAuthoritySurface] = useState<ShiftSurface | null>(null);
+  const [mayLabelActive, setMayLabelActive] = useState(false);
+  const [returnTarget, setReturnTarget] = useState<GovernedReturnTarget>('suite');
 
   // Multi-JSA: array of active JSAs for today
   type ActiveJsa = {
@@ -308,123 +325,138 @@ export default function JsaHomeScreen() {
   const refreshShiftIdFromServer = React.useCallback(async (): Promise<string | null> => {
     if (refreshShiftIdInFlight.current) return refreshShiftIdInFlight.current;
     const work = (async (): Promise<string | null> => {
+      const driverHash = session?.passcodeHash || null;
+      const existing = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+      const pendingCtx = await loadReadRequestContext().catch(() => null);
+      const returnTo = await AsyncStorage.getItem('jsa_returnTo').catch(() => null);
+      const governedFlag = await readGovernedReturnTarget();
+      const isGovernedLaunch =
+        !!pendingCtx ||
+        !!governedFlag ||
+        returnTo === 'wbt' ||
+        returnTo === 'wbs' ||
+        returnTo === 'wellbuilt-suite';
+      if (governedFlag) setReturnTarget(governedFlag);
+
+      const applyDecision = async (
+        today: Parameters<typeof decideShiftAuthority>[0]['today'],
+        originVerdict: OriginVerdict,
+        shiftVerdictKind: ShiftVerdictKind,
+      ): Promise<string | null> => {
+        const decision = decideShiftAuthority({
+          isAuthenticated: !!driverHash,
+          authenticatedDriverId: driverHash,
+          authenticatedCompanyId: session?.companyId || null,
+          cachedShiftId: existing,
+          today,
+          originVerdict,
+          isGovernedLaunch,
+          governedReturnRequired: !!governedFlag,
+          pendingRequest: pendingCtx
+            ? {
+                requestShiftId: pendingCtx.shiftId || null,
+                requestCompanyId: pendingCtx.companyId || null,
+                requestDriverId: pendingCtx.driverHash || null,
+              }
+            : null,
+        });
+        await persistShiftAuthorityDecision(decision);
+        setMayLabelActive(decision.mayLabelActive);
+        setAuthoritySurface(decision.surface);
+        setShiftVerdict(decision.mayLabelActive ? shiftVerdictKind : (decision.kind === 'stale_cached' ? 'verified_closed' : decision.kind === 'origin_day_unverified' || decision.kind === 'authority_unavailable' ? 'unverified' : 'none'));
+        setVerifiedShiftId(decision.mayLabelActive ? decision.activeShiftId : null);
+        if (decision.surface === 'unverified_gate') {
+          console.log('[JSA-shift-refresh] current shift unverified — fail closed');
+        } else if (decision.mayLabelActive) {
+          console.log('[JSA-shift-refresh] current shift verified');
+        } else {
+          console.log('[JSA-shift-refresh] no current shift (' + decision.kind + ')');
+        }
+        return decision.mayLabelActive ? decision.activeShiftId : null;
+      };
+
+      if (!driverHash) {
+        return applyDecision(
+          { fetchOk: true, httpStatus: null, currentShiftId: null, explicitlyEnded: false },
+          'not_consulted',
+          'none',
+        );
+      }
+
       try {
-        const driverHash = session?.passcodeHash;
-        if (!driverHash) return null;
         const now = new Date();
         const yyyy = now.getFullYear();
         const mm = String(now.getMonth() + 1).padStart(2, '0');
         const dd = String(now.getDate()).padStart(2, '0');
         const localDate = `${yyyy}-${mm}-${dd}`;
-        const docId = `${driverHash}_${localDate}`;
-        const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${docId}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
+        const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${driverHash}_${localDate}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
         const resp = await fetch(url);
-        // Three distinct cases — collapsing them into one destructive
-        // branch is what caused the 4/28 field-test bug where AsyncStorage
-        // shiftId disappeared mid-shift:
-        //   (a) currentShiftId = "<id>"  → shift is active, sync to local
-        //   (b) currentShiftId = ""      → WB S explicitly cleared on logout
-        //                                  (per audit 2026-04-27), shift ended
-        //   (c) field missing / 404 / network error → AMBIGUOUS:
-        //                                  doc may not be written yet, the
-        //                                  recordShiftEvent commit may have
-        //                                  failed silently (GPS denied,
-        //                                  transient network), or the doc is
-        //                                  legacy. Local AsyncStorage minted
-        //                                  by WB S is the truth — DO NOT clear.
         const docOk = resp.ok;
-        const docExists = docOk;
-        let docHasShiftIdField = false;
         let serverShiftId: string | null = null;
         let explicitlyEnded = false;
         if (docOk) {
           const doc = await resp.json();
           const raw = doc?.fields?.currentShiftId?.stringValue;
           if (typeof raw === 'string') {
-            docHasShiftIdField = true;
-            if (raw.length > 0) {
-              serverShiftId = raw;
-            } else {
-              explicitlyEnded = true;
-            }
+            if (raw.length > 0) serverShiftId = raw;
+            else explicitlyEnded = true;
           }
         }
 
-        if (serverShiftId) {
-          await AsyncStorage.setItem('wellbuilt-current-shift-id', serverShiftId);
-          setShiftVerdict('server_open');
-          setVerifiedShiftId(serverShiftId);
-          console.log('[JSA-shift-refresh] server=' + serverShiftId + ' written to AsyncStorage');
-        } else if (explicitlyEnded) {
-          await AsyncStorage.removeItem('wellbuilt-current-shift-id');
-          setShiftVerdict('server_ended');
-          setVerifiedShiftId(null);
-          console.log('[JSA-shift-refresh] server explicitly ended shift — AsyncStorage cleared');
-        } else {
-          // Ambiguous server response for TODAY. Before falling back to the
-          // cached id, check whether that id even belongs to today.
-          //
-          // 8/6 field defect: WB-S ended 2026-08-05_091221 and recorded the
-          // closure on THAT shift's own day doc
-          // (driver_shifts/{hash}_2026-08-05.currentShiftId = ""), but this
-          // branch only ever saw today's 404 and preserved the cached
-          // prior-day id — resurrecting a closed shift as "current" and
-          // presenting yesterday's submitted JSA as the current-shift JSA.
-          //
-          // A prior-day cached id is now verified against its ORIGIN day,
-          // where the authoritative open/closed state lives. Ended or
-          // superseded → cleared (callers fail closed instead of reusing a
-          // closed shift). Still open → preserved, so genuine OVERNIGHT
-          // shifts survive the date change: no midnight boundary and no
-          // fixed hour window is assumed anywhere. Unreadable → preserved,
-          // keeping the 4/28 protection against transient failures.
-          const existing = await AsyncStorage.getItem('wellbuilt-current-shift-id');
-          const { resolveCachedShift } = await import('../../services/shiftStaleness');
-          const verdict = await resolveCachedShift(existing, localDate, async (shiftDate) => {
-            const originUrl = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${driverHash}_${shiftDate}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
-            const originResp = await fetch(originUrl);
-            if (!originResp.ok) return { readable: false };
-            const originDoc = await originResp.json();
-            const raw = originDoc?.fields?.currentShiftId?.stringValue;
-            return { readable: true, currentShiftId: typeof raw === 'string' ? raw : undefined };
+        if (serverShiftId && isExplicitShiftId(serverShiftId)) {
+          wbDiagLog({
+            area: 'jsa',
+            event: 'shiftId.refreshFromServer',
+            source: 'tabs/index.refreshShiftIdFromServer',
+            result: 'ok',
+            reason: 'shiftId resolved from driver_shifts',
+            extra: { localDate, httpStatus: resp.status, explicitlyEnded: false },
           });
-          setShiftVerdict(verdict.verdict as ShiftVerdictKind);
-          setVerifiedShiftId(verdict.action === 'clear' ? null : existing);
-          if (verdict.action === 'clear') {
-            await AsyncStorage.removeItem('wellbuilt-current-shift-id');
-            console.log('[JSA-shift-refresh] cached shift ' + existing +
-              ' is NOT current (' + verdict.reason + ') — AsyncStorage cleared');
-          } else {
-            console.log('[JSA-shift-refresh] server=(no signal, ' +
-              (docOk ? 'doc has no currentShiftId field' : `http ${resp.status}`) +
-              ') — preserving AsyncStorage=' + (existing || '(empty)') +
-              ' [' + verdict.reason + ']');
-          }
+          return applyDecision(
+            { fetchOk: true, httpStatus: resp.status, currentShiftId: serverShiftId, explicitlyEnded: false },
+            'not_consulted',
+            'server_open',
+          );
         }
 
+        if (explicitlyEnded) {
+          wbDiagLog({
+            area: 'jsa',
+            event: 'shiftId.refreshFromServer',
+            source: 'tabs/index.refreshShiftIdFromServer',
+            result: 'ok',
+            reason: 'shift explicitly ended on server',
+            extra: { localDate, httpStatus: resp.status, explicitlyEnded: true },
+          });
+          return applyDecision(
+            { fetchOk: true, httpStatus: resp.status, currentShiftId: null, explicitlyEnded: true },
+            'not_consulted',
+            'server_ended',
+          );
+        }
+
+        const { resolveCachedShift } = await import('../../services/shiftStaleness');
+        const verdict = await resolveCachedShift(existing, localDate, async (shiftDate) => {
+          const originUrl = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${driverHash}_${shiftDate}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
+          const originResp = await fetch(originUrl);
+          if (!originResp.ok) return { readable: false };
+          const originDoc = await originResp.json();
+          const raw = originDoc?.fields?.currentShiftId?.stringValue;
+          return { readable: true, currentShiftId: typeof raw === 'string' ? raw : undefined };
+        });
         wbDiagLog({
           area: 'jsa',
           event: 'shiftId.refreshFromServer',
           source: 'tabs/index.refreshShiftIdFromServer',
           result: 'ok',
-          reason: serverShiftId
-            ? 'shiftId resolved from driver_shifts'
-            : explicitlyEnded
-              ? 'shift explicitly ended on server'
-              : 'no signal — preserved AsyncStorage',
-          driverHash,
-          shiftId: serverShiftId || undefined,
-          extra: {
-            localDate,
-            docId,
-            exists: docExists,
-            httpStatus: resp.status,
-            docHasShiftIdField,
-            explicitlyEnded,
-            hadShiftId: !!serverShiftId,
-          },
+          reason: verdict.reason,
+          extra: { localDate, httpStatus: resp.status, originAction: verdict.action },
         });
-        return serverShiftId;
+        return applyDecision(
+          { fetchOk: true, httpStatus: resp.status, currentShiftId: null, explicitlyEnded: false },
+          verdict.verdict as OriginVerdict,
+          verdict.verdict as ShiftVerdictKind,
+        );
       } catch (err) {
         console.warn('[JSA-shift-refresh] failed:', err);
         wbDiagLog({
@@ -432,16 +464,19 @@ export default function JsaHomeScreen() {
           event: 'shiftId.refreshFromServer',
           source: 'tabs/index.refreshShiftIdFromServer',
           result: 'error',
-          reason: (err as any)?.message || String(err).slice(0, 200),
-          driverHash: session?.passcodeHash,
+          reason: 'authority unavailable',
         });
-        return null;
+        return applyDecision(
+          { fetchOk: false, httpStatus: null, currentShiftId: null, explicitlyEnded: false },
+          'not_consulted',
+          'unverified',
+        );
       }
     })();
     refreshShiftIdInFlight.current = work;
     work.finally(() => { refreshShiftIdInFlight.current = null; });
     return work;
-  }, [session?.passcodeHash]);
+  }, [session?.passcodeHash, session?.companyId]);
 
   // Read the active shiftId — minted by WB S at Start Shift, passed via
   // SSO deep link in start.tsx / login.tsx. JSA scope is per-shift now:
@@ -452,8 +487,9 @@ export default function JsaHomeScreen() {
   // on field-test JSA bleed can identify whether the fallback was hit.
   const getJsaScope = React.useCallback(async (): Promise<string> => {
     try {
+      const verified = await isCurrentShiftVerified();
       const id = await AsyncStorage.getItem('wellbuilt-current-shift-id');
-      if (id) {
+      if (id && verified) {
         console.log('[JSA-scope] resolved=shiftId scope=' + id + ' fallbackUsed=false');
         wbDiagLog({
           area: 'jsa',
@@ -485,15 +521,16 @@ export default function JsaHomeScreen() {
   // (which clears shiftId) flips back to standalone correctly.
   const resolveMode = React.useCallback(async () => {
     try {
+      const verified = await isCurrentShiftVerified();
       const id = await AsyncStorage.getItem('wellbuilt-current-shift-id');
-      if (id) {
+      if (id && verified) {
         setIsSsoMode(true);
         setSsoShiftId(id);
-        console.log('[JSA-mode] resolved=sso shiftId=' + id);
+        console.log('[JSA-mode] resolved=sso verified current shift');
       } else {
         setIsSsoMode(false);
         setSsoShiftId(null);
-        console.log('[JSA-mode] resolved=standalone (no shiftId)');
+        console.log('[JSA-mode] resolved=standalone (no verified shift)');
       }
     } catch {
       setIsSsoMode(false);
@@ -577,7 +614,9 @@ export default function JsaHomeScreen() {
 
     // Detect SSO shift mode by direct AsyncStorage check (don't go through
     // getJsaScope which collapses the distinction).
-    const shiftIdInStorage = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+    const shiftIdInStorage = (await isCurrentShiftVerified())
+      ? await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null)
+      : null;
     const isShiftMode = !!shiftIdInStorage;
 
     try {
@@ -1002,7 +1041,9 @@ export default function JsaHomeScreen() {
       // Refresh shiftId from server first — AsyncStorage is stale across
       // shift boundaries when WB JSA is launched without a fresh SSO.
       await refreshShiftIdFromServer();
-      const shiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+      const shiftId = (await isCurrentShiftVerified())
+        ? await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null)
+        : null;
       const isShiftMode = !!shiftId;
 
       // Try local AsyncStorage first — fast path for the same-device same-day case.
@@ -1225,13 +1266,12 @@ export default function JsaHomeScreen() {
         const { loadReadRequestContext, isReadRequestContextUsable } =
           await import('../../services/wbtReadRequest');
         const pendingCtx = await loadReadRequestContext();
-        const currentShiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id');
         const decision = decideAutoNavigation({
           pendingRequestUsable: isReadRequestContextUsable(pendingCtx, Date.now()),
           verdict: shiftVerdict,
           saveExists: !!todaysJsaSave,
           saveShiftId: todaysJsaSave?.shiftId ?? null,
-          currentShiftId,
+          currentShiftId: verifiedShiftId,
           isSsoMode,
         });
         if (decision.action === 'open_current' && todaysJsaSave) {
@@ -1248,7 +1288,7 @@ export default function JsaHomeScreen() {
         console.warn('[JSA][auto-route] check failed:', err);
       }
     })();
-  }, [hydrationDone, todaysJsaSave, openTodaysJsa, isSsoMode, shiftVerdict]);
+  }, [hydrationDone, todaysJsaSave, openTodaysJsa, isSsoMode, shiftVerdict, verifiedShiftId]);
 
   // Debug: log the open-mode decision on every state change that affects it.
   // Field-test signal for proving how WB JSA resolved the driver's situation:
@@ -1947,7 +1987,11 @@ export default function JsaHomeScreen() {
             today's JSA for safety/DOT. Loads from saves (authoritative),
             routes into /viewJsa in read mode. When activeJsas.length > 0
             the inline "JSA Active" card below already handles this. */}
-        {todaysJsaSave && activeJsas.length === 0 && (() => {
+        {authoritySurface === 'unverified_gate' && (
+          <ShiftAuthorityGate variant="card" returnTarget={returnTarget} />
+        )}
+
+        {authoritySurface !== 'unverified_gate' && todaysJsaSave && activeJsas.length === 0 && (() => {
           // vc51.9B: "Current" wording ONLY for a verified open matching
           // period; anything else is honestly labeled a previous JSA
           // (still viewable — viewJsa shows its saved date). Standalone
@@ -2161,7 +2205,7 @@ export default function JsaHomeScreen() {
             button drops them into the same /steps → /ppe → /signoff flow
             standalone uses, but with empty params (wells/locations come
             from jsa_day_status stamps written by WB T at job-close). */}
-        {isSsoMode && !jsaCompletedToday && (
+        {isSsoMode && mayLabelActive && !jsaCompletedToday && (
           <View style={[styles.card, { borderColor: accent, borderWidth: 1 }]}>
             <Text style={styles.cardTitle}>{t("Read & Acknowledge JSA")}</Text>
             <Text style={styles.cardSubtitle}>

@@ -30,6 +30,8 @@ const clearFn = auth.slice(auth.indexOf('export const clearDriverSession'),
 // ── the verified-logout clear set ─────────────────────────────────────────
 check('logout clears the cached current shift id',
   clearFn.includes("'wellbuilt-current-shift-id'") || clearFn.includes('"wellbuilt-current-shift-id"'));
+check('logout clears the verified-current flag (not historical saves)',
+  clearFn.includes('@jsa/currentShiftVerified') && !clearFn.includes('@jsa/governedReturnRequired'));
 check('logout clears the pending WB-T read request',
   clearFn.includes('@jsa/wbtReadRequest'));
 check('logout clears pending current-period UI state (autofill/returnTo/resume)',
@@ -51,8 +53,10 @@ check('RTDB logoutAt cascade routes through the same logout (authoritative signa
   /checkRtdbLogoutSignal/.test(layout) && /logout\(\)/.test(layout));
 check('ambiguous logoutAt fetch failures do NOT clear (baseline preserved on error)',
   /catch/.test(layout.slice(layout.indexOf('checkRtdbLogoutSignal'), layout.indexOf('checkRtdbLogoutSignal') + 1600)));
-check('an unreadable shift is never converted to closed (resolver preserves)',
-  src('services/shiftStaleness.ts').includes("'preserve'"));
+check('an unreadable shift is not preserved as current (resolver clears)',
+  /action: 'clear'[\s\S]*origin_day_unverified/.test(src('services/shiftStaleness.ts')));
+check('logout captures governed-return so the next overlay is not legacy login',
+  src('app/contexts/AuthContext.tsx').includes('captureGovernedReturnBeforeLogout'));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -54,11 +54,11 @@ expect(decideFromOriginDay(STALE, { readable: true, currentShiftId: STALE }) ===
 // Superseded by a newer shift.
 expect(decideFromOriginDay(STALE, { readable: true, currentShiftId: '2026-08-06_060000' }) === 'clear',
   'a superseded shift is cleared');
-// Ambiguity keeps the 4/28 protection.
-expect(decideFromOriginDay(STALE, { readable: false }) === 'preserve',
-  'unreadable origin day stays ambiguous → preserve (4/28 protection intact)');
-expect(decideFromOriginDay(STALE, { readable: true }) === 'preserve',
-  'origin day without the field stays ambiguous → preserve');
+// Unverified origin day must not keep the cache as current.
+expect(decideFromOriginDay(STALE, { readable: false }) === 'clear',
+  'unreadable origin day is cleared as current (not labeled active)');
+expect(decideFromOriginDay(STALE, { readable: true }) === 'clear',
+  'origin day without the field is cleared as current');
 
 // ── Whole ambiguous-branch resolution ───────────────────────────────────────
 {
@@ -92,8 +92,8 @@ expect(decideFromOriginDay(STALE, { readable: true }) === 'preserve',
     'overnight shifts survive the day boundary');
 
   const offline = await resolveCachedShift(STALE, TODAY, async () => { throw new Error('offline'); });
-  expect(offline.action === 'preserve' && offline.verdict === 'unverified',
-    'offline/failed origin-day reads never destroy a live shift (but stay unverified)');
+  expect(offline.action === 'clear' && offline.verdict === 'unverified',
+    'offline/failed origin-day reads stay unverified and are not preserved as current');
 
   const none = await resolveCachedShift(null, TODAY, async () => ({ readable: true }));
   expect(none.action === 'preserve' && none.reason === 'no_cached_shift', 'no cache, nothing to do');
@@ -115,9 +115,9 @@ expect(decideFromOriginDay(STALE, { readable: true }) === 'preserve',
     'missing field → unverified');
   expect(verifyCachedShift(null, { readable: true, currentShiftId: 'x' }) === 'verified_closed',
     'no cached shift is not an open period');
-  const offlineVerdict = (await resolveCachedShift(STALE, TODAY, async () => { throw new Error('offline'); })).verdict;
-  expect(offlineVerdict === 'unverified',
-    'offline resolution surfaces unverified while preserving the cache');
+  const offlineRes = await resolveCachedShift(STALE, TODAY, async () => { throw new Error('offline'); });
+  expect(offlineRes.verdict === 'unverified' && offlineRes.action === 'clear',
+    'offline resolution surfaces unverified and clears the current-shift hint');
 }
 
 // No invented boundary anywhere: the module must not encode hour windows.
@@ -132,11 +132,8 @@ expect(decideFromOriginDay(STALE, { readable: true }) === 'preserve',
   const idx = readFileSync(join(root, 'app/(tabs)/index.tsx'), 'utf8');
   expect(idx.includes('resolveCachedShift'),
     'refreshShiftIdFromServer resolves prior-day caches through the shared decision');
-  const amb = idx.slice(idx.indexOf('// Ambiguous server response'), idx.indexOf('wbDiagLog({', idx.indexOf('// Ambiguous server response')));
-  expect(amb.includes("action === 'clear'") && amb.includes("removeItem('wellbuilt-current-shift-id')"),
-    'a proven-closed prior-day shift is cleared from AsyncStorage');
-  expect(amb.includes('preserving AsyncStorage'),
-    'the genuinely ambiguous path still preserves (4/28 protection)');
+  expect(idx.includes('decideShiftAuthority') && idx.includes('persistShiftAuthorityDecision'),
+    'refresh applies the fail-closed authority decision (unverified is not preserved as current)');
 }
 
 console.log('shiftStaleness tests passed');

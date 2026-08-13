@@ -21,6 +21,18 @@ import { getDriverSession } from '../services/driverAuth';
 import { getUnfinishedJsas, discardJsa, type UnfinishedJsa } from '../services/jsaStatus';
 import UnfinishedJsasModal from '../components/UnfinishedJsasModal';
 import WelcomeModal from '../components/WelcomeModal';
+import ShiftAuthorityGate from '../components/ShiftAuthorityGate';
+import {
+  decideUnauthenticatedOverlay,
+  type GovernedReturnTarget,
+} from '../services/shiftAuthority';
+import {
+  isCurrentShiftVerified,
+  readGovernedReturnTarget,
+  markGovernedReturnRequired,
+  subscribeShiftVerified,
+} from '../services/shiftAuthorityStore';
+import { WBT_READ_REQUEST_KEY } from '../services/wbtReadRequest';
 
 const FIREBASE_DB = 'https://wellbuilt-sync-default-rtdb.firebaseio.com';
 
@@ -135,6 +147,8 @@ function AppContent() {
   // auth/foreground. Suppressed when the unfinished-JSA nag is showing.
   const [showWelcome, setShowWelcome] = useState(false);
   const [welcomeName, setWelcomeName] = useState('');
+  const [unauthSurface, setUnauthSurface] = useState<'legacy_login' | 'unverified_gate'>('legacy_login');
+  const [returnTarget, setReturnTarget] = useState<GovernedReturnTarget>('suite');
 
   const checkUnfinishedJsas = async () => {
     try {
@@ -208,6 +222,8 @@ function AppContent() {
     try {
       const session = await getDriverSession();
       if (!session) return;
+      // Welcome/Get Started must not expose an unverified cached shift.
+      if (!(await isCurrentShiftVerified())) return;
       const todayStr = new Date().toISOString().slice(0, 10);
       const shownDate = await AsyncStorage.getItem('@jsa/welcomeShownDate');
       if (shownDate === todayStr) return; // already shown today
@@ -216,6 +232,23 @@ function AppContent() {
       setWelcomeName(firstName);
       setShowWelcome(true);
     } catch {}
+  };
+
+  const resolveUnauthSurface = async () => {
+    try {
+      const target = await readGovernedReturnTarget();
+      const pending = await AsyncStorage.getItem(WBT_READ_REQUEST_KEY);
+      const returnTo = await AsyncStorage.getItem('jsa_returnTo');
+      const surface = decideUnauthenticatedOverlay({
+        governedReturnRequired: !!target,
+        hasPendingRequest: !!pending,
+        isGovernedLaunch: returnTo === 'wbt' || returnTo === 'wbs' || returnTo === 'wellbuilt-suite',
+      });
+      setUnauthSurface(surface);
+      if (target) setReturnTarget(target);
+    } catch {
+      setUnauthSurface('legacy_login');
+    }
   };
 
   // Clear SSO suppression once auth succeeds
@@ -228,8 +261,21 @@ function AppContent() {
     if (isAuthenticated) {
       checkUnfinishedJsas();
       maybeShowWelcome();
+    } else {
+      setShowWelcome(false);
+      resolveUnauthSurface();
     }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    return subscribeShiftVerified(() => {
+      maybeShowWelcome();
+    });
+  }, []);
+
+  useEffect(() => {
+    resolveUnauthSurface();
+  }, []);
 
   // Full-screen immersive mode — hide Android navigation bar
   useEffect(() => {
@@ -292,8 +338,21 @@ function AppContent() {
         if (parsed.path === 'start' && parsed.queryParams) {
           console.log('[JSA] Start deep link received with params:', Object.keys(parsed.queryParams));
           // SSO login if hash provided
+          let ssoOk = false;
           if (parsed.queryParams.hash && parsed.queryParams.name) {
-            await ssoLogin(parsed.queryParams.hash as string, parsed.queryParams.name as string);
+            ssoOk = await ssoLogin(parsed.queryParams.hash as string, parsed.queryParams.name as string);
+          }
+          const explicitShift = typeof parsed.queryParams.shiftId === 'string'
+            ? parsed.queryParams.shiftId
+            : '';
+          const governed = !!(
+            parsed.queryParams.hash ||
+            parsed.queryParams.returnTo === 'wbt' ||
+            parsed.queryParams.returnTo === 'wellbuilt-suite' ||
+            parsed.queryParams.returnTo === 'wbs'
+          );
+          if (governed && (!/^\d{4}-\d{2}-\d{2}_\d{6}$/.test(explicitShift) || (parsed.queryParams.hash && parsed.queryParams.name && !ssoOk))) {
+            await markGovernedReturnRequired(parsed.queryParams.returnTo === 'wbt' ? 'wbt' : 'suite');
           }
           // Store params for auto-fill — home screen reads these on mount
           await AsyncStorage.setItem('jsa_autofill', JSON.stringify(parsed.queryParams));
@@ -346,16 +405,23 @@ function AppContent() {
       if (url.includes('/start')) {
         console.log('[JSA] Cold start deep link with params — start.tsx will handle');
         const parsed = Linking.parse(url);
-        if (parsed.queryParams?.hash && parsed.queryParams?.name) {
+        const qp = parsed.queryParams || {};
+        let ssoOk = false;
+        if (qp.hash && qp.name) {
           // SSO login included — suppress login overlay while auth settles
-          await ssoLogin(parsed.queryParams.hash as string, parsed.queryParams.name as string);
+          ssoOk = await ssoLogin(qp.hash as string, qp.name as string);
         }
         // Persist returnTo immediately on cold start too (mirrors warm-
         // start handler above). start.tsx also writes this, but it only
         // fires when start.tsx is the routed screen — _layout.tsx warm
         // start path bypasses start.tsx entirely.
-        if (parsed.queryParams?.returnTo) {
-          await AsyncStorage.setItem('jsa_returnTo', String(parsed.queryParams.returnTo)).catch(() => {});
+        if (qp.returnTo) {
+          await AsyncStorage.setItem('jsa_returnTo', String(qp.returnTo)).catch(() => {});
+        }
+        const explicitShift = typeof qp.shiftId === 'string' ? qp.shiftId : '';
+        const governed = !!(qp.hash || qp.returnTo === 'wbt' || qp.returnTo === 'wellbuilt-suite' || qp.returnTo === 'wbs');
+        if (governed && (!/^\d{4}-\d{2}-\d{2}_\d{6}$/.test(explicitShift) || (qp.hash && qp.name && !ssoOk))) {
+          await markGovernedReturnRequired(qp.returnTo === 'wbt' ? 'wbt' : 'suite');
         }
         setSsoInProgress(false);
         return;
@@ -471,10 +537,16 @@ function AppContent() {
             </View>
           )}
 
-          {/* Login overlay when not authenticated (suppressed during SSO cold start) */}
+          {/* Unauthenticated overlay. A governed launch / leftover SSO
+              session that could not be verified must NOT fall through to
+              manual name/passcode as a substitute for governed auth. */}
           {mode !== 'checking' && !isAuthenticated && !ssoInProgress && (
             <View style={styles.overlay}>
-              <LoginScreen />
+              {unauthSurface === 'unverified_gate' ? (
+                <ShiftAuthorityGate variant="overlay" returnTarget={returnTarget} />
+              ) : (
+                <LoginScreen />
+              )}
             </View>
           )}
         </View>

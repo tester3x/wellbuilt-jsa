@@ -51,16 +51,19 @@ export default function SSOLoginRoute() {
       return;
     }
 
-    console.log('[JSA-SSO] Validating SSO for:', name, 'shiftId:', params.shiftId || '(none)');
+    console.log('[JSA-SSO] Validating SSO launch', params.shiftId ? 'with shiftId' : 'without shiftId');
 
     try {
       // shiftId — scopes JSA to the active shift. Captured BEFORE ssoLogin
       // so that downstream JSA reads/writes during the auth flow already
       // see the correct scope. Without this, WB JSA falls back to today's
       // UTC date and writes a doc that bleeds into the previous shift.
-      if (params.shiftId) {
-        await AsyncStorage.setItem('wellbuilt-current-shift-id', String(params.shiftId));
-        console.log('[JSA-SSO] shiftId persisted:', params.shiftId);
+      const explicitShift = params.shiftId && /^\d{4}-\d{2}-\d{2}_\d{6}$/.test(String(params.shiftId))
+        ? String(params.shiftId)
+        : '';
+      if (explicitShift) {
+        await AsyncStorage.setItem('wellbuilt-current-shift-id', explicitShift);
+        console.log('[JSA-SSO] shiftId persisted');
       } else {
         console.warn('[JSA-SSO] NO shiftId in URL params — JSA scope will fall back to date');
       }
@@ -69,7 +72,11 @@ export default function SSOLoginRoute() {
       if (params.truck) await AsyncStorage.setItem('@jsa/ssoTruck', params.truck);
       if (params.trailer) await AsyncStorage.setItem('@jsa/ssoTrailer', params.trailer);
 
-      await ssoLogin(hash, name);
+      const ssoOk = await ssoLogin(hash, name);
+      if (!explicitShift || !ssoOk) {
+        const { markGovernedReturnRequired } = await import('../services/shiftAuthorityStore');
+        await markGovernedReturnRequired('suite');
+      }
       // ssoLogin will update auth state → the useEffect above handles redirect
     } catch (error: any) {
       console.error('[JSA-SSO] Validation error:', error);

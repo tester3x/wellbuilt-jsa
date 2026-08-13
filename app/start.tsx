@@ -17,19 +17,27 @@ export default function StartScreen() {
   useEffect(() => {
     (async () => {
       try {
-        // SSO login if hash provided
+        // SSO login if hash provided. A governed launch without a verified
+        // explicit shift must not fall through to manual name/passcode.
+        let ssoOk = false;
         if (params.hash && params.name) {
-          await ssoLogin(params.hash as string, params.name as string);
+          ssoOk = await ssoLogin(params.hash as string, params.name as string);
         }
         // shiftId — scopes the JSA to the current shift. WB S mints it at
         // Start Shift; closing a shift clears it; the next shift gets a new
         // id so the JSA doesn't bleed across shifts. Stored under the same
         // key WB T uses so all three apps look at the same scope.
-        if (params.shiftId) {
-          await AsyncStorage.setItem('wellbuilt-current-shift-id', String(params.shiftId));
-          console.log('[JSA-SSO] shiftId persisted via /start:', params.shiftId);
+        const explicitShift = typeof params.shiftId === 'string' ? params.shiftId : '';
+        if (explicitShift && /^\d{4}-\d{2}-\d{2}_\d{6}$/.test(explicitShift)) {
+          await AsyncStorage.setItem('wellbuilt-current-shift-id', explicitShift);
+          console.log('[JSA-SSO] shiftId persisted via /start');
         } else {
           console.warn('[JSA-SSO] /start route — NO shiftId in URL params — JSA scope will fall back to date');
+        }
+        const governed = !!(params.hash || params.returnTo === 'wbt' || params.returnTo === 'wellbuilt-suite' || params.returnTo === 'wbs');
+        if (governed && (!explicitShift || !/^\d{4}-\d{2}-\d{2}_\d{6}$/.test(explicitShift) || (params.hash && params.name && !ssoOk))) {
+          const { markGovernedReturnRequired } = await import('../services/shiftAuthorityStore');
+          await markGovernedReturnRequired(params.returnTo === 'wbt' ? 'wbt' : 'suite');
         }
         // Store params for auto-fill — home screen reads these on mount
         await AsyncStorage.setItem('jsa_autofill', JSON.stringify(params));

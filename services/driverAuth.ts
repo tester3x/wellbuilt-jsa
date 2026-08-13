@@ -460,6 +460,7 @@ export const clearDriverSession = async (): Promise<void> => {
   try {
     await AsyncStorage.multiRemove([
       "wellbuilt-current-shift-id",
+      "@jsa/currentShiftVerified",
       "@jsa/wbtReadRequest",
       "jsa_autofill",
       "jsa_returnTo",

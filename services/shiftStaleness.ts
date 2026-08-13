@@ -23,11 +23,10 @@
  *   currentShiftId === cachedId  → still open (legitimate overnight shift)
  *   currentShiftId === ''        → WB-S explicitly ended it → clear
  *   currentShiftId === other id  → superseded by a newer shift  → clear
- *   doc missing / no field / err → genuinely ambiguous → preserve
+ *   doc missing / no field / err → unverified → clear as CURRENT
  *
- * The ambiguous branch keeps the 4/28 protection (a transient failure must
- * never wipe a live shift) while closing the case that protection was
- * never meant to cover.
+ * Unverified is not a licence to present the cache as the current shift.
+ * Historical JSA records are a different store and are never deleted here.
  */
 
 /** Origin-day document as read from driver_shifts/{hash}_{shiftDate}. */
@@ -51,10 +50,8 @@ export interface OriginDayShiftDoc {
  *   'verified_open'   — the origin day names exactly this shift: current.
  *   'verified_closed' — explicitly ended ('') or superseded by another id.
  *   'unverified'      — origin day unreadable/absent/field missing. NOT a
- *                       licence to proceed: ordinary historical UI may
- *                       continue with honest status, but request-bound
- *                       completion (signing/filing/receipt) must fail
- *                       closed rather than bind to an unproven period.
+ *                       licence to proceed or to label the cache current.
+ *                       Historical UI may still list prior JSAs as history.
  */
 export type PeriodVerdict = 'verified_open' | 'verified_closed' | 'unverified';
 
@@ -92,17 +89,17 @@ export function needsOriginDayCheck(
 
 /**
  * Decide a prior-day cached shift's fate from its origin-day document.
- * 'preserve' keeps the cached id (overnight shift still open, or the
- * origin day is unreadable); 'clear' removes it (explicitly ended or
- * superseded) so callers fail closed instead of reusing a closed shift.
+ * 'preserve' keeps the cached id ONLY when the origin day names it as
+ * still open. Unreadable / missing / ended / superseded → 'clear' so the
+ * cache cannot be labeled current. Historical JSA records are untouched.
  */
 export function decideFromOriginDay(
   cachedShiftId: string,
   doc: OriginDayShiftDoc,
 ): 'preserve' | 'clear' {
-  if (!doc || !doc.readable) return 'preserve';
+  if (!doc || !doc.readable) return 'clear';
   const cur = doc.currentShiftId;
-  if (typeof cur !== 'string') return 'preserve';
+  if (typeof cur !== 'string') return 'clear';
   if (cur === cachedShiftId) return 'preserve';
   return 'clear';
 }
@@ -132,6 +129,9 @@ export async function resolveCachedShift(
     doc = { readable: false };
   }
   const verdict = verifyCachedShift(cachedShiftId, doc);
+  if (verdict === 'verified_open') {
+    return { action: 'preserve', verdict, reason: 'origin_day_still_open' };
+  }
   if (verdict === 'verified_closed') {
     return {
       action: 'clear',
@@ -140,8 +140,8 @@ export async function resolveCachedShift(
     };
   }
   return {
-    action: 'preserve',
-    verdict,
-    reason: verdict === 'verified_open' ? 'origin_day_still_open' : 'origin_day_unverified',
+    action: 'clear',
+    verdict: 'unverified',
+    reason: 'origin_day_unverified',
   };
 }
