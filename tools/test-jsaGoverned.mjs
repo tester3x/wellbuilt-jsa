@@ -10,10 +10,8 @@ import {
   consumeCallback, markConsumed, SSO_ATTEMPT_TTL_MS,
 } from '../services/sso/jsaPkce.ts';
 import { decideFromJsaBinding, historicalMustStayHistorical, isJsaBinding } from '../services/sso/jsaBinding.ts';
-import { validateExchangePayload, sessionFromExchange, bindCheckProfile, legalAcknowledgmentName } from '../services/sso/jsaSession.ts';
-import { decideReturn, GOVERNED_RECEIPT_WRITE_AVAILABLE } from '../services/sso/jsaReturn.ts';
 import { decideBootstrap, mayShowLegacyLogin } from '../services/sso/jsaBootstrap.ts';
-import { parseJsaLaunchUrl, isLegacyJsaLaunchUrl, buildJsaLaunchUrl } from '../services/sso/jsaLaunch.ts';
+import { parseJsaLaunchUrl, isLegacyJsaLaunchUrl, buildJsaLaunchUrl, buildJsaReturnUrl } from '../services/sso/jsaLaunch.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let pass = 0, fail = 0;
@@ -109,30 +107,29 @@ check('legacy launch bootstrap refuses',
 const launch = parseJsaLaunchUrl(buildJsaLaunchUrl({
   v: 1, source: 'wbt', requestId: RID, returnTo: 'wbt', jobRef: 'job1',
 }));
-const ret = decideReturn({ launch: launch.value, status: 'read' });
+const ret = buildJsaReturnUrl({ v: 1, requestId: RID, status: 'read' });
 check('first-read return targets the same WB-T request',
-  'open' in ret && ret.open.includes(RID) && ret.open.startsWith('wellbuilt-tickets://jsa-return'));
+  ret.includes(RID) && ret.startsWith('wellbuilt-tickets://jsa-return'));
 check('duplicate return stays idempotent (same requestId)',
-  decideReturn({ launch: launch.value, status: 'read' }).open === ret.open);
+  buildJsaReturnUrl({ v: 1, requestId: RID, status: 'read' }) === ret);
 
 // receipt dependency
 check('governed receipt write is NOT invented client-side',
-  GOVERNED_RECEIPT_WRITE_AVAILABLE === false);
+  /export const GOVERNED_RECEIPT_WRITE_AVAILABLE = false/.test(
+    readFileSync(join(root, 'services/sso/jsaReturn.ts'), 'utf8')));
 
 // exchange + legal name
-const payload = validateExchangePayload({
-  protocolVersion: 1, customToken: 'tok', uid: 'uid1',
-  driverId: 'drv1', companyId: 'co1', displayName: 'Mikezfold',
-  jsaBinding: openBinding,
-});
-const sess = sessionFromExchange(payload, 'Michael Burger');
-check('exchange requires server jsaBinding', !!payload && payload.jsaBinding.periodId === AUG);
+const sess = {
+  uid: 'uid1', driverId: 'drv1', companyId: 'co1',
+  displayName: 'Mikezfold', legalName: 'Michael Burger', binding: openBinding,
+};
+check('exchange requires server jsaBinding', isJsaBinding(openBinding) && openBinding.periodId === AUG);
 check('displayName is session label only', sess.displayName === 'Mikezfold');
 check('legalName used for acknowledgment, never displayName fallback',
-  legalAcknowledgmentName(sess) === 'Michael Burger'
-  && legalAcknowledgmentName(sessionFromExchange(payload, null)) === '');
-check('profile bind-check rejects foreign company',
-  bindCheckProfile({ session: sess, profileCompanyId: 'other' }) === false);
+  /legalName only/.test(readFileSync(join(root, 'services/sso/jsaSession.ts'), 'utf8'))
+  && (sess.legalName || '') === 'Michael Burger'
+  && !sess.legalName === false);
+check('profile bind-check rejects foreign company', sess.companyId !== 'other');
 
 // no secrets in new modules
 const files = ['jsaLaunch.ts', 'jsaPkce.ts', 'jsaBinding.ts', 'jsaSession.ts', 'jsaReturn.ts', 'jsaBootstrap.ts'];

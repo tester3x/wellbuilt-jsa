@@ -6,7 +6,7 @@ import {
   buildJsaReturnUrl,
   type JsaLaunchRequest,
   type JsaReturnStatus,
-} from './jsaLaunch.ts';
+} from './jsaLaunch';
 
 export function decideReturn(input: {
   launch: JsaLaunchRequest | null;

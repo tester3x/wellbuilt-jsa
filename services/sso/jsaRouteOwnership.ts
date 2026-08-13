@@ -2,7 +2,7 @@
  * Durable ownership of a governed launch. The request is a HINT.
  * One owner per requestId; a later valid launch replaces it.
  */
-import type { JsaLaunchRequest } from './jsaLaunch.ts';
+import type { JsaLaunchRequest } from './jsaLaunch';
 
 export interface JsaLaunchOwnership {
   request: JsaLaunchRequest;

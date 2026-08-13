@@ -371,7 +371,7 @@ function AppContent() {
           const parsedCb = parseJsaSsoCallbackUrl(event.url);
           const attempt = await loadAttempt();
           const consumed = consumeCallback(attempt, parsedCb, Date.now());
-          if (!consumed.ok || consumed.status !== 'success') {
+          if (!consumed.ok || consumed.status !== 'success' || !('verifier' in consumed)) {
             await markGovernedReturnRequired('suite');
             setSsoInProgress(false);
             return;

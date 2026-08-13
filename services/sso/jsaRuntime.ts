@@ -7,10 +7,10 @@ import * as SecureStore from 'expo-secure-store';
 import {
   encodeB64Url32,
   type JsaPkceAttempt,
-} from './jsaPkce.ts';
-import type { JsaLaunchRequest } from './jsaLaunch.ts';
-import type { JsaGovernedSession } from './jsaSession.ts';
-import { JSA_LAUNCH_CONTEXT_KEY } from './jsaLaunch.ts';
+} from './jsaPkce';
+import type { JsaLaunchRequest } from './jsaLaunch';
+import type { JsaGovernedSession } from './jsaSession';
+import { JSA_LAUNCH_CONTEXT_KEY } from './jsaLaunch';
 
 const ATTEMPT_META_KEY = '@jsa/pkceAttemptMeta';
 const VERIFIER_KEY = 'jsa_pkce_verifier';

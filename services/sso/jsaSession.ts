@@ -2,7 +2,7 @@
  * Exchange result + secure session. displayName is a session label only.
  * legalName is hydrated separately and never substituted from displayName.
  */
-import { isJsaBinding, type JsaBinding } from './jsaBinding.ts';
+import { isJsaBinding, type JsaBinding } from './jsaBinding';
 
 export interface JsaGovernedSession {
   uid: string;
