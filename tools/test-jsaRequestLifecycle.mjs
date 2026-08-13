@@ -400,8 +400,11 @@ check('signoff does not substitute displayName for signature',
   /legalAcknowledgmentName/.test(signoff)
   && !/useState\(params\.driverName/.test(signoff));
 const startSrc = readFileSync(join(root, 'app/start.tsx'), 'utf8');
+const startLive = readFileSync(join(root, 'services/sso/jsaStartLive.ts'), 'utf8');
 check('start owns launch then obtains authoritative context',
-  startSrc.includes('ownAndObtain') && startSrc.includes('parseJsaLaunchUrl'));
+  startSrc.includes('consumeJsaStart')
+  && startLive.includes('ownLaunch')
+  && startLive.includes('obtainAuthoritativeContext'));
 const layout = readFileSync(join(root, 'app/_layout.tsx'), 'utf8');
 check('layout refuses hash/name login during governed launch',
   layout.includes('governedLaunch') && layout.includes("refusal: 'malformed'"));

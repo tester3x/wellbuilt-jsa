@@ -306,6 +306,17 @@ function AppContent() {
           isDirectIcon: !url,
         });
         if (cancelled) return;
+        if (decision.action === 'handle_launch' && url) {
+          const { consumeJsaStart, hrefAfterStart } = await import('../services/sso/jsaStartLive');
+          const result = await consumeJsaStart(url);
+          if (result.kind === 'need_auth' || result.kind === 'duplicate') {
+            setSsoInProgress(true);
+            return;
+          }
+          const href = await hrefAfterStart(result);
+          if (href) router.replace(href as any);
+          return;
+        }
         if (decision.action === 'open_suite_authorize') {
           const Crypto = await import('expo-crypto');
           const attempt = await mintAttempt({
@@ -406,37 +417,23 @@ function AppContent() {
           AsyncStorage.setItem('jsa_returnTo', 'wellbuilt-suite').catch(() => {});
         }
 
-        // Governed WB-T launch — parse, own, get. Never hash/name login.
+        // Governed WB-T launch — shared start owner. Never hash/name login.
         {
-          const { parseJsaLaunchUrl, isLegacyJsaLaunchUrl } = await import('../services/sso/jsaLaunch');
-          if (isLegacyJsaLaunchUrl(event.url)) {
-            await markGovernedReturnRequired('wbt');
-            router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
-            return;
-          }
-          const governed = parseJsaLaunchUrl(event.url);
-          if (governed.ok) {
+          const { isJsaStartUrl, consumeJsaStart, hrefAfterStart } =
+            await import('../services/sso/jsaStartLive');
+          if (isJsaStartUrl(event.url)) {
             await AsyncStorage.setItem('jsa_returnTo', 'wbt').catch(() => {});
-            const { ownAndObtain } = await import('../services/sso/jsaGovernedLive');
-            const { liveGovernedDeps } = await import('../services/sso/jsaGovernedLive');
-            const { resolveEntryRoute } = await import('../services/sso/jsaGovernedRoute');
-            const decision = await ownAndObtain(governed.value);
-            if (decision.kind === 'need_auth') {
-              const { mintAttempt } = await import('../services/sso/jsaRuntime');
-              const { buildAuthorizeUrl } = await import('../services/sso/jsaPkce');
-              const Crypto = await import('expo-crypto');
-              const attempt = await mintAttempt({
-                randomBytes: (n) => Crypto.getRandomBytesAsync(n),
-                sha256Hex: async (s) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, s),
-                nowMs: () => Date.now(),
-              });
-              await Linking.openURL(buildAuthorizeUrl(attempt));
-              setSsoInProgress(false);
+            const result = await consumeJsaStart(event.url);
+            if (result.kind === 'fail_closed') {
+              await markGovernedReturnRequired('wbt');
+            }
+            if (result.kind === 'need_auth' || result.kind === 'duplicate') {
+              setSsoInProgress(true);
               return;
             }
-            const href = await resolveEntryRoute(decision, liveGovernedDeps());
-            router.replace(href as any);
-            setSsoInProgress(false);
+            const href = await hrefAfterStart(result);
+            if (href) router.replace(href as any);
+            setSsoInProgress(result.kind === 'ready');
             return;
           }
         }
@@ -530,12 +527,24 @@ function AppContent() {
         setSsoInProgress(false);
         return;
       }
-      // Start deep link — store params for auto-fill, let start.tsx handle redirect
+      // Start deep link — shared owner. Do not defer to start.tsx mounting.
       if (url.includes('/start') || url.includes('://start')) {
-        const { parseJsaLaunchUrl, isLegacyJsaLaunchUrl } = await import('../services/sso/jsaLaunch');
-        if (isLegacyJsaLaunchUrl(url) || parseJsaLaunchUrl(url).ok) {
-          // Governed / refused launch — start.tsx owns parse + get. Never hash/name.
-          setSsoInProgress(false);
+        const { isJsaStartUrl, consumeJsaStart, hrefAfterStart } =
+          await import('../services/sso/jsaStartLive');
+        const { isLegacyJsaLaunchUrl, parseJsaLaunchUrl } = await import('../services/sso/jsaLaunch');
+        if (isJsaStartUrl(url) || isLegacyJsaLaunchUrl(url) || parseJsaLaunchUrl(url).ok) {
+          await AsyncStorage.setItem('jsa_returnTo', 'wbt').catch(() => {});
+          const result = await consumeJsaStart(url);
+          if (result.kind === 'fail_closed') {
+            await markGovernedReturnRequired('wbt');
+          }
+          if (result.kind === 'need_auth' || result.kind === 'duplicate') {
+            setSsoInProgress(true);
+            return;
+          }
+          const href = await hrefAfterStart(result);
+          if (href) router.replace(href as any);
+          setSsoInProgress(result.kind === 'ready');
           return;
         }
         console.log('[JSA] Cold start deep link with params — start.tsx will handle');

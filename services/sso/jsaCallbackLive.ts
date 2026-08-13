@@ -64,5 +64,10 @@ function liveCallbackDeps(): JsaCallbackOwnerDeps {
 }
 
 export async function consumeJsaSsoCallback(url: unknown): Promise<CallbackOwnerResult> {
-  return handleJsaSsoCallbackUrl(url, liveCallbackDeps());
+  console.log(JSON.stringify({ tag: '[jsa-callback]', event: 'invoked' }));
+  const result = await handleJsaSsoCallbackUrl(url, liveCallbackDeps());
+  if (result.kind === 'exchanged') {
+    console.log(JSON.stringify({ tag: '[jsa-callback]', event: 'session_persisted' }));
+  }
+  return result;
 }
