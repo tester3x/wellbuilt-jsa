@@ -50,6 +50,9 @@ check('pending request + prior-period record → suppress (request flow wins)',
   d({ pendingRequestUsable: true, saveShiftId: 'S0' }).action === 'suppress');
 check('pending request + closed period → suppress',
   d({ pendingRequestUsable: true, verdict: 'verified_closed' }).action === 'suppress');
+check('governed pending never lets View Previous JSA satisfy the request',
+  d({ governedRequestPending: true, pendingRequestUsable: true }).action === 'suppress'
+  && d({ governedRequestPending: true }).reason === 'governed_request_requires_own_stages');
 
 // ── standalone/legacy preserved ───────────────────────────────────────────
 check('standalone date-scoped record keeps legacy auto-open (inert)',

@@ -11,6 +11,17 @@ import {
 import type { JsaLaunchRequest } from './jsaLaunch';
 import type { JsaGovernedSession } from './jsaSession';
 import { JSA_LAUNCH_CONTEXT_KEY } from './jsaLaunch';
+import type { JsaLaunchOwnership } from './jsaRouteOwnership';
+import {
+  GOVERNED_LAUNCH_OWNERSHIP_KEY,
+  GOVERNED_PENDING_COMPLETE_KEY,
+  GOVERNED_REQUEST_CONTEXT_KEY,
+  GOVERNED_UI_STAGE_KEY,
+  parseGetContextView,
+  parsePendingComplete,
+  type JsaRequestContextView,
+  type PendingCompleteRecord,
+} from './jsaRequestLifecycle';
 
 const ATTEMPT_META_KEY = '@jsa/pkceAttemptMeta';
 const VERIFIER_KEY = 'jsa_pkce_verifier';
@@ -83,4 +94,61 @@ export async function mintAttempt(ops: {
   };
   await saveAttempt(attempt);
   return attempt;
+}
+
+export async function saveLaunchOwnership(own: JsaLaunchOwnership): Promise<void> {
+  await AsyncStorage.setItem(GOVERNED_LAUNCH_OWNERSHIP_KEY, JSON.stringify(own));
+}
+
+export async function loadLaunchOwnership(): Promise<JsaLaunchOwnership | null> {
+  try {
+    const raw = await AsyncStorage.getItem(GOVERNED_LAUNCH_OWNERSHIP_KEY);
+    return raw ? JSON.parse(raw) as JsaLaunchOwnership : null;
+  } catch { return null; }
+}
+
+export async function saveRequestContext(view: JsaRequestContextView): Promise<void> {
+  await AsyncStorage.setItem(GOVERNED_REQUEST_CONTEXT_KEY, JSON.stringify(view));
+}
+
+export async function loadRequestContext(): Promise<JsaRequestContextView | null> {
+  try {
+    const raw = await AsyncStorage.getItem(GOVERNED_REQUEST_CONTEXT_KEY);
+    if (!raw) return null;
+    const parsed = parseGetContextView(JSON.parse(raw));
+    return parsed.ok ? parsed.value : null;
+  } catch { return null; }
+}
+
+export async function clearRequestContext(): Promise<void> {
+  await AsyncStorage.removeItem(GOVERNED_REQUEST_CONTEXT_KEY);
+}
+
+export async function savePendingComplete(rec: PendingCompleteRecord): Promise<void> {
+  await AsyncStorage.setItem(GOVERNED_PENDING_COMPLETE_KEY, JSON.stringify(rec));
+}
+
+export async function loadPendingComplete(): Promise<PendingCompleteRecord | null> {
+  try {
+    const raw = await AsyncStorage.getItem(GOVERNED_PENDING_COMPLETE_KEY);
+    return raw ? parsePendingComplete(JSON.parse(raw)) : null;
+  } catch { return null; }
+}
+
+export async function clearPendingComplete(): Promise<void> {
+  await AsyncStorage.removeItem(GOVERNED_PENDING_COMPLETE_KEY);
+}
+
+export async function saveGovernedUiStage(stage: string): Promise<void> {
+  await AsyncStorage.setItem(GOVERNED_UI_STAGE_KEY, stage);
+}
+
+export async function loadGovernedUiStage(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(GOVERNED_UI_STAGE_KEY);
+  } catch { return null; }
+}
+
+export async function clearGovernedUiStage(): Promise<void> {
+  await AsyncStorage.removeItem(GOVERNED_UI_STAGE_KEY);
 }

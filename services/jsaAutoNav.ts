@@ -25,6 +25,8 @@ export type ShiftVerdictKind =
 
 export interface AutoNavInput {
   pendingRequestUsable: boolean;
+  /** A new governed request must run its own stages; history cannot satisfy it. */
+  governedRequestPending?: boolean;
   verdict: ShiftVerdictKind;
   saveExists: boolean;
   /** Shift id the candidate record is bound to (null = date-scoped standalone). */
@@ -41,6 +43,9 @@ export type AutoNavDecision =
 const isOpenVerdict = (v: ShiftVerdictKind) => v === 'server_open' || v === 'verified_open';
 
 export function decideAutoNavigation(input: AutoNavInput): AutoNavDecision {
+  if (input.governedRequestPending) {
+    return { action: 'suppress', reason: 'governed_request_requires_own_stages' };
+  }
   if (!input.saveExists) return { action: 'suppress', reason: 'no_record' };
 
   // Standalone/legacy (no shift semantics at all): the date-scoped record

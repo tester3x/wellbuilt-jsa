@@ -60,7 +60,7 @@ export default function SignoffScreen() {
 
   const [prepared, setPrepared] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState("");
-  const [signature, setSignature] = useState(params.driverName as string || "");
+  const [signature, setSignature] = useState("");
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [showSigModal, setShowSigModal] = useState(false);
   const isLoadedRef = useRef(false);
@@ -75,6 +75,18 @@ export default function SignoffScreen() {
   const [completeCloudPending, setCompleteCloudPending] = useState(false);
   const [completeOrigin, setCompleteOrigin] = useState<'wbs' | 'wbt' | 'wbew' | 'standalone'>('standalone');
   const [completeReturnScheme, setCompleteReturnScheme] = useState<string | null>(null);
+
+  // Legal acknowledgment default is legalName only. Never displayName.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
+        const { legalAcknowledgmentName } = await import('../services/sso/jsaSession');
+        const legal = legalAcknowledgmentName(await loadGovernedSession());
+        setSignature(legal);
+      } catch {}
+    })();
+  }, []);
 
   // Pre-load drawn signature from Firebase profile (same as WB T / WB S)
   useEffect(() => {
@@ -290,8 +302,36 @@ export default function SignoffScreen() {
         : '';
       const scopeForPayload = operatorSlug ? `${shiftIdForPayload}__${operatorSlug}` : shiftIdForPayload;
 
+      const { loadRequestContext, loadPendingComplete } = await import('../services/sso/jsaRuntime');
+      const { governedRecordLink, terminalActionForIntent } = await import('../services/sso/jsaRequestLifecycle');
+      const { completeGovernedAfterLocalSave } = await import('../services/sso/jsaGovernedLive');
+      const { decideGovernedReturn } = await import('../services/sso/jsaReturn');
+      const { failClosedCopy } = await import('../services/sso/jsaRequestLifecycle');
+      const governedCtx = await loadRequestContext();
+      const pendingComplete = await loadPendingComplete();
+      if (governedCtx?.state === 'completed' && governedCtx.action) {
+        const launch = await (await import('../services/sso/jsaRuntime')).loadLaunchContext();
+        const { decideGovernedReturn } = await import('../services/sso/jsaReturn');
+        const ret = decideGovernedReturn({
+          launch,
+          completion: {
+            requestId: governedCtx.requestId,
+            action: governedCtx.action,
+            reused: true,
+          },
+        });
+        setCompleteCloudPending(false);
+        setCompleteReturnScheme('open' in ret ? ret.open : null);
+        setCompleteOrigin('wbt');
+        setShowCompleteModal(true);
+        return;
+      }
+      const governedActive = !!governedCtx && governedCtx.state === 'pending';
+
       const payload = {
-        id: Date.now().toString(),
+        id: (pendingComplete && governedActive && pendingComplete.requestId === governedCtx.requestId)
+          ? pendingComplete.localRecordId
+          : Date.now().toString(),
         timestamp: new Date().toISOString(),
         driverName: params.driverName ?? "",
         // Linkage fields — required for server-side queries by driver.
@@ -322,14 +362,32 @@ export default function SignoffScreen() {
         notes,
         signature,
         signatureImage: signatureImage || '',
+        ...(governedActive ? governedRecordLink(governedCtx.requestId) : {}),
       };
-      try {
-        const existing = await AsyncStorage.getItem(STORAGE_KEYS.saves);
-        const list = existing ? JSON.parse(existing) : [];
-        const nextList = Array.isArray(list) ? [payload, ...list] : [payload];
-        await AsyncStorage.setItem(STORAGE_KEYS.saves, JSON.stringify(nextList));
-      } catch (error) {
-        console.warn("Failed to save JSA", error);
+      const skipDuplicateSave = !!(
+        pendingComplete
+        && governedActive
+        && pendingComplete.requestId === governedCtx.requestId
+      );
+      let localSaveOk = skipDuplicateSave;
+      if (!skipDuplicateSave) {
+        try {
+          const existing = await AsyncStorage.getItem(STORAGE_KEYS.saves);
+          const list = existing ? JSON.parse(existing) : [];
+          const nextList = Array.isArray(list) ? [payload, ...list] : [payload];
+          await AsyncStorage.setItem(STORAGE_KEYS.saves, JSON.stringify(nextList));
+          localSaveOk = true;
+        } catch (error) {
+          console.warn("Failed to save JSA", error);
+          localSaveOk = false;
+        }
+      }
+      if (governedActive && !localSaveOk) {
+        Alert.alert(
+          t('Not saved') || 'Not saved',
+          failClosedCopy('local_save_failed'),
+        );
+        return;
       }
 
       // Mark this JSA as dismissed from the home-screen active tabs.
@@ -349,6 +407,55 @@ export default function SignoffScreen() {
           }
         }
       } catch {}
+
+      // Governed get/complete: local detailed record is already durable.
+      // Author the server terminal receipt only after that save. Retry
+      // does not create a second JSA.
+      if (governedActive && governedCtx) {
+        const launch = await (await import('../services/sso/jsaRuntime')).loadLaunchContext();
+        const action = terminalActionForIntent(governedCtx.intent);
+        const done = await completeGovernedAfterLocalSave({
+          requestId: governedCtx.requestId,
+          action,
+          localRecordId: payload.id,
+        });
+        if (done.kind === 'pending_retry') {
+          Alert.alert(
+            t('Completion not recorded') || 'Completion not recorded',
+            done.copy,
+            [
+              {
+                text: t('Retry') || 'Retry',
+                onPress: () => { void handleSubmit(); },
+              },
+              { text: t('OK') || 'OK' },
+            ],
+          );
+          return;
+        }
+        if (done.kind === 'fail_closed') {
+          Alert.alert(
+            t('Cannot complete') || 'Cannot complete',
+            done.copy,
+          );
+          return;
+        }
+        const ret = decideGovernedReturn({
+          launch,
+          completion: {
+            requestId: governedCtx.requestId,
+            action: done.action,
+            reused: done.reused,
+          },
+        });
+        try { await AsyncStorage.setItem('@jsa/clearFormOnNextFocus', '1'); } catch {}
+        try { await AsyncStorage.removeItem('jsa_resume'); } catch {}
+        setCompleteCloudPending(false);
+        setCompleteReturnScheme('open' in ret ? ret.open : null);
+        setCompleteOrigin('wbt');
+        setShowCompleteModal(true);
+        return;
+      }
 
       // WB-T fresh-read RECEIPT context (8/6): resolved ONCE at submit.
       // A usable context makes this a receipt-backed submission — success

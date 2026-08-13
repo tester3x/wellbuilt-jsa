@@ -115,7 +115,7 @@ check('duplicate return stays idempotent (same requestId)',
 
 // receipt dependency
 check('governed receipt write is NOT invented client-side',
-  /export const GOVERNED_RECEIPT_WRITE_AVAILABLE = false/.test(
+  /export const GOVERNED_RECEIPT_CLIENT_INVENTED = false/.test(
     readFileSync(join(root, 'services/sso/jsaReturn.ts'), 'utf8')));
 
 // exchange + legal name
@@ -132,7 +132,7 @@ check('legalName used for acknowledgment, never displayName fallback',
 check('profile bind-check rejects foreign company', sess.companyId !== 'other');
 
 // no secrets in new modules
-const files = ['jsaLaunch.ts', 'jsaPkce.ts', 'jsaBinding.ts', 'jsaSession.ts', 'jsaReturn.ts', 'jsaBootstrap.ts'];
+const files = ['jsaLaunch.ts', 'jsaPkce.ts', 'jsaBinding.ts', 'jsaSession.ts', 'jsaReturn.ts', 'jsaBootstrap.ts', 'jsaRequestLifecycle.ts', 'jsaGovernedEntry.ts'];
 for (const f of files) {
   const src = readFileSync(join(root, 'services/sso', f), 'utf8');
   check(`${f} has no credential console output`,

@@ -1266,8 +1266,23 @@ export default function JsaHomeScreen() {
         const { loadReadRequestContext, isReadRequestContextUsable } =
           await import('../../services/wbtReadRequest');
         const pendingCtx = await loadReadRequestContext();
+        const { loadRequestContext } = await import('../../services/sso/jsaRuntime');
+        const governedCtx = await loadRequestContext();
+        const governedPending = !!governedCtx && governedCtx.state === 'pending';
+        if (governedCtx?.state === 'completed') {
+          router.replace({
+            pathname: '/governed-status',
+            params: { mode: 'completed', action: governedCtx.action || 'read_and_acknowledged' },
+          } as any);
+          return;
+        }
+        if (governedPending && governedCtx.intent === 'acknowledge') {
+          router.replace('/acknowledge' as any);
+          return;
+        }
         const decision = decideAutoNavigation({
           pendingRequestUsable: isReadRequestContextUsable(pendingCtx, Date.now()),
+          governedRequestPending: governedPending,
           verdict: shiftVerdict,
           saveExists: !!todaysJsaSave,
           saveShiftId: todaysJsaSave?.shiftId ?? null,

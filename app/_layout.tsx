@@ -121,6 +121,8 @@ function NavigationStack() {
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="logout" options={{ headerShown: false }} />
       <Stack.Screen name="start" options={{ headerShown: false }} />
+      <Stack.Screen name="acknowledge" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
+      <Stack.Screen name="governed-status" options={{ headerShown: false }} />
       <Stack.Screen name="settings" options={{ title: 'Settings', headerBackTitle: 'Back', headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="steps" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="ppe" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
@@ -239,10 +241,12 @@ function AppContent() {
       const target = await readGovernedReturnTarget();
       const pending = await AsyncStorage.getItem(WBT_READ_REQUEST_KEY);
       const returnTo = await AsyncStorage.getItem('jsa_returnTo');
+      const { loadLaunchContext } = await import('../services/sso/jsaRuntime');
+      const governedLaunch = await loadLaunchContext();
       const surface = decideUnauthenticatedOverlay({
         governedReturnRequired: !!target,
-        hasPendingRequest: !!pending,
-        isGovernedLaunch: returnTo === 'wbt' || returnTo === 'wbs' || returnTo === 'wellbuilt-suite',
+        hasPendingRequest: !!pending || !!governedLaunch,
+        isGovernedLaunch: returnTo === 'wbt' || returnTo === 'wbs' || returnTo === 'wellbuilt-suite' || !!governedLaunch,
       });
       setUnauthSurface(surface);
       if (target) setReturnTarget(target);
@@ -396,6 +400,18 @@ function AppContent() {
             }
             await saveGovernedSession(sessionFromExchange(payload, null));
             await clearAttempt();
+            const { loadLaunchContext } = await import('../services/sso/jsaRuntime');
+            const launch = await loadLaunchContext();
+            if (launch) {
+              const { ownAndObtain } = await import('../services/sso/jsaGovernedLive');
+              const { liveGovernedDeps } = await import('../services/sso/jsaGovernedLive');
+              const { resolveEntryRoute } = await import('../services/sso/jsaGovernedRoute');
+              const decision = await ownAndObtain(launch);
+              if (decision.kind !== 'need_auth') {
+                const href = await resolveEntryRoute(decision, liveGovernedDeps());
+                router.replace(href as any);
+              }
+            }
           } catch {
             await markGovernedReturnRequired('suite');
           }
@@ -405,6 +421,13 @@ function AppContent() {
 
         const parsed = Linking.parse(event.url);
         if (parsed.path === 'login' && parsed.queryParams?.hash && parsed.queryParams?.name) {
+          const { loadLaunchContext } = await import('../services/sso/jsaRuntime');
+          const governedLaunch = await loadLaunchContext();
+          if (governedLaunch) {
+            await markGovernedReturnRequired('wbt');
+            router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
+            return;
+          }
           const hash = parsed.queryParams.hash as string;
           const name = parsed.queryParams.name as string;
           console.log('[JSA] SSO deep link received for:', name);
@@ -413,11 +436,52 @@ function AppContent() {
           AsyncStorage.setItem('jsa_returnTo', 'wellbuilt-suite').catch(() => {});
         }
 
+        // Governed WB-T launch — parse, own, get. Never hash/name login.
+        {
+          const { parseJsaLaunchUrl, isLegacyJsaLaunchUrl } = await import('../services/sso/jsaLaunch');
+          if (isLegacyJsaLaunchUrl(event.url)) {
+            await markGovernedReturnRequired('wbt');
+            router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
+            return;
+          }
+          const governed = parseJsaLaunchUrl(event.url);
+          if (governed.ok) {
+            await AsyncStorage.setItem('jsa_returnTo', 'wbt').catch(() => {});
+            const { ownAndObtain } = await import('../services/sso/jsaGovernedLive');
+            const { liveGovernedDeps } = await import('../services/sso/jsaGovernedLive');
+            const { resolveEntryRoute } = await import('../services/sso/jsaGovernedRoute');
+            const decision = await ownAndObtain(governed.value);
+            if (decision.kind === 'need_auth') {
+              const { mintAttempt } = await import('../services/sso/jsaRuntime');
+              const { buildAuthorizeUrl } = await import('../services/sso/jsaPkce');
+              const Crypto = await import('expo-crypto');
+              const attempt = await mintAttempt({
+                randomBytes: (n) => Crypto.getRandomBytesAsync(n),
+                sha256Hex: async (s) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, s),
+                nowMs: () => Date.now(),
+              });
+              await Linking.openURL(buildAuthorizeUrl(attempt));
+              setSsoInProgress(false);
+              return;
+            }
+            const href = await resolveEntryRoute(decision, liveGovernedDeps());
+            router.replace(href as any);
+            setSsoInProgress(false);
+            return;
+          }
+        }
+
         // JSA auto-fill from WB T / WB S / WB M: jsaapp://start?driverName=...&wellName=...&returnTo=...
         if (parsed.path === 'start' && parsed.queryParams) {
           console.log('[JSA] Start deep link received with params:', Object.keys(parsed.queryParams));
-          // SSO login if hash provided
+          // SSO login if hash provided — never during a governed request.
           let ssoOk = false;
+          const { loadLaunchContext } = await import('../services/sso/jsaRuntime');
+          if (await loadLaunchContext()) {
+            await markGovernedReturnRequired('wbt');
+            router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
+            return;
+          }
           if (parsed.queryParams.hash && parsed.queryParams.name) {
             ssoOk = await ssoLogin(parsed.queryParams.hash as string, parsed.queryParams.name as string);
           }
@@ -481,7 +545,13 @@ function AppContent() {
         return;
       }
       // Start deep link — store params for auto-fill, let start.tsx handle redirect
-      if (url.includes('/start')) {
+      if (url.includes('/start') || url.includes('://start')) {
+        const { parseJsaLaunchUrl, isLegacyJsaLaunchUrl } = await import('../services/sso/jsaLaunch');
+        if (isLegacyJsaLaunchUrl(url) || parseJsaLaunchUrl(url).ok) {
+          // Governed / refused launch — start.tsx owns parse + get. Never hash/name.
+          setSsoInProgress(false);
+          return;
+        }
         console.log('[JSA] Cold start deep link with params — start.tsx will handle');
         const parsed = Linking.parse(url);
         const qp = parsed.queryParams || {};
