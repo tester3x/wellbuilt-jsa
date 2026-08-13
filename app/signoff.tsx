@@ -257,9 +257,7 @@ export default function SignoffScreen() {
         || (await AsyncStorage.getItem('selectedCompanyId').catch(() => null))
         || '';
       const driverLegalNameForPayload =
-        sessionForPayload?.legalName
-        || sessionForPayload?.displayName
-        || (params.driverName as string)
+        (sessionForPayload?.legalName && sessionForPayload.legalName.trim())
         || '';
 
       // shiftId — scopes this JSA to the active shift. WB T / WB JSA local

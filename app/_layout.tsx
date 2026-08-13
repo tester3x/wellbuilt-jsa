@@ -277,6 +277,46 @@ function AppContent() {
     resolveUnauthSurface();
   }, []);
 
+  // Direct-icon / cold start: begin Suite PKCE automatically. Never
+  // substitute manual login for governed auth.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { loadGovernedSession, mintAttempt } = await import('../services/sso/jsaRuntime');
+        const { decideBootstrap } = await import('../services/sso/jsaBootstrap');
+        const { isLegacyJsaLaunchUrl } = await import('../services/sso/jsaLaunch');
+        const { buildAuthorizeUrl } = await import('../services/sso/jsaPkce');
+        const url = await Linking.getInitialURL();
+        const session = await loadGovernedSession();
+        const decision = decideBootstrap({
+          hasPersistedSession: !!session || isAuthenticated,
+          incomingUrl: url,
+          isCallback: !!url && url.includes('sso-callback'),
+          isLaunch: !!url && url.includes('://start'),
+          isLegacyLaunch: !!url && isLegacyJsaLaunchUrl(url),
+          isDirectIcon: !url,
+        });
+        if (cancelled) return;
+        if (decision.action === 'open_suite_authorize') {
+          const Crypto = await import('expo-crypto');
+          const attempt = await mintAttempt({
+            randomBytes: (n) => Crypto.getRandomBytesAsync(n),
+            sha256Hex: async (s) => {
+              const hex = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, s);
+              return hex;
+            },
+            nowMs: () => Date.now(),
+          });
+          await Linking.openURL(buildAuthorizeUrl(attempt));
+        }
+      } catch {
+        await resolveUnauthSurface();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isAuthenticated]);
+
   // Full-screen immersive mode — hide Android navigation bar
   useEffect(() => {
     const hideNavBar = () => {
@@ -321,6 +361,45 @@ function AppContent() {
           }
           console.log('[JSA] Logout deep link received from WB S — clearing SSO session');
           logout();
+          return;
+        }
+
+        if (event.url?.includes('sso-callback')) {
+          const { parseJsaSsoCallbackUrl, consumeCallback, markConsumed } = await import('../services/sso/jsaPkce');
+          const { loadAttempt, saveAttempt, clearAttempt, saveGovernedSession } = await import('../services/sso/jsaRuntime');
+          const { validateExchangePayload, sessionFromExchange } = await import('../services/sso/jsaSession');
+          const parsedCb = parseJsaSsoCallbackUrl(event.url);
+          const attempt = await loadAttempt();
+          const consumed = consumeCallback(attempt, parsedCb, Date.now());
+          if (!consumed.ok || consumed.status !== 'success') {
+            await markGovernedReturnRequired('suite');
+            setSsoInProgress(false);
+            return;
+          }
+          if (attempt) await saveAttempt(markConsumed(attempt));
+          try {
+            const { getApp } = await import('firebase/app');
+            const { getFunctions, httpsCallable } = await import('firebase/functions');
+            const callable = httpsCallable(getFunctions(getApp()), 'ssoExchangeAuthorizationCode', { timeout: 15000 });
+            const result = await callable({
+              protocolVersion: 1,
+              audience: 'wellbuilt-jsa',
+              code: consumed.code,
+              codeVerifier: consumed.verifier,
+            });
+            const payload = validateExchangePayload(result.data);
+            if (!payload) {
+              await markGovernedReturnRequired('suite');
+              await clearAttempt();
+              setSsoInProgress(false);
+              return;
+            }
+            await saveGovernedSession(sessionFromExchange(payload, null));
+            await clearAttempt();
+          } catch {
+            await markGovernedReturnRequired('suite');
+          }
+          setSsoInProgress(false);
           return;
         }
 

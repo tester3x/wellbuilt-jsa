@@ -1,67 +1,40 @@
+/**
+ * Governed launch landing. Launch metadata is untrusted.
+ * Legacy hash/name/shiftId URLs are refused. No identity in logs.
+ */
 import { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuth } from './contexts/AuthContext';
+import { useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { colors } from '../constants/colors';
+import { parseJsaLaunchUrl, isLegacyJsaLaunchUrl } from '../services/sso/jsaLaunch';
+import { saveLaunchContext } from '../services/sso/jsaRuntime';
+import { markGovernedReturnRequired } from '../services/shiftAuthorityStore';
 
-/**
- * Deep link landing screen for jsaapp://start?driverName=...&wellName=...&...
- * Stores params for auto-fill, handles SSO login if hash present, then redirects to home.
- */
 export default function StartScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const { ssoLogin } = useAuth();
 
   useEffect(() => {
     (async () => {
       try {
-        // SSO login if hash provided. A governed launch without a verified
-        // explicit shift must not fall through to manual name/passcode.
-        let ssoOk = false;
-        if (params.hash && params.name) {
-          ssoOk = await ssoLogin(params.hash as string, params.name as string);
+        const url = await Linking.getInitialURL();
+        if (url && isLegacyJsaLaunchUrl(url)) {
+          await markGovernedReturnRequired('wbt');
+          router.replace('/(tabs)');
+          return;
         }
-        // shiftId — scopes the JSA to the current shift. WB S mints it at
-        // Start Shift; closing a shift clears it; the next shift gets a new
-        // id so the JSA doesn't bleed across shifts. Stored under the same
-        // key WB T uses so all three apps look at the same scope.
-        const explicitShift = typeof params.shiftId === 'string' ? params.shiftId : '';
-        if (explicitShift && /^\d{4}-\d{2}-\d{2}_\d{6}$/.test(explicitShift)) {
-          await AsyncStorage.setItem('wellbuilt-current-shift-id', explicitShift);
-          console.log('[JSA-SSO] shiftId persisted via /start');
+        const parsed = parseJsaLaunchUrl(url);
+        if (parsed.ok) {
+          await saveLaunchContext(parsed.value);
         } else {
-          console.warn('[JSA-SSO] /start route — NO shiftId in URL params — JSA scope will fall back to date');
+          await markGovernedReturnRequired('wbt');
         }
-        const governed = !!(params.hash || params.returnTo === 'wbt' || params.returnTo === 'wellbuilt-suite' || params.returnTo === 'wbs');
-        if (governed && (!explicitShift || !/^\d{4}-\d{2}-\d{2}_\d{6}$/.test(explicitShift) || (params.hash && params.name && !ssoOk))) {
-          const { markGovernedReturnRequired } = await import('../services/shiftAuthorityStore');
-          await markGovernedReturnRequired(params.returnTo === 'wbt' ? 'wbt' : 'suite');
-        }
-        // Store params for auto-fill — home screen reads these on mount
-        await AsyncStorage.setItem('jsa_autofill', JSON.stringify(params));
-        // Persist returnTo separately so signoff can prompt "Return to Work" even
-        // after jsa_autofill gets cleared by the form consumer.
-        if (params.returnTo) {
-          await AsyncStorage.setItem('jsa_returnTo', String(params.returnTo));
-        }
-        // WB-T fresh-read RECEIPT request (8/6): validate + persist the
-        // request context (or clear a stale one — every /start is an
-        // explicit restart). Malformed requests never become shift-only
-        // completion claims; the flow just runs as an ordinary launch.
-        {
-          const { captureReadRequestFromParams } = await import('../services/wbtReadRequest');
-          await captureReadRequestFromParams(params as Record<string, unknown>);
-        }
-        console.log('[JSA] Start screen — stored autofill params, redirecting to home');
-      } catch (err) {
-        console.error('[JSA] Start screen error:', err);
+      } catch {
+        await markGovernedReturnRequired('wbt');
       }
-      // Navigate to home tab
       router.replace('/(tabs)');
     })();
-  }, []);
+  }, [router]);
 
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
