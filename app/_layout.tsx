@@ -121,6 +121,7 @@ function NavigationStack() {
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="logout" options={{ headerShown: false }} />
       <Stack.Screen name="start" options={{ headerShown: false }} />
+      <Stack.Screen name="sso-callback" options={{ headerShown: false }} />
       <Stack.Screen name="acknowledge" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="governed-status" options={{ headerShown: false }} />
       <Stack.Screen name="settings" options={{ title: 'Settings', headerBackTitle: 'Back', headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
@@ -151,6 +152,7 @@ function AppContent() {
   const [welcomeName, setWelcomeName] = useState('');
   const [unauthSurface, setUnauthSurface] = useState<'legacy_login' | 'unverified_gate'>('legacy_login');
   const [returnTarget, setReturnTarget] = useState<GovernedReturnTarget>('suite');
+  const [governedSessionReady, setGovernedSessionReady] = useState(false);
 
   const checkUnfinishedJsas = async () => {
     try {
@@ -241,8 +243,10 @@ function AppContent() {
       const target = await readGovernedReturnTarget();
       const pending = await AsyncStorage.getItem(WBT_READ_REQUEST_KEY);
       const returnTo = await AsyncStorage.getItem('jsa_returnTo');
-      const { loadLaunchContext } = await import('../services/sso/jsaRuntime');
+      const { loadLaunchContext, loadGovernedSession } = await import('../services/sso/jsaRuntime');
       const governedLaunch = await loadLaunchContext();
+      const governedSession = await loadGovernedSession();
+      if (governedSession) setGovernedSessionReady(true);
       const surface = decideUnauthenticatedOverlay({
         governedReturnRequired: !!target,
         hasPendingRequest: !!pending || !!governedLaunch,
@@ -369,50 +373,16 @@ function AppContent() {
         }
 
         if (event.url?.includes('sso-callback')) {
-          const { parseJsaSsoCallbackUrl, consumeCallback, markConsumed } = await import('../services/sso/jsaPkce');
-          const { loadAttempt, saveAttempt, clearAttempt, saveGovernedSession } = await import('../services/sso/jsaRuntime');
-          const { validateExchangePayload, sessionFromExchange } = await import('../services/sso/jsaSession');
-          const parsedCb = parseJsaSsoCallbackUrl(event.url);
-          const attempt = await loadAttempt();
-          const consumed = consumeCallback(attempt, parsedCb, Date.now());
-          if (!consumed.ok || consumed.status !== 'success' || !('verifier' in consumed)) {
-            await markGovernedReturnRequired('suite');
-            setSsoInProgress(false);
-            return;
-          }
-          if (attempt) await saveAttempt(markConsumed(attempt));
-          try {
-            const { getApp } = await import('firebase/app');
-            const { getFunctions, httpsCallable } = await import('firebase/functions');
-            const callable = httpsCallable(getFunctions(getApp()), 'ssoExchangeAuthorizationCode', { timeout: 15000 });
-            const result = await callable({
-              protocolVersion: 1,
-              audience: 'wellbuilt-jsa',
-              code: consumed.code,
-              codeVerifier: consumed.verifier,
-            });
-            const payload = validateExchangePayload(result.data);
-            if (!payload) {
-              await markGovernedReturnRequired('suite');
-              await clearAttempt();
-              setSsoInProgress(false);
-              return;
-            }
-            await saveGovernedSession(sessionFromExchange(payload, null));
-            await clearAttempt();
-            const { loadLaunchContext } = await import('../services/sso/jsaRuntime');
-            const launch = await loadLaunchContext();
-            if (launch) {
-              const { ownAndObtain } = await import('../services/sso/jsaGovernedLive');
-              const { liveGovernedDeps } = await import('../services/sso/jsaGovernedLive');
-              const { resolveEntryRoute } = await import('../services/sso/jsaGovernedRoute');
-              const decision = await ownAndObtain(launch);
-              if (decision.kind !== 'need_auth') {
-                const href = await resolveEntryRoute(decision, liveGovernedDeps());
-                router.replace(href as any);
-              }
-            }
-          } catch {
+          const { consumeJsaSsoCallback } = await import('../services/sso/jsaCallbackLive');
+          const result = await consumeJsaSsoCallback(event.url);
+          if (result.kind === 'exchanged' || result.kind === 'duplicate') {
+            setGovernedSessionReady(true);
+            const { recoverGoverned, liveGovernedDeps } = await import('../services/sso/jsaGovernedLive');
+            const { resolveEntryRoute } = await import('../services/sso/jsaGovernedRoute');
+            const decision = await recoverGoverned();
+            const href = await resolveEntryRoute(decision, liveGovernedDeps());
+            router.replace(href as any);
+          } else {
             await markGovernedReturnRequired('suite');
           }
           setSsoInProgress(false);
@@ -540,6 +510,22 @@ function AppContent() {
         if (authMethod === 'sso') {
           console.log('[JSA] Cold start logout deep link from WB S');
           logout();
+        }
+        setSsoInProgress(false);
+        return;
+      }
+      if (url.includes('sso-callback')) {
+        const { consumeJsaSsoCallback } = await import('../services/sso/jsaCallbackLive');
+        const result = await consumeJsaSsoCallback(url);
+        if (result.kind === 'exchanged' || result.kind === 'duplicate') {
+          setGovernedSessionReady(true);
+          const { recoverGoverned, liveGovernedDeps } = await import('../services/sso/jsaGovernedLive');
+          const { resolveEntryRoute } = await import('../services/sso/jsaGovernedRoute');
+          const decision = await recoverGoverned();
+          const href = await resolveEntryRoute(decision, liveGovernedDeps());
+          router.replace(href as any);
+        } else {
+          await markGovernedReturnRequired('suite');
         }
         setSsoInProgress(false);
         return;
@@ -689,7 +675,7 @@ function AppContent() {
           {/* Unauthenticated overlay. A governed launch / leftover SSO
               session that could not be verified must NOT fall through to
               manual name/passcode as a substitute for governed auth. */}
-          {mode !== 'checking' && !isAuthenticated && !ssoInProgress && (
+          {mode !== 'checking' && !isAuthenticated && !ssoInProgress && !governedSessionReady && (
             <View style={styles.overlay}>
               {unauthSurface === 'unverified_gate' ? (
                 <ShiftAuthorityGate variant="overlay" returnTarget={returnTarget} />
