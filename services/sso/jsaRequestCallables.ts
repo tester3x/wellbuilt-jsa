@@ -8,8 +8,10 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   classifyCallableError,
   classifyGetError,
+  getOutcomeLogCategory,
   parseCompleteResult,
   parseGetContextView,
+  JSA_GET_TIMEOUT_MS,
   type JsaCompleteResult,
   type JsaCompletionAction,
   type JsaRefusal,
@@ -26,20 +28,49 @@ export type CompleteOutcome =
   | { ok: true; result: JsaCompleteResult }
   | { ok: false; refusal: JsaRefusal };
 
+/** Reason codes only — never URLs, tokens, payloads, or bodies. */
+function logGetOutcome(requestId: string, category: string): void {
+  console.log(JSON.stringify({
+    tag: '[jsa-get]',
+    outcome: category,
+    requestId: `${requestId.slice(0, 8)}…`,
+  }));
+}
+
+/** Single flight per requestId — duplicates join, never fan out. */
+const getInFlight = new Map<string, Promise<GetContextOutcome>>();
+
 export async function jsaGetReadRequest(requestId: string): Promise<GetContextOutcome> {
-  try {
-    const callable = httpsCallable(
-      getFunctions(getApp()),
-      'jsaGetReadRequest',
-      { timeout: TIMEOUT_MS },
-    );
-    const result = await callable({ requestId });
-    const parsed = parseGetContextView(result.data);
-    if (!parsed.ok) return { ok: false, refusal: 'malformed' };
-    return { ok: true, view: parsed.value };
-  } catch (err) {
-    return { ok: false, refusal: classifyGetError(err) };
-  }
+  const joined = getInFlight.get(requestId);
+  if (joined) return joined;
+  const run = (async (): Promise<GetContextOutcome> => {
+    // ONE bounded attempt. No automatic second attempt: the 45s bound
+    // already exceeds the worst captured scale-from-zero readiness (32s,
+    // field 8/13), and the connecting surface stays visible throughout.
+    try {
+      const callable = httpsCallable(
+        getFunctions(getApp()),
+        'jsaGetReadRequest',
+        { timeout: JSA_GET_TIMEOUT_MS },
+      );
+      const result = await callable({ requestId });
+      const parsed = parseGetContextView(result.data);
+      if (!parsed.ok) {
+        logGetOutcome(requestId, getOutcomeLogCategory('malformed'));
+        return { ok: false, refusal: 'malformed' };
+      }
+      logGetOutcome(requestId, getOutcomeLogCategory(null));
+      return { ok: true, view: parsed.value };
+    } catch (err) {
+      const refusal = classifyGetError(err);
+      logGetOutcome(requestId, getOutcomeLogCategory(refusal, err));
+      return { ok: false, refusal };
+    }
+  })().finally(() => {
+    getInFlight.delete(requestId);
+  });
+  getInFlight.set(requestId, run);
+  return run;
 }
 
 export async function jsaCompleteReadRequest(

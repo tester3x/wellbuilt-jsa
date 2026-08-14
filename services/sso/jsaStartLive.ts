@@ -85,11 +85,35 @@ function liveStartDeps(): JsaStartOwnerDeps {
       const Linking = await import('expo-linking');
       await Linking.openURL(buildAuthorizeUrl(attempt as any));
     },
-    obtain: () => obtainAuthoritativeContext(liveGovernedDeps()),
+    obtain: (stillOwned, commitEffect) => obtainAuthoritativeContext({
+      ...liveGovernedDeps(),
+      stillOwned,
+      commitOwnedEffect: commitEffect,
+    }),
+    markTerminal: (requestId) => markGovernedTerminalFailure(requestId),
     log: (event) => logStart(event),
     hasOpenedFor: (id) => processHasOpenedStart(id),
     markOpened: (id) => markProcessOpenedStart(id),
   };
+}
+
+/**
+ * Launch-resolution signal for the root connecting overlay. Counted here —
+ * at the single choke point every route/Linking/getInitialURL entry uses —
+ * so the overlay is effective for ALL entries, not just _layout's handlers.
+ */
+let startResolvingCount = 0;
+const startResolvingListeners = new Set<(count: number) => void>();
+
+export function subscribeStartResolving(listener: (count: number) => void): () => void {
+  startResolvingListeners.add(listener);
+  listener(startResolvingCount);
+  return () => { startResolvingListeners.delete(listener); };
+}
+
+function bumpStartResolving(delta: number): void {
+  startResolvingCount = Math.max(0, startResolvingCount + delta);
+  startResolvingListeners.forEach((listener) => listener(startResolvingCount));
 }
 
 export async function consumeJsaStart(
@@ -98,11 +122,16 @@ export async function consumeJsaStart(
   // fails any call site that omits its delivery provenance.
   provenance: StartDeliveryProvenance,
 ): Promise<StartOwnerResult> {
-  const result = await handleJsaStartUrl(url, liveStartDeps(), provenance);
-  if (result.kind === 'fail_closed' && result.requestId) {
-    await markGovernedTerminalFailure(result.requestId);
+  const accepted = typeof url === 'string' && isJsaStartUrl(url);
+  if (accepted) bumpStartResolving(1);
+  try {
+    // Terminal marking happens INSIDE the owner/lifecycle generation
+    // boundary (commitIfOwned) — never here, where a superseded run's
+    // late fail_closed could overwrite the successor's stored marker.
+    return await handleJsaStartUrl(url, liveStartDeps(), provenance);
+  } finally {
+    if (accepted) bumpStartResolving(-1);
   }
-  return result;
 }
 
 /** Resume a stored launch after a false /sso-callback landing. */

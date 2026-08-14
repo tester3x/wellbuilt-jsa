@@ -272,5 +272,207 @@ check('isolation surface uses ShiftAuthorityGate only for unverified_gate',
   && surfSrc.includes('Cannot continue')
   && surfSrc.includes('GOVERNED_CONNECTING_COPY'));
 
+// ── Launch-resolution root isolation (vc10) ─────────────────────────────────
+{
+  const {
+    launchResolutionBlocksContent,
+    GOVERNED_RESOLVING_COPY,
+    decideJobDetailsIsolation,
+  } = await import('../services/sso/jsaJobDetailsIsolation.ts');
+
+  // Receiving a valid governed start immediately blocks historical local
+  // content; zero candidates → standalone/icon behavior unchanged.
+  check('an accepted start candidate blocks historical content',
+    launchResolutionBlocksContent(1) === true);
+  check('two racing candidates still block', launchResolutionBlocksContent(2) === true);
+  check('no candidate → standalone presentation unchanged',
+    launchResolutionBlocksContent(0) === false);
+  check('resolving copy is bounded and non-identity',
+    typeof GOVERNED_RESOLVING_COPY === 'string'
+    && !/name|hash|request|token/i.test(GOVERNED_RESOLVING_COPY));
+
+  // The old completed acknowledgment can never paint as the new request:
+  // a governed launch without MATCHING authoritative context stays on the
+  // connecting surface — matching context alone unlocks the workflow.
+  const inFlight = decideJobDetailsIsolation({
+    resolved: true,
+    authoritySurface: null,
+    explicitGovernedFailure: false,
+    hasGovernedLaunch: true,
+    hasUsableGovernedSession: true,
+    hasMatchingAuthoritativeContext: false,
+    authPending: false,
+  });
+  check('launch without matching context: blocked on connecting',
+    inFlight.blocked && inFlight.surface === 'connecting'
+    && !inFlight.mountForm && !inFlight.storedFieldsActionable);
+  const matched = decideJobDetailsIsolation({
+    resolved: true,
+    authoritySurface: null,
+    explicitGovernedFailure: false,
+    hasGovernedLaunch: true,
+    hasUsableGovernedSession: true,
+    hasMatchingAuthoritativeContext: true,
+    authPending: false,
+  });
+  check('matching authoritative context alone unlocks',
+    !matched.blocked && matched.mountForm);
+
+  // Root wiring pins: _layout gates the overlay on the pure decision and
+  // brackets every accepted candidate with the resolving counter.
+  const layoutSrc = readFileSync(join(root, 'app/_layout.tsx'), 'utf8');
+  check('_layout renders the resolving overlay from the pure decision',
+    layoutSrc.includes('launchResolutionBlocksContent(startResolving)')
+    && layoutSrc.includes('GOVERNED_RESOLVING_COPY'));
+  // The counter is published at the owner choke point every route/Linking/
+  // getInitialURL/stored entry uses — the overlay covers ALL entries, not
+  // just _layout's own handlers.
+  const startLiveSrc = readFileSync(join(root, 'services/sso/jsaStartLive.ts'), 'utf8');
+  check('_layout subscribes to the owner-published resolving count',
+    layoutSrc.includes('subscribeStartResolving'));
+  check('every accepted candidate raises the count at the choke point',
+    startLiveSrc.includes('bumpStartResolving(1)')
+    && startLiveSrc.includes('bumpStartResolving(-1)')
+    && /const accepted = typeof url === 'string' && isJsaStartUrl\(url\);/.test(startLiveSrc));
+  check('stale/superseded results never steer UI',
+    layoutSrc.includes("if (result.kind === 'ignored') return;"));
+
+  // Losing routes never navigate — only the winner steers. Old completed
+  // content cannot appear between loser settlement and winner navigation:
+  // losers hold their neutral connecting surface and the owner-published
+  // overlay covers the window while any candidate resolves.
+  const startSrc2 = readFileSync(join(root, 'app/start.tsx'), 'utf8');
+  const cbSrc2 = readFileSync(join(root, 'app/sso-callback.tsx'), 'utf8');
+  check('start.tsx loser branch does not navigate',
+    startSrc2.includes("if (result.kind === 'ignored' && result.refusal) return;")
+    && !startSrc2.includes("router.replace('/(tabs)'"));
+  check('sso-callback loser branches do not navigate',
+    (cbSrc2.match(/kind === 'ignored' && startResult\.refusal\) return;/g) || []).length === 2
+    && !cbSrc2.includes("router.replace('/(tabs)'"));
+}
+
+// ── R4 FIELD-SHAPED STOP CONDITION (Codex Finding 2) ────────────────────────
+// Reproduces the release blocker: an existing session + bootstrap holding
+// stale initial request A, live request B arriving, and the bootstrap
+// effect re-delivering A as `initial` when isAuthenticated flips
+// false→true. Both meaningful orderings. B must win exactly once; A must
+// never fetch, persist, navigate, or surface stale content afterward.
+{
+  const {
+    handleJsaStartUrl,
+    resetJsaStartOwnerForTests,
+    getStartOwnershipForTests,
+  } = await import('../services/sso/jsaStartOwner.ts');
+  const { buildJsaLaunchUrl } = await import('../services/sso/jsaLaunch.ts');
+  const { JSA_GET_TIMEOUT_MS } = await import('../services/sso/jsaRequestLifecycle.ts');
+
+  const RID_A = 'A'.repeat(43);
+  const RID_B2 = 'B'.repeat(43);
+  const mkUrl = (id) => buildJsaLaunchUrl({
+    v: 1, source: 'wbt', requestId: id, returnTo: 'wbt', jobRef: 'jobDoc1',
+  });
+  const mkGate = () => { let release; const p = new Promise((r) => { release = r; }); return { p, release }; };
+  function fieldDeps(state) {
+    return {
+      nowMs: () => 10_000,
+      isLegacy: () => false,
+      parseLaunch: (u) => {
+        const mm = /requestId=([A-Za-z0-9_-]{43})/.exec(u);
+        return mm ? { ok: true, value: { requestId: mm[1], returnTo: 'wbt' } } : { ok: false };
+      },
+      ownLaunch: async () => 'own',
+      currentOwnedRequestId: async () => state.persistedOwner,
+      isKnownStale: async () => false,
+      loadSession: async () => ({ uid: 'u' }), // existing governed session
+      loadAttempt: async () => null,
+      mintAttempt: async () => ({ consumed: false, createdAtMs: 10_000 }),
+      openSuite: async () => { state.suiteOpens += 1; },
+      obtain: async (stillOwned, commitEffect) => {
+        state.gets.push({ ownedAtStart: stillOwned() });
+        const g = state.getGates.shift();
+        if (g) await g;
+        // A durable context write is modeled through the owner commit —
+        // exactly how the lifecycle persists (commitOwnedEffect).
+        const committed = await commitEffect(async () => { state.contextWrites.push(stillOwned()); });
+        return committed.applied ? { kind: 'ready' } : { kind: 'fail_closed', refusal: 'not_found' };
+      },
+      log: () => {},
+      hasOpenedFor: () => false,
+      markOpened: () => {},
+    };
+  }
+
+  // ORDERING 1: bootstrap initial-A begins first (get in flight), live B
+  // arrives, then bootstrap re-enters (isAuthenticated false→true) and
+  // re-delivers A as initial.
+  {
+    resetJsaStartOwnerForTests();
+    const g = mkGate();
+    const state = { persistedOwner: RID_A, suiteOpens: 0, gets: [], contextWrites: [], getGates: [g.p] };
+    const deps = fieldDeps(state);
+    const pA = handleJsaStartUrl(mkUrl(RID_A), deps, 'initial'); // bootstrap holds A
+    while (state.gets.length === 0) await Promise.resolve();
+    const rB = await handleJsaStartUrl(mkUrl(RID_B2), deps, 'live'); // live B wins
+    g.release();
+    const rA = await pA;
+    const replay = await handleJsaStartUrl(mkUrl(RID_A), deps, 'initial'); // re-entry
+    check('field order 1: final owner is B, B exactly one get',
+      rB.kind === 'ready' && getStartOwnershipForTests().requestId === RID_B2
+      && state.gets.filter((x) => x.ownedAtStart).length === 2 // A began owned, B owned
+      && state.gets.length === 2);
+    check('field order 1: A settles superseded; late A wrote no context',
+      rA.kind === 'ignored' && rA.refusal === 'superseded'
+      && state.contextWrites.length === 1); // only B's commit applied
+    check('field order 1: bootstrap re-delivery of A is refused, no new get',
+      replay.kind === 'ignored' && replay.refusal === 'stale_replay'
+      && state.gets.length === 2);
+  }
+
+  // ORDERING 2: live B first, then the bootstrap continuation delivers
+  // stale initial A (repeatedly — effect re-entry).
+  {
+    resetJsaStartOwnerForTests();
+    const state = { persistedOwner: RID_A, suiteOpens: 0, gets: [], contextWrites: [], getGates: [] };
+    const deps = fieldDeps(state);
+    const rB = await handleJsaStartUrl(mkUrl(RID_B2), deps, 'live');
+    const rA1 = await handleJsaStartUrl(mkUrl(RID_A), deps, 'initial');
+    const rA2 = await handleJsaStartUrl(mkUrl(RID_A), deps, 'initial');
+    check('field order 2: B owns; every bootstrap A delivery refused, zero A gets',
+      rB.kind === 'ready' && getStartOwnershipForTests().requestId === RID_B2
+      && rA1.kind === 'ignored' && rA1.refusal === 'stale_replay'
+      && rA2.kind === 'ignored' && rA2.refusal === 'stale_replay'
+      && state.gets.length === 1 && state.contextWrites.length === 1);
+  }
+
+  // Navigation and surface assertions (source-pinned — RN modules cannot
+  // load in node): the ignored bootstrap result returns IMMEDIATELY in
+  // _layout with no route; stale content stays blocked while resolving.
+  const layoutSrc2 = readFileSync(join(root, 'app/_layout.tsx'), 'utf8');
+  const bootstrapSlice = layoutSrc2.slice(
+    layoutSrc2.indexOf("decision.action === 'handle_launch'"),
+    layoutSrc2.indexOf("decision.action === 'open_suite_authorize'"),
+  );
+  check('bootstrap getInitialURL delivery is explicitly initial',
+    bootstrapSlice.includes("consumeJsaStart(url, 'initial')"));
+  check('ignored bootstrap result returns immediately — no navigation',
+    bootstrapSlice.includes("if (result.kind === 'ignored') return;")
+    && bootstrapSlice.indexOf("if (result.kind === 'ignored') return;")
+      < bootstrapSlice.indexOf('hrefAfterStart(result'));
+  check('no governed-status navigation in the ignored bootstrap path',
+    !/ignored'\) [\s\S]{0,80}governed-status/.test(bootstrapSlice));
+  const startSrc3 = readFileSync(join(root, 'app/start.tsx'), 'utf8');
+  const cbSrc3 = readFileSync(join(root, 'app/sso-callback.tsx'), 'utf8');
+  check('no consumeJsaStart call anywhere omits provenance',
+    !/consumeJsaStart\(([^,()]+|[^,()]*\([^)]*\)[^,()]*)\)/.test(
+      layoutSrc2 + startSrc3 + cbSrc3));
+  const { launchResolutionBlocksContent: blocksContent } =
+    await import('../services/sso/jsaJobDetailsIsolation.ts');
+  check('stale "Already completed" surface stays blocked while resolving',
+    blocksContent(1) === true && blocksContent(2) === true);
+  check('45s protected-get bound unchanged, no retry reintroduced',
+    JSA_GET_TIMEOUT_MS === 45_000
+    && !/retry/i.test(readFileSync(join(root, 'services/sso/jsaRequestCallables.ts'), 'utf8')));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

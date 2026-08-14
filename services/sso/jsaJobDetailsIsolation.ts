@@ -42,6 +42,19 @@ export interface JobDetailsIsolation {
 export const GOVERNED_CONNECTING_COPY = 'Signing in to WellBuilt JSA…';
 export const GOVERNED_FAILED_COPY =
   'Could not sign in to WellBuilt JSA. Return to WellBuilt Tickets and launch again.';
+export const GOVERNED_RESOLVING_COPY = 'Opening WellBuilt JSA…';
+
+/**
+ * Root launch-resolution overlay (vc10). The moment a valid governed
+ * /start candidate is accepted for processing, the app is unresolved:
+ * historical local content — Job Details, saved acknowledgment records,
+ * "Already completed" — must not render as the active launch. Only the
+ * connecting surface shows until the run navigates or fails closed.
+ * Zero in-flight candidates → normal (icon/standalone) presentation.
+ */
+export function launchResolutionBlocksContent(resolvingCount: number): boolean {
+  return resolvingCount > 0;
+}
 
 export function decideJobDetailsIsolation(input: IsolationInput): JobDetailsIsolation {
   let reason: IsolationReason = null;

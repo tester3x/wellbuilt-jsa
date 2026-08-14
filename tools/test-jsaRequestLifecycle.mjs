@@ -419,5 +419,204 @@ check('receipt write is server complete, not client-invented',
   && /export const GOVERNED_RECEIPT_CLIENT_INVENTED = false/.test(
     readFileSync(join(root, 'services/sso/jsaReturn.ts'), 'utf8')));
 
+// ── One bounded cold-start-tolerant get + generation-conditional persistence (vc10) ──
+{
+  const {
+    JSA_GET_TIMEOUT_MS,
+    getOutcomeLogCategory,
+    failClosedCopy,
+    obtainAuthoritativeContext,
+  } = await import('../services/sso/jsaRequestLifecycle.ts');
+
+  // ONE attempt whose bound exceeds the worst captured Cloud Run readiness
+  // case (32s). No automatic second attempt exists.
+  check('get timeout exceeds captured 32s cold start', JSA_GET_TIMEOUT_MS > 32_000);
+
+  // Sanitized outcome categories — distinguishable, never payload-bearing.
+  check('ok category', getOutcomeLogCategory(null) === 'ok');
+  check('deadline classifies as timeout',
+    getOutcomeLogCategory('network', { code: 'functions/deadline-exceeded' }) === 'timeout');
+  check('unavailable classifies as unavailable',
+    getOutcomeLogCategory('network', { code: 'functions/unavailable' }) === 'unavailable');
+  check('unauthenticated category',
+    getOutcomeLogCategory('unauthenticated') === 'unauthenticated');
+  check('binding categories',
+    getOutcomeLogCategory('binding_mismatch') === 'binding'
+    && getOutcomeLogCategory('active_shift_required') === 'binding');
+  check('permission categories',
+    getOutcomeLogCategory('wrong_audience') === 'permission'
+    && getOutcomeLogCategory('intent_not_permitted') === 'permission');
+  check('generic refusal category',
+    getOutcomeLogCategory('not_found') === 'refusal');
+
+  // The transport copy claims a SERVICE failure, never that the phone has
+  // no connection — the classifier cannot prove that.
+  const netCopy = failClosedCopy('network');
+  check('network copy names WellBuilt services',
+    netCopy.includes('WellBuilt services') && netCopy.includes('Return to WellBuilt Tickets'));
+  check('network copy does not blame phone connectivity',
+    !/when you have a connection|no connection|check your connection/i.test(netCopy));
+
+  // Callable wiring pins (module imports RN firebase — source-pinned).
+  const callablesSrc = readFileSync(join(root, 'services/sso/jsaRequestCallables.ts'), 'utf8');
+  check('get callable uses the tolerant bound',
+    callablesSrc.includes('timeout: JSA_GET_TIMEOUT_MS'));
+  check('get is single-flight per requestId',
+    callablesSrc.includes('getInFlight.get(requestId)') && callablesSrc.includes('getInFlight.set(requestId'));
+  check('get has NO automatic second attempt',
+    !/retry|retries|attempt = await/i.test(callablesSrc));
+  check('get outcome logging is category-only',
+    callablesSrc.includes("tag: '[jsa-get]'")
+    && !/JSON\.stringify\([^)]*\b(view|token|code|verifier|body|url)\b/.test(callablesSrc));
+  check('complete callable keeps its own bound',
+    callablesSrc.includes('timeout: TIMEOUT_MS'));
+
+  // Generation-conditional persistence: the sync stillOwned guard is
+  // consulted immediately before EVERY durable side effect.
+  const lifecycleDeps = (over = {}) => {
+    const spy = {
+      saved: [], marked: [], cleared: [],
+      stillOwnedAnswers: [], stillOwnedCalls: 0,
+    };
+    const deps = {
+      nowMs: () => 1_000,
+      loadOwnership: async () => null,
+      saveOwnership: async () => {},
+      saveLaunch: async () => {},
+      loadLaunch: async () => ({ requestId: 'R'.repeat(43), returnTo: 'wbt' }),
+      loadSession: async () => ({ uid: 'u' }),
+      get: async () => ({
+        ok: true,
+        view: {
+          requestId: 'R'.repeat(43), state: 'pending', intent: 'read',
+          jobRef: 'j1', groupRef: null, expiresAtMs: 9_999_999,
+        },
+      }),
+      complete: async () => ({ ok: false, refusal: 'network' }),
+      saveContext: async (v) => { spy.saved.push(v); },
+      loadContext: async () => null,
+      savePending: async () => {},
+      loadPending: async () => null,
+      clearPending: async () => {},
+      markTerminalFailure: async (id) => { spy.marked.push(id); },
+      clearTerminalFailure: async (id) => { spy.cleared.push(id); },
+      stillOwned: () => {
+        spy.stillOwnedCalls += 1;
+        if (spy.stillOwnedAnswers.length) return spy.stillOwnedAnswers.shift();
+        return true;
+      },
+      ...over,
+    };
+    return { deps, spy };
+  };
+
+  // Stale A superseded during the get: persist NOTHING, mark NOTHING.
+  {
+    const { deps, spy } = lifecycleDeps();
+    spy.stillOwnedAnswers.push(false); // post-get check: already lost
+    const out = await obtainAuthoritativeContext(deps);
+    check('superseded during get: no context persisted, no markers',
+      out.kind === 'fail_closed' && spy.saved.length === 0
+      && spy.marked.length === 0 && spy.cleared.length === 0);
+  }
+
+  // B adopts AFTER A's post-get check but BEFORE A's attempted save:
+  // the save-adjacent guard still blocks the write.
+  {
+    const { deps, spy } = lifecycleDeps();
+    spy.stillOwnedAnswers.push(true);  // post-get check passes
+    spy.stillOwnedAnswers.push(false); // save-adjacent check fails
+    const out = await obtainAuthoritativeContext(deps);
+    check('adopted between post-get check and save: write blocked',
+      out.kind === 'fail_closed' && spy.saved.length === 0 && spy.cleared.length === 0);
+  }
+
+  // Failed get on a superseded run: terminal state is NOT marked.
+  {
+    const { deps, spy } = lifecycleDeps({
+      get: async () => ({ ok: false, refusal: 'not_found' }),
+    });
+    spy.stillOwnedAnswers.push(false);
+    const out = await obtainAuthoritativeContext(deps);
+    check('superseded failed get: terminal never marked',
+      out.kind === 'fail_closed' && spy.marked.length === 0);
+  }
+
+  // Still-owned run behaves normally: context saved, terminal cleared.
+  {
+    const { deps, spy } = lifecycleDeps();
+    const out = await obtainAuthoritativeContext(deps);
+    check('owned run persists context and clears terminal state',
+      out.kind === 'ready' && spy.saved.length === 1 && spy.cleared.length === 1);
+  }
+
+  // ── R3: owner-transacted durable effects (commitOwnedEffect) ─────────────
+  // The owner's commitIfOwned is the transaction; here we prove the
+  // lifecycle routes EVERY durable effect through it and honors
+  // not-applied by persisting/marking/mutating nothing.
+
+  // Success path: one transaction bundles save + latch consume + terminal
+  // clear; not-applied → none of them run and the run fail-closes.
+  {
+    const { deps, spy } = lifecycleDeps({
+      commitOwnedEffect: async () => ({ applied: false }), // never runs effect
+      consumeRecoveryLatch: async () => { spy.marked.push('latch'); },
+    });
+    const out = await obtainAuthoritativeContext(deps);
+    check('not-applied success commit: save+latch+clear all skipped',
+      out.kind === 'fail_closed' && spy.saved.length === 0
+      && spy.cleared.length === 0 && !spy.marked.includes('latch'));
+  }
+
+  // Applied success commit runs the bundle exactly once.
+  {
+    let effects = 0;
+    const { deps, spy } = lifecycleDeps({
+      commitOwnedEffect: async (effect) => { effects += 1; await effect(); return { applied: true }; },
+    });
+    const out = await obtainAuthoritativeContext(deps);
+    check('applied success commit bundles save+clear in ONE transaction',
+      out.kind === 'ready' && effects === 1
+      && spy.saved.length === 1 && spy.cleared.length === 1);
+  }
+
+  // Superseded A cannot MARK the terminal marker (failed get).
+  {
+    const { deps, spy } = lifecycleDeps({
+      get: async () => ({ ok: false, refusal: 'not_found' }),
+      commitOwnedEffect: async () => ({ applied: false }),
+    });
+    const out = await obtainAuthoritativeContext(deps);
+    check('superseded run cannot mark terminal state',
+      out.kind === 'fail_closed' && spy.marked.length === 0);
+  }
+
+  // Superseded A cannot mutate the recovery latch/session setup.
+  {
+    let recoveryRuns = 0;
+    const { deps } = lifecycleDeps({
+      get: async () => ({ ok: false, refusal: 'unauthenticated' }),
+      beginUnauthenticatedRecovery: async () => { recoveryRuns += 1; return 'recover'; },
+      commitOwnedEffect: async () => ({ applied: false }),
+    });
+    const out = await obtainAuthoritativeContext(deps);
+    check('superseded run cannot mutate unauthenticated-recovery state',
+      out.kind === 'fail_closed' && recoveryRuns === 0);
+  }
+
+  // Owned run with recovery: the latch mutation is transacted and honored.
+  {
+    let recoveryRuns = 0;
+    const { deps } = lifecycleDeps({
+      get: async () => ({ ok: false, refusal: 'unauthenticated' }),
+      beginUnauthenticatedRecovery: async () => { recoveryRuns += 1; return 'recover'; },
+      commitOwnedEffect: async (effect) => { await effect(); return { applied: true }; },
+    });
+    const out = await obtainAuthoritativeContext(deps);
+    check('owned recovery setup transacts and proceeds to need_auth',
+      out.kind === 'need_auth' && recoveryRuns === 1);
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

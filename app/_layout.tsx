@@ -15,7 +15,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import LoginScreen from '../components/LoginScreen';
 import AppSwitcher from '../components/AppSwitcher';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getDriverSession } from '../services/driverAuth';
 import { getUnfinishedJsas, discardJsa, type UnfinishedJsa } from '../services/jsaStatus';
@@ -37,7 +37,9 @@ import { WBT_READ_REQUEST_KEY } from '../services/wbtReadRequest';
 import {
   authoritativeContextMatchesLaunch,
   decideJobDetailsIsolation,
+  launchResolutionBlocksContent,
   unresolvedJobDetailsIsolation,
+  GOVERNED_RESOLVING_COPY,
 } from '../services/sso/jsaJobDetailsIsolation';
 import { terminalFailureMatches } from '../services/sso/jsaGovernedAuth';
 
@@ -148,6 +150,23 @@ function AppContent() {
   const { mode, isAuthenticated, ssoLogin, logout } = useAuth();
   const router = useRouter();
   const [ssoInProgress, setSsoInProgress] = useState(true); // suppress login overlay until we check initial URL
+  // Count of governed /start candidates being processed — published by
+  // the owner choke point (subscribeStartResolving), so EVERY entry
+  // (route, Linking, getInitialURL, stored resume) raises the overlay.
+  // While > 0 the root shows only the connecting surface — historical
+  // local content (Job Details, saved acknowledgments, "Already
+  // completed") must not paint as the active launch (field 8/13).
+  const [startResolving, setStartResolving] = useState(0);
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+    let cancelled = false;
+    (async () => {
+      const { subscribeStartResolving } = await import('../services/sso/jsaStartLive');
+      if (cancelled) return;
+      unsubscribe = subscribeStartResolving((count) => setStartResolving(count));
+    })();
+    return () => { cancelled = true; if (unsubscribe) unsubscribe(); };
+  }, []);
 
   // Unfinished-JSA compliance modal — shown when driver has prior-day JSAs
   // with wells stamped but never signed off.
@@ -336,7 +355,14 @@ function AppContent() {
         if (cancelled) return;
         if (decision.action === 'handle_launch' && url) {
           const { consumeJsaStart, hrefAfterStart } = await import('../services/sso/jsaStartLive');
-          const result = await consumeJsaStart(url);
+          // Bootstrap url comes from getInitialURL — INITIAL provenance.
+          // This effect re-runs on isAuthenticated false→true, replaying
+          // the task's ORIGINAL intent; it must never masquerade as live.
+          const result = await consumeJsaStart(url, 'initial');
+          // Stale replay / superseded / not-a-start: return IMMEDIATELY.
+          // An ignored bootstrap delivery navigates nowhere, exposes no
+          // stale local content, and triggers no protected get.
+          if (result.kind === 'ignored') return;
           if (result.kind === 'need_auth' || result.kind === 'duplicate') {
             setSsoInProgress(true);
             return;
@@ -452,7 +478,11 @@ function AppContent() {
             await import('../services/sso/jsaStartLive');
           if (isJsaStartUrl(event.url)) {
             await AsyncStorage.setItem('jsa_returnTo', 'wbt').catch(() => {});
-            const result = await consumeJsaStart(event.url);
+            // Linking 'url' event — a fresh LIVE delivery.
+            const result = await consumeJsaStart(event.url, 'live');
+            // Stale replay / superseded run — a launch that is not the
+            // owned one may not touch UI or overlay state at all.
+            if (result.kind === 'ignored') return;
             if (result.kind === 'fail_closed') {
               await markGovernedReturnRequired('wbt');
             }
@@ -564,7 +594,12 @@ function AppContent() {
         const { isLegacyJsaLaunchUrl, parseJsaLaunchUrl } = await import('../services/sso/jsaLaunch');
         if (isJsaStartUrl(url) || isLegacyJsaLaunchUrl(url) || parseJsaLaunchUrl(url).ok) {
           await AsyncStorage.setItem('jsa_returnTo', 'wbt').catch(() => {});
-          const result = await consumeJsaStart(url);
+          // getInitialURL — INITIAL provenance: legitimate on cold start,
+          // but a warm re-read replays the task's original intent and must
+          // never displace a live delivery.
+          const result = await consumeJsaStart(url, 'initial');
+          // Stale replay / superseded run — never steers UI.
+          if (result.kind === 'ignored') return;
           if (result.kind === 'fail_closed') {
             await markGovernedReturnRequired('wbt');
           }
@@ -708,6 +743,19 @@ function AppContent() {
           {mode === 'checking' && (
             <View style={[styles.splash, styles.overlay]}>
               <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          )}
+
+          {/* Governed /start resolving — fail-closed presentation. While a
+              valid launch candidate is being processed, only this
+              connecting surface shows; historical local records never
+              paint as the active launch. */}
+          {launchResolutionBlocksContent(startResolving) && (
+            <View style={[styles.splash, styles.overlay]}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={{ color: colors.textMuted, marginTop: 12, fontSize: 15 }}>
+                {GOVERNED_RESOLVING_COPY}
+              </Text>
             </View>
           )}
 

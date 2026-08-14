@@ -269,7 +269,7 @@ export const FAIL_CLOSED_COPY: Record<JsaRefusal, string> = Object.freeze({
   malformed:
     'This JSA request is not valid. Return to WellBuilt Tickets and launch again.',
   network:
-    'Could not reach WellBuilt. Return to WellBuilt Tickets and launch again when you have a connection.',
+    'Could not reach WellBuilt services. Return to WellBuilt Tickets and try again.',
   local_save_failed:
     'Your JSA could not be saved on this device. Stay here and try again. Do not return to Tickets yet.',
   complete_failed:
@@ -461,6 +461,48 @@ export function classifyGetError(err: unknown): JsaRefusal {
   return r === 'complete_failed' ? 'network' : r;
 }
 
+// ── Cold-start-tolerant protected get (vc10) ────────────────────────────────
+// Field 8/13: the jsa callable fleet scales from zero and took 24–32s to
+// pass Cloud Run readiness while the client abandoned the get at 15s.
+// ONE bounded attempt whose bound exceeds the worst captured readiness
+// time. No automatic second attempt — the connecting surface stays up for
+// the whole bounded operation, then terminal fail-closed.
+
+/** The single protected-get bound — above the 32s worst captured cold start. */
+export const JSA_GET_TIMEOUT_MS = 45_000;
+
+export type JsaGetLogCategory =
+  | 'ok'
+  | 'timeout'
+  | 'unavailable'
+  | 'unauthenticated'
+  | 'binding'
+  | 'permission'
+  | 'refusal';
+
+/**
+ * Sanitized outcome category for diagnostics. Reason codes only — never
+ * URLs, tokens, codes, signatures, identity payloads, or request bodies.
+ */
+export function getOutcomeLogCategory(refusal: JsaRefusal | null, err?: unknown): JsaGetLogCategory {
+  if (refusal === null) return 'ok';
+  if (refusal === 'network') {
+    const code = String((err as { code?: unknown } | null)?.code || '').toLowerCase();
+    const message = String((err as { message?: unknown } | null)?.message || '').toLowerCase();
+    return code.includes('deadline') || message.includes('deadline') ? 'timeout' : 'unavailable';
+  }
+  if (refusal === 'unauthenticated') return 'unauthenticated';
+  if (refusal === 'binding_mismatch' || refusal === 'active_shift_required'
+    || refusal === 'authority_unverifiable') {
+    return 'binding';
+  }
+  if (refusal === 'wrong_audience' || refusal === 'not_a_driver'
+    || refusal === 'intent_not_permitted' || refusal === 'action_not_permitted') {
+    return 'permission';
+  }
+  return 'refusal';
+}
+
 export interface PendingCompleteRecord {
   requestId: string;
   action: JsaCompletionAction;
@@ -529,6 +571,21 @@ export interface GovernedEntryDeps {
   markTerminalFailure?(requestId: string): Promise<void>;
   clearTerminalFailure?(requestId: string): Promise<void>;
   awaitAuthReady?(): Promise<void>;
+  /**
+   * SYNCHRONOUS generation guard from the start owner — cheap early-outs
+   * only. An obsolete run may finish its already-started network read; it
+   * may not persist, clear, mark, or steer afterward.
+   */
+  stillOwned?(): boolean;
+  /**
+   * Generation-conditional TRANSACTION from the start owner
+   * (commitIfOwned bound to this run): the ownership recheck and the
+   * awaited durable effect run inside the same serialized boundary as
+   * adoption, so an adoption can neither interleave with a pending owned
+   * write nor be overwritten by one settling late. Every durable side
+   * effect below goes through it when present.
+   */
+  commitOwnedEffect?(effect: () => Promise<void>): Promise<{ applied: boolean }>;
   get(requestId: string): Promise<
     { ok: true; view: JsaRequestContextView } | { ok: false; refusal: JsaRefusal }
   >;
@@ -566,19 +623,55 @@ export async function obtainAuthoritativeContext(deps: GovernedEntryDeps): Promi
   }
   const session = await deps.loadSession();
   if (!session) return { kind: 'need_auth', launch };
+  const mayEffect = () => !deps.stillOwned || deps.stillOwned();
+  // Durable effects go through the owner's serialized transaction: the
+  // ownership recheck and the awaited write share the adoption queue, so
+  // a late write can never settle over a successor's state. Absent (paths
+  // not run under the start owner), effects apply directly.
+  const commit: NonNullable<GovernedEntryDeps['commitOwnedEffect']> =
+    deps.commitOwnedEffect
+    ?? (async (effect) => {
+      if (!mayEffect()) return { applied: false };
+      await effect();
+      return { applied: true };
+    });
   const got = await deps.get(launch.requestId);
+  if (!mayEffect()) {
+    // Superseded while the get was in flight: persist nothing, mark
+    // nothing — the successor's run owns every durable effect now.
+    return { kind: 'fail_closed', refusal: 'not_found', copy: failClosedCopy('not_found') };
+  }
   if (!got.ok) {
     if (got.refusal === 'unauthenticated' && deps.beginUnauthenticatedRecovery) {
-      const outcome = await deps.beginUnauthenticatedRecovery(session);
-      if (outcome === 'recover' || outcome === 'join') return { kind: 'need_auth', launch };
+      // Recovery setup mutates the latch/attempt — owner-transacted.
+      let outcome: 'recover' | 'join' | 'fail_closed' | null = null;
+      const began = await commit(async () => {
+        outcome = await deps.beginUnauthenticatedRecovery!(session);
+      });
+      if (began.applied && (outcome === 'recover' || outcome === 'join')) {
+        return { kind: 'need_auth', launch };
+      }
+      if (!began.applied) {
+        return { kind: 'fail_closed', refusal: 'not_found', copy: failClosedCopy('not_found') };
+      }
     }
-    if (deps.markTerminalFailure) await deps.markTerminalFailure(launch.requestId);
+    if (deps.markTerminalFailure) {
+      await commit(() => deps.markTerminalFailure!(launch.requestId));
+    }
     return { kind: 'fail_closed', refusal: got.refusal, copy: failClosedCopy(got.refusal) };
   }
   ignoreLaunchHints(launch, got.view);
-  await deps.saveContext(got.view);
-  if (deps.consumeRecoveryLatch) await deps.consumeRecoveryLatch(session);
-  if (deps.clearTerminalFailure) await deps.clearTerminalFailure(launch.requestId);
+  // ONE success transaction: context persistence + matching latch
+  // consumption + matching terminal clear — another launch cannot adopt
+  // between these related effects.
+  const committed = await commit(async () => {
+    await deps.saveContext(got.view);
+    if (deps.consumeRecoveryLatch) await deps.consumeRecoveryLatch(session);
+    if (deps.clearTerminalFailure) await deps.clearTerminalFailure(launch.requestId);
+  });
+  if (!committed.applied) {
+    return { kind: 'fail_closed', refusal: 'not_found', copy: failClosedCopy('not_found') };
+  }
   const decided = decideAfterGet(got.view);
   return { kind: 'ready', ...decided, view: got.view };
 }

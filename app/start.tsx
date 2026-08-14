@@ -24,7 +24,14 @@ export default function StartScreen() {
       try {
         const fromParams = reconstructJsaStartUrl(params as Record<string, unknown>);
         const url = fromParams || (await Linking.getInitialURL());
-        const result = await consumeJsaStart(url);
+        // Route params are a live navigation; the initial-URL fallback is a
+        // replayable read.
+        const result = await consumeJsaStart(url, fromParams ? 'live' : 'initial');
+        // Stale replay / superseded run: this route's candidate lost.
+        // A LOSER NEVER NAVIGATES — only the winning launch coordinator
+        // chooses the destination. This screen stays on its neutral
+        // connecting surface until the winner's navigation replaces it.
+        if (result.kind === 'ignored' && result.refusal) return;
         if (result.kind === 'fail_closed') {
           await markGovernedReturnRequired('wbt');
         }

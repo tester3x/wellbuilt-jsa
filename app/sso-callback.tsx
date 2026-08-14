@@ -39,8 +39,12 @@ export default function JsaSsoCallbackRoute() {
         if (!url) {
           const incoming = await Linking.getInitialURL();
           const startResult = isJsaStartUrl(incoming)
-            ? await consumeJsaStart(incoming)
+            ? await consumeJsaStart(incoming, 'initial')
             : await consumeStoredGovernedStart();
+          // Stale replay / superseded — a LOSER NEVER NAVIGATES; the
+          // winning run steers. This screen holds its neutral connecting
+          // surface until the winner's navigation replaces it.
+          if (startResult.kind === 'ignored' && startResult.refusal) return;
           if (startResult.kind === 'ignored') {
             await markGovernedReturnRequired('wbt');
             router.replace({
@@ -59,6 +63,8 @@ export default function JsaSsoCallbackRoute() {
         const result = await consumeJsaSsoCallback(url);
         if (result.kind === 'ignored') {
           const startResult = await consumeStoredGovernedStart();
+          // Loser never navigates — the winning run steers.
+          if (startResult.kind === 'ignored' && startResult.refusal) return;
           if (startResult.kind === 'ignored') {
             await markGovernedReturnRequired('wbt');
             router.replace({
