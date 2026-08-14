@@ -198,7 +198,7 @@ export default function JsaHomeScreen() {
       AsyncStorage.removeItem('jsa_resume').catch(() => {});
     }).catch(() => {});
 
-    AsyncStorage.getItem('jsa_autofill').then(raw => {
+    AsyncStorage.getItem('jsa_autofill').then(async (raw) => {
       if (!raw) return;
       try {
         const params = JSON.parse(raw);
