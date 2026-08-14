@@ -54,7 +54,16 @@ import {
   readGovernedReturnTarget,
 } from "../../services/shiftAuthorityStore";
 import { loadReadRequestContext } from "../../services/wbtReadRequest";
-import ShiftAuthorityGate from "../../components/ShiftAuthorityGate";
+import GovernedIsolationSurface from "../../components/GovernedIsolationSurface";
+import {
+  authoritativeContextMatchesLaunch,
+  decideJobDetailsIsolation,
+  handleNextAllowed,
+  hasValidatedJobContext,
+  unresolvedJobDetailsIsolation,
+  type JobDetailsIsolation,
+} from "../../services/sso/jsaJobDetailsIsolation";
+import { terminalFailureMatches } from "../../services/sso/jsaGovernedAuth";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -87,7 +96,7 @@ export default function JsaHomeScreen() {
   const [driverOperators, setDriverOperators] = useState<string[]>([]);
 
   // Track whether app was opened via deep link (SSO from WB S or WB T)
-  const [deepLinked, setDeepLinked] = useState(false);
+  const [deepLinked, setDeepLinked] = useState(false); // set only from validated job context, never returnTo
 
   // SSO mode = a shiftId is present in AsyncStorage (mint by WB S Start
   // Shift, propagated via SSO deep link). In SSO mode, WB T is acting as
@@ -100,6 +109,9 @@ export default function JsaHomeScreen() {
   const [authoritySurface, setAuthoritySurface] = useState<ShiftSurface | null>(null);
   const [mayLabelActive, setMayLabelActive] = useState(false);
   const [returnTarget, setReturnTarget] = useState<GovernedReturnTarget>('suite');
+  const [workflowIsolation, setWorkflowIsolation] = useState<JobDetailsIsolation>(() =>
+    unresolvedJobDetailsIsolation(),
+  );
 
   // Multi-JSA: array of active JSAs for today
   type ActiveJsa = {
@@ -162,10 +174,8 @@ export default function JsaHomeScreen() {
   // Waits for hydrateAllJsas so we can decide whether to populate the new form
   // or focus an existing tab for today. Consumed exactly once per mount.
   useEffect(() => {
-    // Carry-over returnTo (set if app was killed & resumed mid-flow)
-    AsyncStorage.getItem('jsa_returnTo').then(val => {
-      if (val) setDeepLinked(true);
-    }).catch(() => {});
+    // jsa_returnTo is a return destination only — it must not mark Job
+    // Details complete or waive well/location.
 
     if (!hydrationDone || autofillConsumedRef.current) return;
     autofillConsumedRef.current = true;
@@ -199,9 +209,9 @@ export default function JsaHomeScreen() {
         if (params.date) setDate(params.date);
         if (params.disposal) setLocationInput(params.disposal);
         if (params.returnTo) {
-          setDeepLinked(true);
           AsyncStorage.setItem('jsa_returnTo', String(params.returnTo)).catch(() => {});
         }
+        if (hasValidatedJobContext(params)) setDeepLinked(true);
 
         // Capture the deep-link operator into session state so the "+" tab
         // guard can compare against existing JSAs. WB T already sends this
@@ -363,6 +373,30 @@ export default function JsaHomeScreen() {
         await persistShiftAuthorityDecision(decision);
         setMayLabelActive(decision.mayLabelActive);
         setAuthoritySurface(decision.surface);
+        try {
+          const { loadLaunchContext, loadGovernedTerminalFailure, loadRequestContext } = await import('../../services/sso/jsaRuntime');
+          const { loadUsableGovernedSession } = await import('../../services/sso/jsaGovernedAuthLive');
+          const launch = await loadLaunchContext();
+          const usable = await loadUsableGovernedSession();
+          const marker = await loadGovernedTerminalFailure();
+          const ctx = await loadRequestContext();
+          const match = authoritativeContextMatchesLaunch({
+            launchRequestId: launch?.requestId,
+            contextRequestId: ctx?.requestId,
+          });
+          const failed = terminalFailureMatches(marker, launch?.requestId ?? null);
+          setWorkflowIsolation(decideJobDetailsIsolation({
+            resolved: true,
+            authoritySurface: decision.surface,
+            explicitGovernedFailure: failed,
+            hasGovernedLaunch: !!launch,
+            hasUsableGovernedSession: !!usable,
+            hasMatchingAuthoritativeContext: match,
+            authPending: !!launch && !usable && !failed,
+          }));
+        } catch {
+          setWorkflowIsolation(unresolvedJobDetailsIsolation());
+        }
         setShiftVerdict(decision.mayLabelActive ? shiftVerdictKind : (decision.kind === 'stale_cached' ? 'verified_closed' : decision.kind === 'origin_day_unverified' || decision.kind === 'authority_unavailable' ? 'unverified' : 'none'));
         setVerifiedShiftId(decision.mayLabelActive ? decision.activeShiftId : null);
         if (decision.surface === 'unverified_gate') {
@@ -1801,6 +1835,7 @@ export default function JsaHomeScreen() {
   }, [driverName, truckNumber]);
 
   const handleNext = () => {
+    if (!handleNextAllowed(workflowIsolation.blocked)) return;
     if (isNextDisabled) return;
 
     // Flush buffered Well/Location text that the driver typed but never tapped
@@ -2002,11 +2037,15 @@ export default function JsaHomeScreen() {
             today's JSA for safety/DOT. Loads from saves (authoritative),
             routes into /viewJsa in read mode. When activeJsas.length > 0
             the inline "JSA Active" card below already handles this. */}
-        {authoritySurface === 'unverified_gate' && (
-          <ShiftAuthorityGate variant="card" returnTarget={returnTarget} />
+        {(authoritySurface === 'unverified_gate' || workflowIsolation.isolateOnly) && (
+          <GovernedIsolationSurface
+            kind={workflowIsolation.surface || (authoritySurface === 'unverified_gate' ? 'unverified_gate' : 'connecting')}
+            returnTarget={returnTarget}
+            variant="card"
+          />
         )}
 
-        {authoritySurface !== 'unverified_gate' && todaysJsaSave && activeJsas.length === 0 && (() => {
+        {workflowIsolation.mountForm && authoritySurface !== 'unverified_gate' && todaysJsaSave && activeJsas.length === 0 && (() => {
           // vc51.9B: "Current" wording ONLY for a verified open matching
           // period; anything else is honestly labeled a previous JSA
           // (still viewable — viewJsa shows its saved date). Standalone
@@ -2220,7 +2259,7 @@ export default function JsaHomeScreen() {
             button drops them into the same /steps → /ppe → /signoff flow
             standalone uses, but with empty params (wells/locations come
             from jsa_day_status stamps written by WB T at job-close). */}
-        {isSsoMode && mayLabelActive && !jsaCompletedToday && (
+        {workflowIsolation.mountForm && isSsoMode && mayLabelActive && !jsaCompletedToday && (
           <View style={[styles.card, { borderColor: accent, borderWidth: 1 }]}>
             <Text style={styles.cardTitle}>{t("Read & Acknowledge JSA")}</Text>
             <Text style={styles.cardSubtitle}>
@@ -2255,7 +2294,7 @@ export default function JsaHomeScreen() {
             AND hidden in SSO mode (driver doesn't fill the form — WB T
             acts as the JSA secretary; the SSO CTA card above takes
             them straight to /steps). */}
-        {(jsaCompletedToday && activeJsaIndex >= 0) || isSsoMode ? null : (
+        {(jsaCompletedToday && activeJsaIndex >= 0) || isSsoMode || !workflowIsolation.mountForm ? null : (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t("Job Details")}</Text>
           <Text style={styles.cardSubtitle}>

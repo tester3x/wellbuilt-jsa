@@ -22,6 +22,7 @@ import { getUnfinishedJsas, discardJsa, type UnfinishedJsa } from '../services/j
 import UnfinishedJsasModal from '../components/UnfinishedJsasModal';
 import WelcomeModal from '../components/WelcomeModal';
 import ShiftAuthorityGate from '../components/ShiftAuthorityGate';
+import GovernedIsolationSurface from '../components/GovernedIsolationSurface';
 import {
   decideUnauthenticatedOverlay,
   type GovernedReturnTarget,
@@ -33,6 +34,12 @@ import {
   subscribeShiftVerified,
 } from '../services/shiftAuthorityStore';
 import { WBT_READ_REQUEST_KEY } from '../services/wbtReadRequest';
+import {
+  authoritativeContextMatchesLaunch,
+  decideJobDetailsIsolation,
+  unresolvedJobDetailsIsolation,
+} from '../services/sso/jsaJobDetailsIsolation';
+import { terminalFailureMatches } from '../services/sso/jsaGovernedAuth';
 
 const FIREBASE_DB = 'https://wellbuilt-sync-default-rtdb.firebaseio.com';
 
@@ -153,6 +160,7 @@ function AppContent() {
   const [unauthSurface, setUnauthSurface] = useState<'legacy_login' | 'unverified_gate'>('legacy_login');
   const [returnTarget, setReturnTarget] = useState<GovernedReturnTarget>('suite');
   const [governedSessionReady, setGovernedSessionReady] = useState(false);
+  const [authWorkflowIsolation, setAuthWorkflowIsolation] = useState(unresolvedJobDetailsIsolation);
 
   const checkUnfinishedJsas = async () => {
     try {
@@ -243,10 +251,13 @@ function AppContent() {
       const target = await readGovernedReturnTarget();
       const pending = await AsyncStorage.getItem(WBT_READ_REQUEST_KEY);
       const returnTo = await AsyncStorage.getItem('jsa_returnTo');
-      const { loadLaunchContext, loadGovernedSession } = await import('../services/sso/jsaRuntime');
+      const { loadLaunchContext, loadGovernedTerminalFailure, loadRequestContext } = await import('../services/sso/jsaRuntime');
+      const { loadUsableGovernedSession } = await import('../services/sso/jsaGovernedAuthLive');
       const governedLaunch = await loadLaunchContext();
-      const governedSession = await loadGovernedSession();
-      if (governedSession) setGovernedSessionReady(true);
+      const usable = await loadUsableGovernedSession();
+      const marker = await loadGovernedTerminalFailure();
+      const ctx = await loadRequestContext();
+      setGovernedSessionReady(!!usable);
       const surface = decideUnauthenticatedOverlay({
         governedReturnRequired: !!target,
         hasPendingRequest: !!pending || !!governedLaunch,
@@ -254,8 +265,24 @@ function AppContent() {
       });
       setUnauthSurface(surface);
       if (target) setReturnTarget(target);
+      const match = authoritativeContextMatchesLaunch({
+        launchRequestId: governedLaunch?.requestId,
+        contextRequestId: ctx?.requestId,
+      });
+      const failed = terminalFailureMatches(marker, governedLaunch?.requestId ?? null);
+      const isolation = decideJobDetailsIsolation({
+        resolved: true,
+        authoritySurface: surface === 'unverified_gate' ? 'unverified_gate' : null,
+        explicitGovernedFailure: failed,
+        hasGovernedLaunch: !!governedLaunch,
+        hasUsableGovernedSession: !!usable,
+        hasMatchingAuthoritativeContext: match,
+        authPending: !!governedLaunch && !usable && !failed,
+      });
+      setAuthWorkflowIsolation(isolation);
     } catch {
       setUnauthSurface('legacy_login');
+      setAuthWorkflowIsolation(unresolvedJobDetailsIsolation());
     }
   };
 
@@ -291,12 +318,13 @@ function AppContent() {
     let cancelled = false;
     (async () => {
       try {
-        const { loadGovernedSession, mintAttempt } = await import('../services/sso/jsaRuntime');
+        const { mintAttempt } = await import('../services/sso/jsaRuntime');
+        const { loadUsableGovernedSession } = await import('../services/sso/jsaGovernedAuthLive');
         const { decideBootstrap } = await import('../services/sso/jsaBootstrap');
         const { isLegacyJsaLaunchUrl } = await import('../services/sso/jsaLaunch');
         const { buildAuthorizeUrl } = await import('../services/sso/jsaPkce');
         const url = await Linking.getInitialURL();
-        const session = await loadGovernedSession();
+        const session = await loadUsableGovernedSession();
         const decision = decideBootstrap({
           hasPersistedSession: !!session || isAuthenticated,
           incomingUrl: url,
@@ -387,14 +415,15 @@ function AppContent() {
           const { consumeJsaSsoCallback } = await import('../services/sso/jsaCallbackLive');
           const result = await consumeJsaSsoCallback(event.url);
           if (result.kind === 'exchanged' || result.kind === 'duplicate') {
-            setGovernedSessionReady(true);
             const { recoverGoverned, liveGovernedDeps } = await import('../services/sso/jsaGovernedLive');
             const { resolveEntryRoute } = await import('../services/sso/jsaGovernedRoute');
             const decision = await recoverGoverned();
+            await resolveUnauthSurface();
             const href = await resolveEntryRoute(decision, liveGovernedDeps());
             router.replace(href as any);
           } else {
             await markGovernedReturnRequired('suite');
+            await resolveUnauthSurface();
           }
           setSsoInProgress(false);
           return;
@@ -515,14 +544,15 @@ function AppContent() {
         const { consumeJsaSsoCallback } = await import('../services/sso/jsaCallbackLive');
         const result = await consumeJsaSsoCallback(url);
         if (result.kind === 'exchanged' || result.kind === 'duplicate') {
-          setGovernedSessionReady(true);
           const { recoverGoverned, liveGovernedDeps } = await import('../services/sso/jsaGovernedLive');
           const { resolveEntryRoute } = await import('../services/sso/jsaGovernedRoute');
           const decision = await recoverGoverned();
+          await resolveUnauthSurface();
           const href = await resolveEntryRoute(decision, liveGovernedDeps());
           router.replace(href as any);
         } else {
           await markGovernedReturnRequired('suite');
+          await resolveUnauthSurface();
         }
         setSsoInProgress(false);
         return;
@@ -691,6 +721,15 @@ function AppContent() {
               ) : (
                 <LoginScreen />
               )}
+            </View>
+          )}
+          {mode !== 'checking' && isAuthenticated && authWorkflowIsolation.blocked && (
+            <View style={styles.overlay}>
+              <GovernedIsolationSurface
+                kind={authWorkflowIsolation.surface}
+                returnTarget={returnTarget}
+                variant="overlay"
+              />
             </View>
           )}
         </View>

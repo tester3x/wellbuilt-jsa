@@ -21,6 +21,8 @@ import { colors } from "../constants/colors";
 import { JSA_STEPS, type JSAStep } from "../constants/jsaTemplate";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
+import GovernedIsolationSurface from "../components/GovernedIsolationSurface";
+import type { IsolationReason } from "../services/sso/jsaJobDetailsIsolation";
 
 // BYOJSA: Use company template if available, fall back to hardcoded default
 
@@ -30,23 +32,85 @@ const stepColors = {
   borderStrong: "#CFCFCF",
 };
 
-type Params = {
-  driverName?: string;
-  truckNumber?: string;
-  location?: string;
-  task?: string;
-  date?: string;
-  locations?: string;
-  wells?: string;
-  locationAcks?: string;
-  jobActivityName?: string;
-  pusher?: string;
-  wellName?: string;
-  otherInfo?: string;
-  jsaSessionId?: string;
-};
-
 export default function StepsScreen() {
+  const router = useRouter();
+  const [stepsGuard, setStepsGuard] = useState<'unresolved' | 'allowed' | 'denied'>('unresolved');
+  const [guardReason, setGuardReason] = useState<IsolationReason>('unresolved');
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const {
+          authoritativeContextMatchesLaunch,
+          decideJobDetailsIsolation,
+          stepsRouteAllowed,
+        } = await import('../services/sso/jsaJobDetailsIsolation');
+        const { loadLaunchContext, loadGovernedTerminalFailure, loadRequestContext } =
+          await import('../services/sso/jsaRuntime');
+        const { loadUsableGovernedSession } = await import('../services/sso/jsaGovernedAuthLive');
+        const { isCurrentShiftVerified } =
+          await import('../services/shiftAuthorityStore');
+        const { terminalFailureMatches } = await import('../services/sso/jsaGovernedAuth');
+        const launch = await loadLaunchContext();
+        const usable = await loadUsableGovernedSession();
+        const marker = await loadGovernedTerminalFailure();
+        const ctx = await loadRequestContext();
+        const verified = await isCurrentShiftVerified();
+        const match = authoritativeContextMatchesLaunch({
+          launchRequestId: launch?.requestId,
+          contextRequestId: ctx?.requestId,
+        });
+        const failed = terminalFailureMatches(marker, launch?.requestId ?? null);
+        const isolation = decideJobDetailsIsolation({
+          resolved: true,
+          authoritySurface: (!verified && !!launch) ? 'unverified_gate' : null,
+          explicitGovernedFailure: failed,
+          hasGovernedLaunch: !!launch,
+          hasUsableGovernedSession: !!usable,
+          hasMatchingAuthoritativeContext: match,
+          authPending: !!launch && !usable && !failed,
+        });
+        if (cancelled) return;
+        setGuardReason(isolation.reason);
+        if (!stepsRouteAllowed(isolation.blocked)) {
+          setStepsGuard('denied');
+          router.replace(
+            isolation.reason === 'governed_failed'
+              ? ({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'unauthenticated' } } as any)
+              : ('/(tabs)' as any),
+          );
+          return;
+        }
+        setStepsGuard('allowed');
+      } catch {
+        if (!cancelled) {
+          setGuardReason('unresolved');
+          setStepsGuard('denied');
+          router.replace('/(tabs)' as any);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [router]);
+
+  if (stepsGuard !== 'allowed') {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <GovernedIsolationSurface
+          kind={guardReason === 'governed_failed' ? 'governed_failed'
+            : guardReason === 'unverified_gate' ? 'unverified_gate'
+              : 'connecting'}
+          variant="overlay"
+        />
+      </SafeAreaView>
+    );
+  }
+
+  return <StepsWorkflow />;
+}
+
+export function StepsWorkflow() {
+  const router = useRouter();
   const params = useLocalSearchParams<{
   driverName?: string;
   truckNumber?: string;
@@ -98,7 +162,6 @@ const locationsList = useMemo(() => {
   return [];
 }, [locations]);
 
-  const router = useRouter();
   const { t } = useLanguage();
   const { accent, jsaTemplate } = useTheme();
   const steps: JSAStep[] = jsaTemplate?.steps ?? JSA_STEPS;
