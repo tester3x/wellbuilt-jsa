@@ -177,7 +177,9 @@ check('live exchange is wellbuilt-jsa audience only',
   live.includes("audience: 'wellbuilt-jsa'")
   && live.includes('ssoExchangeAuthorizationCode'));
 check('live obtain runs after session persist',
-  live.includes('saveGovernedSession') && live.includes('ownAndObtain'));
+  live.includes('persistAfterExchange') && live.includes('ownAndObtain'));
+check('live persist installs Firebase Auth before SecureStore session',
+  live.includes('persistAfterExchange') && !live.includes('sessionFromExchange'));
 
 const suiteAdapter = readFileSync(join(root, '..', 'Suite', 'src', 'core', 'services', 'ssoRouteAdapter.ts'), 'utf8');
 check('Suite Tickets/eQuipment callback builder is untouched by this repair',

@@ -67,6 +67,7 @@ export type StartOwnerResult = {
   suiteOpen?: 'attempted' | 'succeeded' | 'failed' | 'not_attempted';
   refusal?: string;
   decision?: unknown;
+  requestId?: string;
 };
 
 export type StartLogEvent =
@@ -104,6 +105,9 @@ export interface JsaStartOwnerDeps {
   log(event: StartLogEvent): void;
   hasOpenedFor(requestId: string): boolean;
   markOpened(requestId: string): void;
+  /** Await Firebase Auth hydration before treating currentUser as absent. */
+  awaitAuthReady?(): Promise<void>;
+  loadRecoveryLatch?(): Promise<{ phase?: string; createdAtMs?: number } | null>;
 }
 
 let inFlight: Promise<StartOwnerResult> | null = null;
@@ -148,6 +152,7 @@ async function runStart(
   url: unknown,
   deps: JsaStartOwnerDeps,
 ): Promise<StartOwnerResult> {
+  if (deps.awaitAuthReady) await deps.awaitAuthReady();
   deps.log('received');
   if (typeof url !== 'string' || !url) {
     deps.log('refused');
@@ -180,6 +185,7 @@ async function runStart(
   const launch = parsed.value;
   const taken = await deps.ownLaunch(launch);
   deps.log(taken === 'duplicate' ? 'reused' : taken === 'replace' ? 'replaced' : 'owned');
+  const requestId = launch.requestId;
 
   const session = await deps.loadSession();
   deps.log(session ? 'session_present' : 'session_absent');
@@ -197,6 +203,7 @@ async function runStart(
         suiteOpen: 'not_attempted',
         refusal: obtained.refusal || 'malformed',
         decision: obtained,
+        requestId,
       };
     }
     if (obtained.kind === 'need_auth') {
@@ -222,6 +229,25 @@ async function authorize(
   ownership: StartOwnershipAction,
 ): Promise<StartOwnerResult> {
   const now = deps.nowMs();
+  if (deps.loadRecoveryLatch) {
+    const latch = await deps.loadRecoveryLatch();
+    if (
+      latch
+      && latch.phase === 'exhausted'
+      && typeof latch.createdAtMs === 'number'
+      && now - latch.createdAtMs <= JSA_START_ATTEMPT_TTL_MS
+    ) {
+      return {
+        kind: 'fail_closed',
+        ownership,
+        session: 'absent',
+        authorize: 'not_needed',
+        suiteOpen: 'not_attempted',
+        refusal: 'unauthenticated',
+        requestId,
+      };
+    }
+  }
   const existing = await deps.loadAttempt();
   const already = deps.hasOpenedFor(requestId);
   const usable = attemptIsUsable(existing, now);

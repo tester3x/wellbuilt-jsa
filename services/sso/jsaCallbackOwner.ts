@@ -107,7 +107,12 @@ async function runCallback(
     await deps.clearAttempt();
     return { kind: 'fail_closed', refusal: 'unauthenticated' };
   }
-  await deps.saveSession(payload);
+  try {
+    await deps.saveSession(payload);
+  } catch {
+    await deps.clearAttempt();
+    return { kind: 'fail_closed', refusal: 'unauthenticated' };
+  }
   await deps.clearAttempt();
   await deps.obtainAfterSession();
   return { kind: 'exchanged' };

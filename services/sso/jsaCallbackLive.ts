@@ -15,13 +15,15 @@ import {
 import {
   clearAttempt,
   loadAttempt,
-  loadGovernedSession,
   loadLaunchContext,
   saveAttempt,
-  saveGovernedSession,
 } from './jsaRuntime';
-import { sessionFromExchange, validateExchangePayload } from './jsaSession';
+import { validateExchangePayload } from './jsaSession';
 import { ownAndObtain } from './jsaGovernedLive';
+import {
+  loadUsableGovernedSession,
+  persistAfterExchange,
+} from './jsaGovernedAuthLive';
 
 export { isJsaSsoCallbackUrl, reconstructJsaCallbackUrl } from './jsaCallbackOwner';
 
@@ -52,9 +54,9 @@ function liveCallbackDeps(): JsaCallbackOwnerDeps {
       return validateExchangePayload(result.data);
     },
     saveSession: async (payload) => {
-      await saveGovernedSession(sessionFromExchange(payload as any, null));
+      await persistAfterExchange(payload as any);
     },
-    loadSession: () => loadGovernedSession(),
+    loadSession: () => loadUsableGovernedSession(),
     obtainAfterSession: async () => {
       const launch = await loadLaunchContext();
       if (!launch) return;

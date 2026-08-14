@@ -16,14 +16,19 @@ import { liveGovernedDeps, ownAndObtain } from './jsaGovernedLive';
 import { obtainAuthoritativeContext } from './jsaGovernedEntry';
 import {
   loadAttempt,
-  loadGovernedSession,
+  loadAuthRecoveryLatch,
   loadLaunchOwnership,
+  markGovernedTerminalFailure,
   mintAttempt,
   saveLaunchContext,
   saveLaunchOwnership,
 } from './jsaRuntime';
 import { buildAuthorizeUrl } from './jsaPkce';
 import { resolveEntryRoute } from './jsaGovernedRoute';
+import {
+  awaitGovernedAuthReady,
+  loadUsableGovernedSession,
+} from './jsaGovernedAuthLive';
 
 export {
   isJsaStartUrl,
@@ -52,7 +57,9 @@ function liveStartDeps(): JsaStartOwnerDeps {
       await saveLaunchContext(taken.ownership.request as any);
       return taken.action;
     },
-    loadSession: () => loadGovernedSession(),
+    loadSession: () => loadUsableGovernedSession(),
+    awaitAuthReady: () => awaitGovernedAuthReady(),
+    loadRecoveryLatch: () => loadAuthRecoveryLatch(),
     loadAttempt: () => loadAttempt(),
     mintAttempt: async () => {
       const Crypto = await import('expo-crypto');
@@ -74,7 +81,11 @@ function liveStartDeps(): JsaStartOwnerDeps {
 }
 
 export async function consumeJsaStart(url: unknown): Promise<StartOwnerResult> {
-  return handleJsaStartUrl(url, liveStartDeps());
+  const result = await handleJsaStartUrl(url, liveStartDeps());
+  if (result.kind === 'fail_closed' && result.requestId) {
+    await markGovernedTerminalFailure(result.requestId);
+  }
+  return result;
 }
 
 /** Resume a stored launch after a false /sso-callback landing. */

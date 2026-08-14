@@ -10,6 +10,15 @@ import {
 } from './jsaPkce';
 import type { JsaLaunchRequest } from './jsaLaunch';
 import type { JsaGovernedSession } from './jsaSession';
+import { sanitizeSessionForPersist, validatePersistedGovernedSession } from './jsaSession';
+import {
+  createSerializedLatchMutator,
+  createSerializedSessionMutator,
+  parseAuthRecoveryLatch,
+  parseGovernedTerminalFailure,
+  type AuthRecoveryLatch,
+  type JsaGovernedSessionView,
+} from './jsaGovernedAuth';
 import { JSA_LAUNCH_CONTEXT_KEY } from './jsaLaunch';
 import type { JsaLaunchOwnership } from './jsaRouteOwnership';
 import {
@@ -26,6 +35,26 @@ import {
 const ATTEMPT_META_KEY = '@jsa/pkceAttemptMeta';
 const VERIFIER_KEY = 'jsa_pkce_verifier';
 const SESSION_KEY = 'jsa_governed_session';
+export const AUTH_RECOVERY_LATCH_KEY = '@jsa/authRecoveryLatch';
+export const GOVERNED_TERMINAL_FAILURE_KEY = '@jsa/governedTerminalFailure';
+
+async function loadGovernedSessionUnlocked(): Promise<JsaGovernedSession | null> {
+  try {
+    const raw = await SecureStore.getItemAsync(SESSION_KEY);
+    if (!raw) return null;
+    return validatePersistedGovernedSession(JSON.parse(raw)) as JsaGovernedSession | null;
+  } catch { return null; }
+}
+
+const sessionMutator = createSerializedSessionMutator({
+  load: () => loadGovernedSessionUnlocked() as Promise<JsaGovernedSessionView | null>,
+  save: async (session) => {
+    await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(session));
+  },
+  clear: async () => {
+    await SecureStore.deleteItemAsync(SESSION_KEY).catch(() => {});
+  },
+});
 
 export async function saveLaunchContext(req: JsaLaunchRequest): Promise<void> {
   await AsyncStorage.setItem(JSA_LAUNCH_CONTEXT_KEY, JSON.stringify(req));
@@ -64,14 +93,86 @@ export async function clearAttempt(): Promise<void> {
 }
 
 export async function saveGovernedSession(session: JsaGovernedSession): Promise<void> {
-  await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(session));
+  const sanitized = sanitizeSessionForPersist(session);
+  if (!validatePersistedGovernedSession(sanitized)) {
+    throw new Error('invalid_session');
+  }
+  await sessionMutator.save(sanitized);
 }
 
 export async function loadGovernedSession(): Promise<JsaGovernedSession | null> {
+  return loadGovernedSessionUnlocked();
+}
+
+export async function clearGovernedSession(): Promise<void> {
+  await sessionMutator.clear();
+}
+
+/** Clear only if the stored generation is still the one this call used. Serialized with save. */
+export async function clearGovernedSessionIfGeneration(used: string): Promise<boolean> {
+  return sessionMutator.clearIfGeneration(used);
+}
+
+export async function markGovernedTerminalFailure(requestId: string): Promise<void> {
+  if (!requestId) return;
+  await AsyncStorage.setItem(GOVERNED_TERMINAL_FAILURE_KEY, JSON.stringify({ requestId }));
+}
+
+export async function clearGovernedTerminalFailureFor(requestId: string): Promise<boolean> {
+  const current = await loadGovernedTerminalFailure();
+  if (!current || current.requestId !== requestId) return false;
+  await AsyncStorage.removeItem(GOVERNED_TERMINAL_FAILURE_KEY);
+  return true;
+}
+
+export async function loadGovernedTerminalFailure(): Promise<{ requestId: string } | null> {
   try {
-    const raw = await SecureStore.getItemAsync(SESSION_KEY);
-    return raw ? JSON.parse(raw) as JsaGovernedSession : null;
+    const raw = await AsyncStorage.getItem(GOVERNED_TERMINAL_FAILURE_KEY);
+    if (!raw) return null;
+    if (raw === '1') return null;
+    return parseGovernedTerminalFailure(JSON.parse(raw));
   } catch { return null; }
+}
+
+async function loadAuthRecoveryLatchUnlocked(): Promise<AuthRecoveryLatch | null> {
+  try {
+    const raw = await AsyncStorage.getItem(AUTH_RECOVERY_LATCH_KEY);
+    if (!raw) return null;
+    return parseAuthRecoveryLatch(JSON.parse(raw));
+  } catch { return null; }
+}
+
+const latchMutator = createSerializedLatchMutator({
+  load: () => loadAuthRecoveryLatchUnlocked(),
+  save: async (latch) => {
+    await AsyncStorage.setItem(AUTH_RECOVERY_LATCH_KEY, JSON.stringify({
+      state: latch.state,
+      createdAtMs: latch.createdAtMs,
+      usedAtMs: latch.usedAtMs,
+      phase: latch.phase,
+      failedGeneration: latch.failedGeneration,
+      retryGeneration: latch.retryGeneration,
+    }));
+  },
+  clear: async () => {
+    await AsyncStorage.removeItem(AUTH_RECOVERY_LATCH_KEY);
+  },
+});
+
+export async function saveAuthRecoveryLatch(latch: AuthRecoveryLatch): Promise<void> {
+  await latchMutator.save(latch);
+}
+
+export async function loadAuthRecoveryLatch(): Promise<AuthRecoveryLatch | null> {
+  return loadAuthRecoveryLatchUnlocked();
+}
+
+export async function clearAuthRecoveryLatch(): Promise<void> {
+  await latchMutator.clear();
+}
+
+export function governedLatchMutator() {
+  return latchMutator;
 }
 
 export async function mintAttempt(ops: {

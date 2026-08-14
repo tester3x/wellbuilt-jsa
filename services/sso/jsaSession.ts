@@ -3,6 +3,12 @@
  * legalName is hydrated separately and never substituted from displayName.
  */
 import { isJsaBinding, type JsaBinding } from './jsaBinding';
+import {
+  sanitizeSessionForPersist,
+  validatePersistedGovernedSession,
+} from './jsaGovernedAuth';
+
+export { sanitizeSessionForPersist, validatePersistedGovernedSession };
 
 export interface JsaGovernedSession {
   uid: string;
@@ -11,6 +17,8 @@ export interface JsaGovernedSession {
   displayName: string | null;
   legalName: string | null;
   binding: JsaBinding;
+  /** Local identity so a late failure can clear only the generation it used. */
+  generation: string;
 }
 
 export interface ExchangePayload {
@@ -46,6 +54,7 @@ export function validateExchangePayload(raw: unknown): ExchangePayload | null {
 export function sessionFromExchange(
   payload: ExchangePayload,
   legalName: string | null,
+  generation: string,
 ): JsaGovernedSession {
   return {
     uid: payload.uid,
@@ -54,6 +63,7 @@ export function sessionFromExchange(
     displayName: payload.displayName ?? null,
     legalName: legalName && legalName.trim() ? legalName.trim() : null,
     binding: payload.jsaBinding!,
+    generation,
   };
 }
 

@@ -22,7 +22,8 @@ const firebaseConfig = {
   measurementId: "G-XWQQ98B8LG",
 };
 
-// Initialize Firebase
+// Initialize Firebase. Auth is attached to this same app in
+// services/sso/jsaGovernedAuthLive.ts so callables and Auth share project.
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -140,4 +141,4 @@ export function isFirebaseConfigured(): boolean {
   );
 }
 
-export { db };
+export { db, app };

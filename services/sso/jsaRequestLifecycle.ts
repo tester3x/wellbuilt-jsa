@@ -409,7 +409,19 @@ export function mayShowLegacyLoginDuringGoverned(governed: boolean): false {
 
 export type CallableRefusal = JsaRefusal;
 
+/** Exact Firebase callable code. Do not blob-match this classification. */
+export const FUNCTIONS_UNAUTHENTICATED_CODE = 'functions/unauthenticated';
+
+export function exactCallableErrorCode(err: unknown): string {
+  if (!err || typeof err !== 'object') return '';
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' ? code : '';
+}
+
 export function classifyCallableError(err: unknown): JsaRefusal {
+  if (exactCallableErrorCode(err) === FUNCTIONS_UNAUTHENTICATED_CODE) {
+    return 'unauthenticated';
+  }
   const e = err as {
     code?: string;
     message?: string;
@@ -420,7 +432,6 @@ export function classifyCallableError(err: unknown): JsaRefusal {
   const refusal = typeof details?.refusal === 'string' ? details.refusal : '';
   const message = String(e?.message || '');
   const blob = `${code} ${refusal} ${message}`.toLowerCase();
-  if (blob.includes('unauthenticated')) return 'unauthenticated';
   if (blob.includes('wrong_audience') || blob.includes('not_a_driver')) {
     return blob.includes('not_a_driver') ? 'not_a_driver' : 'wrong_audience';
   }
@@ -509,6 +520,15 @@ export interface GovernedEntryDeps {
   saveLaunch(req: LaunchOwnership['request']): Promise<void>;
   loadLaunch(): Promise<(JsaLaunchHint & { requestId: string }) | null>;
   loadSession(): Promise<unknown | null>;
+  /**
+   * Optional. When a protected get is exactly `functions/unauthenticated`,
+   * run one-shot recovery. Missing hook → fail-closed (no new complete recovery).
+   */
+  beginUnauthenticatedRecovery?(session: unknown): Promise<'recover' | 'join' | 'fail_closed'>;
+  consumeRecoveryLatch?(session: unknown): Promise<void>;
+  markTerminalFailure?(requestId: string): Promise<void>;
+  clearTerminalFailure?(requestId: string): Promise<void>;
+  awaitAuthReady?(): Promise<void>;
   get(requestId: string): Promise<
     { ok: true; view: JsaRequestContextView } | { ok: false; refusal: JsaRefusal }
   >;
@@ -539,6 +559,7 @@ export async function ownGovernedLaunch(
 }
 
 export async function obtainAuthoritativeContext(deps: GovernedEntryDeps): Promise<EntryDecision> {
+  if (deps.awaitAuthReady) await deps.awaitAuthReady();
   const launch = await deps.loadLaunch();
   if (!launch) {
     return { kind: 'fail_closed', refusal: 'malformed', copy: failClosedCopy('malformed') };
@@ -547,10 +568,17 @@ export async function obtainAuthoritativeContext(deps: GovernedEntryDeps): Promi
   if (!session) return { kind: 'need_auth', launch };
   const got = await deps.get(launch.requestId);
   if (!got.ok) {
+    if (got.refusal === 'unauthenticated' && deps.beginUnauthenticatedRecovery) {
+      const outcome = await deps.beginUnauthenticatedRecovery(session);
+      if (outcome === 'recover' || outcome === 'join') return { kind: 'need_auth', launch };
+    }
+    if (deps.markTerminalFailure) await deps.markTerminalFailure(launch.requestId);
     return { kind: 'fail_closed', refusal: got.refusal, copy: failClosedCopy(got.refusal) };
   }
   ignoreLaunchHints(launch, got.view);
   await deps.saveContext(got.view);
+  if (deps.consumeRecoveryLatch) await deps.consumeRecoveryLatch(session);
+  if (deps.clearTerminalFailure) await deps.clearTerminalFailure(launch.requestId);
   const decided = decideAfterGet(got.view);
   return { kind: 'ready', ...decided, view: got.view };
 }
