@@ -2037,9 +2037,9 @@ export default function JsaHomeScreen() {
             today's JSA for safety/DOT. Loads from saves (authoritative),
             routes into /viewJsa in read mode. When activeJsas.length > 0
             the inline "JSA Active" card below already handles this. */}
-        {(authoritySurface === 'unverified_gate' || workflowIsolation.isolateOnly) && (
+        {workflowIsolation.isolateOnly && (
           <GovernedIsolationSurface
-            kind={workflowIsolation.surface || (authoritySurface === 'unverified_gate' ? 'unverified_gate' : 'connecting')}
+            kind={workflowIsolation.surface || 'connecting'}
             returnTarget={returnTarget}
             variant="card"
           />

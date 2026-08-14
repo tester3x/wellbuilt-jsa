@@ -215,7 +215,9 @@ check('fail-closed copy is the required wording',
   check('persist marks verified only when the shift may be labeled active',
     /mayLabelActive[\s\S]*CURRENT_SHIFT_VERIFIED_KEY/.test(src('services/shiftAuthorityStore.ts')));
   check('active CTA requires mayLabelActive', /isSsoMode && mayLabelActive && !jsaCompletedToday/.test(idx));
-  check('unverified surface renders ShiftAuthorityGate', idx.includes("authoritySurface === 'unverified_gate'"));
+  check('unverified card renders only from isolation, not raw authoritySurface',
+    idx.includes('workflowIsolation.isolateOnly')
+    && !/authoritySurface === 'unverified_gate' \|\| workflowIsolation\.isolateOnly/.test(idx));
   check('scope requires verified flag', idx.includes('isCurrentShiftVerified'));
   check('Welcome gated on verified shift', layout.includes('isCurrentShiftVerified'));
   check('unauth overlay can render the gate instead of LoginScreen',

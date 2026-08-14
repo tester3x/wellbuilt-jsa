@@ -18,6 +18,7 @@ import {
   iconReopenSurface,
   isolationSurfaceKind,
   authoritativeContextMatchesLaunch,
+  authorizedGovernedRequestReady,
 } from '../services/sso/jsaJobDetailsIsolation.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -179,8 +180,14 @@ check('index loader rejection remains fail-closed',
 check('layout begins unresolved/blocked',
   unresolvedJobDetailsIsolation().blocked === true);
 
-check('governed usable Auth plus unverified shift still blocks /steps',
-  decideJobDetailsIsolation({
+check('matching successful get is not isolated by client unverified_gate',
+  authorizedGovernedRequestReady({
+    hasGovernedLaunch: true,
+    hasUsableGovernedSession: true,
+    hasMatchingAuthoritativeContext: true,
+    explicitGovernedFailure: false,
+  }) === true
+  && decideJobDetailsIsolation({
     resolved: true,
     authoritySurface: 'unverified_gate',
     explicitGovernedFailure: false,
@@ -188,7 +195,36 @@ check('governed usable Auth plus unverified shift still blocks /steps',
     hasUsableGovernedSession: true,
     hasMatchingAuthoritativeContext: true,
     authPending: false,
-  }).blocked === true);
+  }).blocked === false
+  && decideJobDetailsIsolation({
+    resolved: true,
+    authoritySurface: 'unverified_gate',
+    explicitGovernedFailure: false,
+    hasGovernedLaunch: true,
+    hasUsableGovernedSession: true,
+    hasMatchingAuthoritativeContext: true,
+    authPending: false,
+  }).surface === null);
+
+check('unverified_gate still isolates when the get has not authorized this launch',
+  decideJobDetailsIsolation({
+    resolved: true,
+    authoritySurface: 'unverified_gate',
+    explicitGovernedFailure: false,
+    hasGovernedLaunch: true,
+    hasUsableGovernedSession: true,
+    hasMatchingAuthoritativeContext: false,
+    authPending: false,
+  }).blocked === true
+  && decideJobDetailsIsolation({
+    resolved: true,
+    authoritySurface: 'unverified_gate',
+    explicitGovernedFailure: false,
+    hasGovernedLaunch: true,
+    hasUsableGovernedSession: true,
+    hasMatchingAuthoritativeContext: false,
+    authPending: false,
+  }).reason === 'unverified_gate');
 
 check('isolation reason selects the correct surface',
   isolationSurfaceKind('unresolved') === 'connecting'

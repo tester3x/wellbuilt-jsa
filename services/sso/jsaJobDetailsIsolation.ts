@@ -56,14 +56,33 @@ export function launchResolutionBlocksContent(resolvingCount: number): boolean {
   return resolvingCount > 0;
 }
 
+/**
+ * A matching successful protected get already proved this launch's shift
+ * on the server. Missing passcode-session / calendar-day driver_shifts is
+ * not a request refusal and must not paint "Shift not verified".
+ */
+export function authorizedGovernedRequestReady(input: {
+  hasGovernedLaunch: boolean;
+  hasUsableGovernedSession: boolean;
+  hasMatchingAuthoritativeContext: boolean;
+  explicitGovernedFailure: boolean;
+}): boolean {
+  return input.hasGovernedLaunch
+    && input.hasUsableGovernedSession
+    && input.hasMatchingAuthoritativeContext
+    && !input.explicitGovernedFailure;
+}
+
 export function decideJobDetailsIsolation(input: IsolationInput): JobDetailsIsolation {
   let reason: IsolationReason = null;
   if (!input.resolved) {
     reason = 'unresolved';
-  } else if (input.authoritySurface === 'unverified_gate') {
-    reason = 'unverified_gate';
   } else if (input.explicitGovernedFailure) {
     reason = 'governed_failed';
+  } else if (authorizedGovernedRequestReady(input)) {
+    reason = null;
+  } else if (input.authoritySurface === 'unverified_gate') {
+    reason = 'unverified_gate';
   } else if (
     input.authPending
     || (input.hasGovernedLaunch && !input.hasUsableGovernedSession)
@@ -167,7 +186,18 @@ export function iconReopenSurface(input: {
   hasUsableGovernedSession: boolean;
   hasMatchingAuthoritativeContext: boolean;
 }): 'isolated_gate' | 'standalone' {
-  if (input.explicitGovernedFailure || input.authoritySurface === 'unverified_gate') {
+  if (input.explicitGovernedFailure) {
+    return 'isolated_gate';
+  }
+  if (authorizedGovernedRequestReady({
+    hasGovernedLaunch: input.hasGovernedLaunch,
+    hasUsableGovernedSession: input.hasUsableGovernedSession,
+    hasMatchingAuthoritativeContext: input.hasMatchingAuthoritativeContext,
+    explicitGovernedFailure: false,
+  })) {
+    return 'standalone';
+  }
+  if (input.authoritySurface === 'unverified_gate') {
     return 'isolated_gate';
   }
   if (input.hasGovernedLaunch && !input.hasUsableGovernedSession) {
