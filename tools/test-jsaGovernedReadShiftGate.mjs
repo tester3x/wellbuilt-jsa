@@ -55,6 +55,7 @@ const getView = {
   intent: 'read',
   jobRef: JOB_REF,
   groupRef: null,
+  wellName: 'Gab 1',
 };
 const afterGet = decideAfterGet(getView);
 check('successful get of pending read resumes the read UI (does not fail-close)',

@@ -63,6 +63,7 @@ import {
   unresolvedJobDetailsIsolation,
   type JobDetailsIsolation,
 } from "../../services/sso/jsaJobDetailsIsolation";
+import { decideGovernedJobPopulate } from "../../services/sso/jsaGovernedJobFields";
 import { terminalFailureMatches } from "../../services/sso/jsaGovernedAuth";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -219,6 +220,14 @@ export default function JsaHomeScreen() {
         if (typeof params.operator === 'string' && params.operator.trim()) {
           setCurrentOperator(params.operator.trim());
           console.log('[JSA-operator] captured currentOperator from autofill:', params.operator.trim());
+        }
+
+        // Governed launches never take well/job identity from jsa_autofill
+        // or URL hints. The matching protected-get context is the only source.
+        const { loadLaunchContext } = await import('../../services/sso/jsaRuntime');
+        if (await loadLaunchContext()) {
+          AsyncStorage.removeItem('jsa_autofill').catch(() => {});
+          return;
         }
 
         // Well/jobType routing: if an activeJsa tab already exists, focus it
@@ -385,15 +394,30 @@ export default function JsaHomeScreen() {
             contextRequestId: ctx?.requestId,
           });
           const failed = terminalFailureMatches(marker, launch?.requestId ?? null);
+          const job = decideGovernedJobPopulate({
+            launchRequestId: launch?.requestId,
+            context: ctx,
+            explicitFailure: failed,
+          });
+          const missingWell = job.kind === 'fail_closed' && job.reason === 'missing_well';
           setWorkflowIsolation(decideJobDetailsIsolation({
             resolved: true,
             authoritySurface: decision.surface,
-            explicitGovernedFailure: failed,
+            explicitGovernedFailure: failed || missingWell,
             hasGovernedLaunch: !!launch,
             hasUsableGovernedSession: !!usable,
             hasMatchingAuthoritativeContext: match,
             authPending: !!launch && !usable && !failed,
           }));
+          if (job.kind === 'populate') {
+            setAddedWells([{
+              name: job.wellName,
+              operator: '',
+              county: '',
+              ...(job.jobType ? { jobType: job.jobType } : {}),
+            }]);
+            if (job.jobType) setJobActivityName(job.jobType);
+          }
         } catch {
           setWorkflowIsolation(unresolvedJobDetailsIsolation());
         }

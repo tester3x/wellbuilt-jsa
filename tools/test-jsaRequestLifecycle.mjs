@@ -58,6 +58,7 @@ const launch = {
 const pendingView = (intent, extra = {}) => ({
   requestId: RID, state: 'pending', intent, jobRef: 'server-job', groupRef: 'g1',
   expiresAtMs: 9_999_999_999,
+  ...(intent === 'acknowledge' ? {} : { wellName: 'Gab 1' }),
   ...extra,
 });
 
@@ -97,8 +98,8 @@ check('server jobRef wins over launch hint', ignored.used.jobRef === 'server-job
 check('launch wellName/jobType discarded',
   ignored.discarded.wellName === 'Hint Well' && ignored.discarded.jobType === 'Water' && ignored.discarded.ignored);
 check('pending display has no launch identity',
-  !('wellName' in pendingDisplayFields(pendingView('read')))
-  && !('driverId' in pendingDisplayFields(pendingView('read'))));
+  !('driverId' in pendingDisplayFields(pendingView('read')))
+  && pendingDisplayFields(pendingView('read')).wellName === 'Gab 1');
 
 // ── June cache / August authority ─────────────────────────────────────────
 const august = decideFromJsaBinding({
@@ -489,7 +490,7 @@ check('receipt write is server complete, not client-invented',
         ok: true,
         view: {
           requestId: 'R'.repeat(43), state: 'pending', intent: 'read',
-          jobRef: 'j1', groupRef: null, expiresAtMs: 9_999_999,
+          jobRef: 'j1', groupRef: null, expiresAtMs: 9_999_999, wellName: 'Gab 1',
         },
       }),
       complete: async () => ({ ok: false, refusal: 'network' }),

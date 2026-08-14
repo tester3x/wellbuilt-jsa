@@ -55,6 +55,18 @@ export interface JsaRequestContextView {
   groupRef: string | null;
   expiresAtMs?: number;
   action?: JsaCompletionAction;
+  wellName?: string;
+  jobType?: string;
+}
+
+export const JSA_WELL_NAME_MAX = 120;
+export const JSA_JOB_TYPE_MAX = 64;
+
+function boundedDisplay(v: unknown, max: number): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  if (!t || t.length > max) return null;
+  return t;
 }
 
 export interface JsaCompleteResult {
@@ -157,6 +169,16 @@ export function parseGetContextView(raw: unknown): ParseDecision<JsaRequestConte
       }
       view.expiresAtMs = o.expiresAtMs;
     }
+    if (o.wellName !== undefined) {
+      const wellName = boundedDisplay(o.wellName, JSA_WELL_NAME_MAX);
+      if (!wellName) return { ok: false, field: 'wellName' };
+      view.wellName = wellName;
+    }
+    if (o.jobType !== undefined) {
+      const jobType = boundedDisplay(o.jobType, JSA_JOB_TYPE_MAX);
+      if (!jobType) return { ok: false, field: 'jobType' };
+      view.jobType = jobType;
+    }
   }
   if (o.state === 'completed') {
     if (!isCompletionAction(o.action)) return { ok: false, field: 'action' };
@@ -186,12 +208,16 @@ export function pendingDisplayFields(view: JsaRequestContextView): {
   jobRef: string;
   groupRef: string | null;
   expiresAtMs?: number;
+  wellName?: string;
+  jobType?: string;
 } {
   return {
     intent: view.intent,
     jobRef: view.jobRef,
     groupRef: view.groupRef,
     ...(view.expiresAtMs !== undefined ? { expiresAtMs: view.expiresAtMs } : {}),
+    ...(view.wellName ? { wellName: view.wellName } : {}),
+    ...(view.jobType ? { jobType: view.jobType } : {}),
   };
 }
 
@@ -359,6 +385,13 @@ export function decideAfterGet(view: JsaRequestContextView): RecoveryDecision {
       action: view.action,
       status: returnStatusForAction(view.action),
     };
+  }
+  if (
+    view.state === 'pending'
+    && (view.intent === 'read' || view.intent === 'read_and_acknowledge')
+    && !view.wellName
+  ) {
+    return { next: 'fail_closed', refusal: 'not_found', copy: failClosedCopy('not_found') };
   }
   const selected = selectUiForIntent(view.intent);
   return {
