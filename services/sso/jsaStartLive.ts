@@ -7,6 +7,7 @@ import {
   markProcessOpenedStart,
   processHasOpenedStart,
   reconstructJsaStartUrl,
+  type StartDeliveryProvenance,
   type StartOwnerResult,
   type JsaStartOwnerDeps,
 } from './jsaStartOwner';
@@ -57,6 +58,17 @@ function liveStartDeps(): JsaStartOwnerDeps {
       await saveLaunchContext(taken.ownership.request as any);
       return taken.action;
     },
+    currentOwnedRequestId: async () => {
+      const own = await loadLaunchOwnership();
+      return (own as any)?.request?.requestId ?? null;
+    },
+    isKnownStale: async (requestId) => {
+      const { loadRequestContext, loadGovernedTerminalFailure } = await import('./jsaRuntime');
+      const context = await loadRequestContext();
+      if (context?.requestId === requestId && context.state === 'completed') return true;
+      const terminal = await loadGovernedTerminalFailure();
+      return terminal?.requestId === requestId;
+    },
     loadSession: () => loadUsableGovernedSession(),
     awaitAuthReady: () => awaitGovernedAuthReady(),
     loadRecoveryLatch: () => loadAuthRecoveryLatch(),
@@ -80,8 +92,13 @@ function liveStartDeps(): JsaStartOwnerDeps {
   };
 }
 
-export async function consumeJsaStart(url: unknown): Promise<StartOwnerResult> {
-  const result = await handleJsaStartUrl(url, liveStartDeps());
+export async function consumeJsaStart(
+  url: unknown,
+  // REQUIRED — no fail-open default (see handleJsaStartUrl). TypeScript
+  // fails any call site that omits its delivery provenance.
+  provenance: StartDeliveryProvenance,
+): Promise<StartOwnerResult> {
+  const result = await handleJsaStartUrl(url, liveStartDeps(), provenance);
   if (result.kind === 'fail_closed' && result.requestId) {
     await markGovernedTerminalFailure(result.requestId);
   }
@@ -94,7 +111,7 @@ export async function consumeStoredGovernedStart(): Promise<StartOwnerResult> {
   const { buildJsaLaunchUrl } = await import('./jsaLaunch');
   const launch = await loadLaunchContext();
   if (!launch) return { kind: 'ignored' };
-  return consumeJsaStart(buildJsaLaunchUrl(launch));
+  return consumeJsaStart(buildJsaLaunchUrl(launch), 'stored');
 }
 
 export async function hrefAfterStart(
