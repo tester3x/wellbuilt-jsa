@@ -386,6 +386,7 @@ const locationsList = useMemo(() => {
                           locationAcks,
                           task,
                           date,
+                          jsaSessionId,
                         },
                       });
                     } else {

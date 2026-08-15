@@ -19,7 +19,6 @@ import { JsaSummaryCard, buildLocationActivityRows } from "../components/jsa";
 import GovernedIsolationSurface from "../components/GovernedIsolationSurface";
 import { colors } from "../constants/colors";
 import { PPE_ITEMS, type PpeItem } from "../constants/jsaTemplate";
-import { STORAGE_KEYS } from "../constants/storageKeys";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 
@@ -37,6 +36,7 @@ type Params = {
   date?: string;
   locations?: string;
   locationAcks?: string;
+  jsaSessionId?: string;
 };
 
 export default function PpeScreen() {
@@ -54,6 +54,7 @@ export default function PpeScreen() {
     date = "",
     locations = "[]",
     locationAcks = "{}",
+    jsaSessionId = "",
   } = useLocalSearchParams<Params>();
   const resolvedTask = jsaType || task;
   const router = useRouter();
@@ -70,10 +71,12 @@ export default function PpeScreen() {
   const [jobActivity, setJobActivity] = useState('');
   const [jobGate, setJobGate] = useState<'pending' | 'ready' | 'failed'>('pending');
   const [jobSource, setJobSource] = useState<'governed_snapshot' | 'nav_params' | null>(null);
+  const [attestScope, setAttestScope] = useState<{ kind: 'governed' | 'standalone'; scopeId: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      isLoadedRef.current = false;
       try {
         const { resolveGovernedJobHandoff } = await import('../services/sso/jsaGovernedJobLive');
         const { decideGovernedJobScreen, jobWorkflowMayAdvance } = await import('../services/sso/jsaGovernedJobFields');
@@ -104,6 +107,34 @@ export default function PpeScreen() {
           router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
           return;
         }
+        const {
+          decideAttestationScope,
+          readAttestationDraft,
+          forgetLegacyAttestationKeys,
+        } = await import('../services/sso/jsaAttestationScope');
+        const scopeDec = decideAttestationScope({
+          source: handoff.source,
+          governedRequestId: handoff.requestId,
+          standaloneSessionId: typeof jsaSessionId === 'string' ? jsaSessionId : '',
+        });
+        if (handoff.source === 'governed_snapshot' && scopeDec.kind !== 'ready') {
+          setJobGate('failed');
+          router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
+          return;
+        }
+        if (scopeDec.kind === 'ready') {
+          const draft = await readAttestationDraft(AsyncStorage, scopeDec.scope);
+          await forgetLegacyAttestationKeys(AsyncStorage);
+          if (cancelled) return;
+          setSelected(draft.ppeSelected);
+          setOtherItems(draft.ppeOther);
+          setAttestScope(scopeDec.scope);
+        } else {
+          setSelected({});
+          setOtherItems([]);
+          setAttestScope(null);
+        }
+        isLoadedRef.current = true;
         setJobWells(handoff.wells);
         setJobWellName(handoff.wellName);
         setJobActivity(handoff.jobActivityName);
@@ -117,7 +148,7 @@ export default function PpeScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [wells, wellName, jobActivityName, router]);
+  }, [wells, wellName, jobActivityName, jsaSessionId, router]);
 
   const wellsList = useMemo(() => {
     try {
@@ -140,55 +171,14 @@ export default function PpeScreen() {
   }, [locations]);
 
   useEffect(() => {
-    const loadSelections = async () => {
-      try {
-        const [storedSelected, storedOther] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.ppeSelected),
-          AsyncStorage.getItem(STORAGE_KEYS.ppeOther),
-        ]);
-        if (storedSelected) {
-          const parsed = JSON.parse(storedSelected);
-          if (parsed && typeof parsed === "object") {
-            setSelected(parsed);
-          }
-        }
-        if (storedOther) {
-          try {
-            const parsedOther = JSON.parse(storedOther);
-            if (Array.isArray(parsedOther)) {
-              setOtherItems(parsedOther);
-            } else if (typeof parsedOther === "object") {
-              // Migrate from old format (object with other1, other2, etc.)
-              const items = Object.values(parsedOther).filter((v) => typeof v === "string" && v.trim());
-              setOtherItems(items as string[]);
-            }
-          } catch {
-            // ignore
-          }
-        }
-      } catch (error) {
-        console.warn("Failed to load PPE selections", error);
-      } finally {
-        isLoadedRef.current = true;
-      }
-    };
-
-    loadSelections();
-  }, []);
-
-  useEffect(() => {
-    if (!isLoadedRef.current) return;
-    AsyncStorage.setItem(STORAGE_KEYS.ppeSelected, JSON.stringify(selected)).catch((error) =>
-      console.warn("Failed to save PPE selections", error)
-    );
-  }, [selected]);
-
-  useEffect(() => {
-    if (!isLoadedRef.current) return;
-    AsyncStorage.setItem(STORAGE_KEYS.ppeOther, JSON.stringify(otherItems)).catch((error) =>
-      console.warn("Failed to save PPE other items", error)
-    );
-  }, [otherItems]);
+    if (!isLoadedRef.current || !attestScope || jobGate !== 'ready') return;
+    void import('../services/sso/jsaAttestationScope').then(({ writeAttestationDraft }) => {
+      writeAttestationDraft(AsyncStorage, attestScope, {
+        ppeSelected: selected,
+        ppeOther: otherItems,
+      }).catch((error) => console.warn("Failed to save PPE selections", error));
+    });
+  }, [selected, otherItems, attestScope, jobGate]);
 
   const addOtherItem = () => {
     const trimmed = otherInput.trim();
@@ -243,6 +233,7 @@ export default function PpeScreen() {
         task: jobActivity,
         date,
         ppeSelected: JSON.stringify({ selected, otherItems }),
+        jsaSessionId,
       },
     });
   };

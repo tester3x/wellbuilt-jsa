@@ -46,6 +46,7 @@ type Params = {
   ppeSelected?: string;
   locations?: string;
   locationAcks?: string;
+  jsaSessionId?: string;
 };
 
 export default function SignoffScreen() {
@@ -111,10 +112,12 @@ export default function SignoffScreen() {
   const [jobActivityResolved, setJobActivityResolved] = useState('');
   const [jobGate, setJobGate] = useState<'pending' | 'ready' | 'failed'>('pending');
   const [jobSource, setJobSource] = useState<'governed_snapshot' | 'nav_params' | null>(null);
+  const [attestScope, setAttestScope] = useState<{ kind: 'governed' | 'standalone'; scopeId: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      isLoadedRef.current = false;
       try {
         const { resolveGovernedJobHandoff } = await import('../services/sso/jsaGovernedJobLive');
         const { decideGovernedJobScreen, jobWorkflowMayAdvance } = await import('../services/sso/jsaGovernedJobFields');
@@ -145,6 +148,32 @@ export default function SignoffScreen() {
           router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
           return;
         }
+        const {
+          decideAttestationScope,
+          readAttestationDraft,
+          forgetLegacyAttestationKeys,
+        } = await import('../services/sso/jsaAttestationScope');
+        const scopeDec = decideAttestationScope({
+          source: handoff.source,
+          governedRequestId: handoff.requestId,
+          standaloneSessionId: typeof params.jsaSessionId === 'string' ? params.jsaSessionId : '',
+        });
+        if (handoff.source === 'governed_snapshot' && scopeDec.kind !== 'ready') {
+          setJobGate('failed');
+          router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
+          return;
+        }
+        if (scopeDec.kind === 'ready') {
+          const draft = await readAttestationDraft(AsyncStorage, scopeDec.scope);
+          await forgetLegacyAttestationKeys(AsyncStorage);
+          if (cancelled) return;
+          setPrepared(draft.prepared);
+          setAttestScope(scopeDec.scope);
+        } else {
+          setPrepared({});
+          setAttestScope(null);
+        }
+        isLoadedRef.current = true;
         setJobWellsJson(handoff.wells);
         setJobWellName(handoff.wellName);
         setJobActivityResolved(handoff.jobActivityName);
@@ -158,7 +187,7 @@ export default function SignoffScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [params.wells, params.wellName, params.jobActivityName, router]);
+  }, [params.wells, params.wellName, params.jobActivityName, params.jsaSessionId, router]);
 
   const wellsList = useMemo(() => {
     try {
@@ -216,30 +245,13 @@ export default function SignoffScreen() {
   };
 
   useEffect(() => {
-    const loadPrepared = async () => {
-      try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEYS.prepared);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed && typeof parsed === "object") {
-            setPrepared(parsed);
-          }
-        }
-      } catch (error) {
-        console.warn("Failed to load prepared toggles", error);
-      } finally {
-        isLoadedRef.current = true;
-      }
-    };
-    loadPrepared();
-  }, []);
-
-  useEffect(() => {
-    if (!isLoadedRef.current) return;
-    AsyncStorage.setItem(STORAGE_KEYS.prepared, JSON.stringify(prepared)).catch((error) =>
-      console.warn("Failed to save prepared toggles", error)
-    );
-  }, [prepared]);
+    if (!isLoadedRef.current || !attestScope || jobGate !== 'ready') return;
+    void import('../services/sso/jsaAttestationScope').then(({ writeAttestationDraft }) => {
+      writeAttestationDraft(AsyncStorage, attestScope, { prepared }).catch((error) =>
+        console.warn("Failed to save prepared toggles", error)
+      );
+    });
+  }, [prepared, attestScope, jobGate]);
 
   const handleSubmit = () => {
     if (jobGate !== 'ready' || !jobSource) return;
@@ -579,6 +591,12 @@ export default function SignoffScreen() {
         });
         try { await AsyncStorage.setItem('@jsa/clearFormOnNextFocus', '1'); } catch {}
         try { await AsyncStorage.removeItem('jsa_resume'); } catch {}
+        if (attestScope) {
+          try {
+            const { applyAttestationCompletion } = await import('../services/sso/jsaAttestationScope');
+            await applyAttestationCompletion(AsyncStorage, attestScope, 'succeeded');
+          } catch {}
+        }
         setCompleteCloudPending(false);
         setCompleteReturnScheme('open' in ret ? ret.open : null);
         setCompleteOrigin('wbt');
@@ -1277,6 +1295,12 @@ export default function SignoffScreen() {
         const succeed = async () => {
           try { await AsyncStorage.setItem('@jsa/clearFormOnNextFocus', '1'); } catch {}
           try { await AsyncStorage.removeItem('jsa_resume'); } catch {}
+          if (attestScope) {
+            try {
+              const { applyAttestationCompletion } = await import('../services/sso/jsaAttestationScope');
+              await applyAttestationCompletion(AsyncStorage, attestScope, 'succeeded');
+            } catch {}
+          }
           setCompleteCloudPending(false);
           setCompleteReturnScheme(
             `wellbuilt-tickets://jsa-return?requestId=${encodeURIComponent(readCtxAtSubmit.requestId)}&version=${readCtxAtSubmit.receiptVersion === 2 ? 2 : 1}`,
@@ -1334,6 +1358,12 @@ export default function SignoffScreen() {
       // Also clear the same-day draft bridge key that the unfinished-modal
       // might otherwise use to re-populate the form.
       try { await AsyncStorage.removeItem('jsa_resume'); } catch {}
+      if (localSaveOk && attestScope) {
+        try {
+          const { applyAttestationCompletion } = await import('../services/sso/jsaAttestationScope');
+          await applyAttestationCompletion(AsyncStorage, attestScope, 'succeeded');
+        } catch {}
+      }
 
       // Resolve launch origin once, store on state, and show the branded
       // completion modal. Single modal replaces the prior double-confirm

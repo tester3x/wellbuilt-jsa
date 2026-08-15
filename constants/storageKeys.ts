@@ -13,7 +13,8 @@ export const STORAGE_KEYS = {
   favoriteLocations: "@jsa/favoriteLocations",
   favoriteWells: "@jsa/favoriteWells",
 
-  // Workflow state
+  // Workflow state. prepared / ppeSelected / ppeOther are legacy
+  // device-global keys and are not current-JSA authority.
   prepared: "@jsa/prepared",
   savedLocations: "@jsa/savedLocations",
   locationAcks: "@jsa/locationAcks",
@@ -21,6 +22,7 @@ export const STORAGE_KEYS = {
   // PPE selections
   ppeSelected: "@jsa/ppe/selected",
   ppeOther: "@jsa/ppe/other",
+  attestationDraft: "@jsa/attestationDraft",
 
   // Language
   language: "@jsa/lang",
