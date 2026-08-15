@@ -18,7 +18,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import SignatureModal from '../components/SignatureModal';
 import { colors } from '../constants/colors';
 import { STORAGE_KEYS } from '../constants/storageKeys';
-import { completeGovernedAfterLocalSave } from '../services/sso/jsaGovernedLive';
+import { commitGovernedAfterLocalSave } from '../services/sso/jsaArtifactLive';
+import { adaptGovernedSnapshot } from '../services/sso/jsaArtifactSnapshot';
 import { decideGovernedReturn } from '../services/sso/jsaReturn';
 import {
   failClosedCopy,
@@ -71,20 +72,34 @@ export default function AcknowledgeScreen() {
       wells: [],
       locations: [],
       ...governedRecordLink(ctx.requestId),
+      governedSubmitCommit: {
+        committed: true,
+        committedAtMs: Date.now(),
+        action: 'acknowledged',
+      },
     };
+    let localSaveOk = false;
     try {
       const existing = await AsyncStorage.getItem(STORAGE_KEYS.saves);
       const list = existing ? JSON.parse(existing) : [];
       const nextList = Array.isArray(list) ? [payload, ...list] : [payload];
       await AsyncStorage.setItem(STORAGE_KEYS.saves, JSON.stringify(nextList));
+      localSaveOk = true;
     } catch {
       Alert.alert('Not saved', failClosedCopy('local_save_failed'));
       return;
     }
-    const done = await completeGovernedAfterLocalSave({
+    const adapted = adaptGovernedSnapshot(payload);
+    if (!adapted.ok) {
+      Alert.alert('Cannot complete', failClosedCopy('malformed'));
+      return;
+    }
+    const done = await commitGovernedAfterLocalSave({
       requestId: ctx.requestId,
       action: 'acknowledged',
       localRecordId,
+      snapshot: adapted.value,
+      localSaveOk,
     });
     if (done.kind === 'pending_retry') {
       setRetryCopy(done.copy);

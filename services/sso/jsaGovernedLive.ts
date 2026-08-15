@@ -66,7 +66,9 @@ export async function ownAndObtain(launch: JsaLaunchRequest) {
 }
 
 export async function recoverGoverned() {
-  return recoverGovernedRequest(liveGovernedDeps());
+  const decision = await recoverGovernedRequest(liveGovernedDeps());
+  void import('./jsaArtifactLive').then((m) => { void m.settleGovernedArtifactQueue(); });
+  return decision;
 }
 
 export async function completeGovernedAfterLocalSave(input: {

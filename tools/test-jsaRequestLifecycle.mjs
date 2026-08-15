@@ -393,8 +393,8 @@ check('second request id is distinct (WB-T consume is their recovery)',
 
 // ── wiring: signoff orders local save before complete ─────────────────────
 const signoff = readFileSync(join(root, 'app/signoff.tsx'), 'utf8');
-check('signoff saves local record before completeGovernedAfterLocalSave',
-  signoff.indexOf('setItem(STORAGE_KEYS.saves') < signoff.indexOf('completeGovernedAfterLocalSave({'));
+check('signoff saves local record before commitGovernedAfterLocalSave',
+  signoff.indexOf('setItem(STORAGE_KEYS.saves') < signoff.indexOf('commitGovernedAfterLocalSave({'));
 check('signoff fail-closes when local save fails',
   signoff.includes("failClosedCopy('local_save_failed')"));
 check('signoff does not substitute displayName for signature',

@@ -304,7 +304,8 @@ export default function SignoffScreen() {
 
       const { loadRequestContext, loadPendingComplete } = await import('../services/sso/jsaRuntime');
       const { governedRecordLink, terminalActionForIntent } = await import('../services/sso/jsaRequestLifecycle');
-      const { completeGovernedAfterLocalSave } = await import('../services/sso/jsaGovernedLive');
+      const { commitGovernedAfterLocalSave } = await import('../services/sso/jsaArtifactLive');
+      const { adaptGovernedSnapshot } = await import('../services/sso/jsaArtifactSnapshot');
       const { decideGovernedReturn } = await import('../services/sso/jsaReturn');
       const { failClosedCopy } = await import('../services/sso/jsaRequestLifecycle');
       const governedCtx = await loadRequestContext();
@@ -327,6 +328,9 @@ export default function SignoffScreen() {
         return;
       }
       const governedActive = !!governedCtx && governedCtx.state === 'pending';
+      const governedAction = governedActive
+        ? terminalActionForIntent(governedCtx.intent)
+        : null;
 
       const payload = {
         id: (pendingComplete && governedActive && pendingComplete.requestId === governedCtx.requestId)
@@ -363,6 +367,13 @@ export default function SignoffScreen() {
         signature,
         signatureImage: signatureImage || '',
         ...(governedActive ? governedRecordLink(governedCtx.requestId) : {}),
+        ...(governedActive && governedAction ? {
+          governedSubmitCommit: {
+            committed: true,
+            committedAtMs: Date.now(),
+            action: governedAction,
+          },
+        } : {}),
       };
       const skipDuplicateSave = !!(
         pendingComplete
@@ -411,13 +422,22 @@ export default function SignoffScreen() {
       // Governed get/complete: local detailed record is already durable.
       // Author the server terminal receipt only after that save. Retry
       // does not create a second JSA.
-      if (governedActive && governedCtx) {
+      if (governedActive && governedCtx && governedAction) {
         const launch = await (await import('../services/sso/jsaRuntime')).loadLaunchContext();
-        const action = terminalActionForIntent(governedCtx.intent);
-        const done = await completeGovernedAfterLocalSave({
+        const adapted = adaptGovernedSnapshot(payload);
+        if (!adapted.ok) {
+          Alert.alert(
+            t('Cannot complete') || 'Cannot complete',
+            failClosedCopy('malformed'),
+          );
+          return;
+        }
+        const done = await commitGovernedAfterLocalSave({
           requestId: governedCtx.requestId,
-          action,
+          action: governedAction,
           localRecordId: payload.id,
+          snapshot: adapted.value,
+          localSaveOk,
         });
         if (done.kind === 'pending_retry') {
           Alert.alert(
