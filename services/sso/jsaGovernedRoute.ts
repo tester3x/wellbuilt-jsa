@@ -35,7 +35,9 @@ export async function resolveEntryRoute(
       nowMs: deps.nowMs(),
     });
     if (done.kind === 'completed') {
-      void import('./jsaArtifactLive').then((m) => { void m.settleGovernedArtifactQueue(); });
+      void import('./jsaArtifactLive').then((m) => m.settleGovernedArtifactQueue()).catch(() => {
+        console.log(JSON.stringify({ tag: '[jsa-artifact-queue]', outcome: 'settle_failed' }));
+      });
       return {
         pathname: '/governed-status',
         params: {

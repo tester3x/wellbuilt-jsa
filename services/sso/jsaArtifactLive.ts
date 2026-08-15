@@ -80,8 +80,12 @@ function liveStore(): ArtifactQueueStore {
   };
 }
 
-export function settleGovernedArtifactQueue(): Promise<void> {
-  return settleArtifactQueue(liveStore());
+export async function settleGovernedArtifactQueue(): Promise<void> {
+  try {
+    await settleArtifactQueue(liveStore());
+  } catch {
+    console.log(JSON.stringify({ tag: '[jsa-artifact-queue]', outcome: 'settle_failed' }));
+  }
 }
 
 export async function commitGovernedAfterLocalSave(input: {

@@ -67,7 +67,9 @@ export async function ownAndObtain(launch: JsaLaunchRequest) {
 
 export async function recoverGoverned() {
   const decision = await recoverGovernedRequest(liveGovernedDeps());
-  void import('./jsaArtifactLive').then((m) => { void m.settleGovernedArtifactQueue(); });
+  void import('./jsaArtifactLive').then((m) => m.settleGovernedArtifactQueue()).catch(() => {
+    console.log(JSON.stringify({ tag: '[jsa-artifact-queue]', outcome: 'settle_failed' }));
+  });
   return decision;
 }
 

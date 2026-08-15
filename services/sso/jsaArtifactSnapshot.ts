@@ -98,44 +98,100 @@ function fail(refusal: ArtifactAdaptRefusal, detail: string): ArtifactAdaptDecis
   return { ok: false, refusal, detail };
 }
 
-function parseBoolMap(v: unknown): Record<string, boolean> {
-  const o = rec(v);
-  if (!o) return {};
-  const out: Record<string, boolean> = {};
-  for (const k of Object.keys(o).slice(0, LIMITS.mapKeys)) {
-    if (!isMapKey(k) || typeof o[k] !== 'boolean') continue;
-    out[k] = o[k];
+const B64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+export function encodeCanonicalBase64(bytes: Uint8Array): string {
+  let out = '';
+  const len = bytes.length;
+  for (let i = 0; i < len; i += 3) {
+    const a = bytes[i];
+    const b = i + 1 < len ? bytes[i + 1] : 0;
+    const c = i + 2 < len ? bytes[i + 2] : 0;
+    const triple = (a << 16) | (b << 8) | c;
+    out += B64_ALPHABET[(triple >> 18) & 63];
+    out += B64_ALPHABET[(triple >> 12) & 63];
+    out += i + 1 < len ? B64_ALPHABET[(triple >> 6) & 63] : '=';
+    out += i + 2 < len ? B64_ALPHABET[triple & 63] : '=';
   }
   return out;
-}
-
-function parseStringList(v: unknown, maxItems: number, maxItem: number): string[] {
-  if (!Array.isArray(v)) return [];
-  const out: string[] = [];
-  for (const item of v.slice(0, maxItems)) {
-    if (typeof item !== 'string') continue;
-    const t = item.trim();
-    if (!t || t.length > maxItem) continue;
-    out.push(t);
-  }
-  return out;
-}
-
-function clip(v: unknown, max: number): string {
-  if (typeof v !== 'string') return '';
-  return v.length > max ? v.slice(0, max) : v;
 }
 
 function decodeBase64Strict(encoded: string): Uint8Array | null {
   if (!encoded || encoded.length % 4 !== 0 || !BASE64_RE.test(encoded)) return null;
-  try {
-    const buf = Buffer.from(encoded, 'base64');
-    if (!buf.length) return null;
-    if (buf.toString('base64') !== encoded) return null;
-    return new Uint8Array(buf);
-  } catch {
-    return null;
+  const pad = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0;
+  const eq = encoded.indexOf('=');
+  if (eq !== -1 && eq < encoded.length - pad) return null;
+  const lookup = new Int16Array(128);
+  for (let i = 0; i < lookup.length; i++) lookup[i] = -1;
+  for (let i = 0; i < 64; i++) lookup[B64_ALPHABET.charCodeAt(i)] = i;
+  const outLen = (encoded.length / 4) * 3 - pad;
+  const out = new Uint8Array(outLen);
+  let o = 0;
+  for (let i = 0; i < encoded.length; i += 4) {
+    const c0 = lookup[encoded.charCodeAt(i)] ?? -1;
+    const c1 = lookup[encoded.charCodeAt(i + 1)] ?? -1;
+    const c2 = encoded[i + 2] === '=' ? 0 : (lookup[encoded.charCodeAt(i + 2)] ?? -1);
+    const c3 = encoded[i + 3] === '=' ? 0 : (lookup[encoded.charCodeAt(i + 3)] ?? -1);
+    if (c0 < 0 || c1 < 0 || (encoded[i + 2] !== '=' && c2 < 0) || (encoded[i + 3] !== '=' && c3 < 0)) {
+      return null;
+    }
+    const triple = (c0 << 18) | (c1 << 12) | (c2 << 6) | c3;
+    if (o < outLen) out[o++] = (triple >> 16) & 255;
+    if (o < outLen) out[o++] = (triple >> 8) & 255;
+    if (o < outLen) out[o++] = triple & 255;
   }
+  if (encodeCanonicalBase64(out) !== encoded) return null;
+  return out;
+}
+
+function parseBoolMap(v: unknown, detail: string): ArtifactAdaptDecision<Record<string, boolean>> {
+  if (v === undefined || v === null) return { ok: true, value: {} };
+  const o = rec(v);
+  if (!o) return fail('malformed', detail);
+  const keys = Object.keys(o);
+  if (keys.length > LIMITS.mapKeys) return fail('oversized', `${detail}_count`);
+  const out: Record<string, boolean> = {};
+  for (const k of keys) {
+    if (!isMapKey(k)) return fail('malformed', `${detail}_key`);
+    if (typeof o[k] !== 'boolean') return fail('malformed', `${detail}_value`);
+    out[k] = o[k];
+  }
+  return { ok: true, value: out };
+}
+
+function parseStringList(
+  v: unknown,
+  detail: string,
+  maxItems: number,
+  maxItem: number,
+): ArtifactAdaptDecision<string[]> {
+  if (v === undefined || v === null) return { ok: true, value: [] };
+  if (!Array.isArray(v)) return fail('malformed', detail);
+  if (v.length > maxItems) return fail('oversized', `${detail}_count`);
+  const out: string[] = [];
+  for (const item of v) {
+    if (typeof item !== 'string') return fail('malformed', `${detail}_item`);
+    const t = item.trim();
+    if (!t || t.length > maxItem) return fail('malformed', `${detail}_item`);
+    out.push(t);
+  }
+  return { ok: true, value: out };
+}
+
+function parseOptionalString(
+  v: unknown,
+  detail: string,
+  max: number,
+  required: boolean,
+): ArtifactAdaptDecision<string> {
+  if (v === undefined || v === null) {
+    return required ? fail('malformed', detail) : { ok: true, value: '' };
+  }
+  if (typeof v !== 'string') return fail('malformed', detail);
+  if (v.length > max) return fail('oversized', `${detail}_length`);
+  const t = v.trim();
+  if (required && !t) return fail('malformed', detail);
+  return { ok: true, value: required ? t : t };
 }
 
 export function decodeDrawnPng(raw: unknown): ArtifactAdaptDecision<{ mimeType: typeof JSA_SIGNATURE_MIME; data: string; byteSize: number }> {
@@ -157,37 +213,42 @@ export function decodeDrawnPng(raw: unknown): ArtifactAdaptDecision<{ mimeType: 
     ok: true,
     value: {
       mimeType: JSA_SIGNATURE_MIME,
-      data: Buffer.from(bytes).toString('base64'),
+      data: encodeCanonicalBase64(bytes),
       byteSize: bytes.length,
     },
   };
 }
 
-function ppeFromRecord(raw: Record<string, unknown>): {
+function ppeFromRecord(raw: Record<string, unknown>): ArtifactAdaptDecision<{
   ppeSelected: Record<string, boolean>;
   ppeOtherItems: string[];
-} {
+}> {
   let selected: unknown = raw.ppeSelected;
   let other: unknown = raw.ppeOtherItems;
   if (typeof selected === 'string') {
     try {
       const parsed = JSON.parse(selected);
       if (parsed && typeof parsed === 'object') {
-        if (parsed.selected && typeof parsed.selected === 'object') {
+        if (!Array.isArray(parsed) && parsed.selected && typeof parsed.selected === 'object') {
           selected = parsed.selected;
-          if (Array.isArray(parsed.otherItems)) other = parsed.otherItems;
+          if (parsed.otherItems !== undefined) other = parsed.otherItems;
         } else if (!Array.isArray(parsed)) {
           selected = parsed;
+        } else {
+          return fail('malformed', 'ppeSelected');
         }
+      } else {
+        return fail('malformed', 'ppeSelected');
       }
     } catch {
-      selected = {};
+      return fail('malformed', 'ppeSelected');
     }
   }
-  return {
-    ppeSelected: parseBoolMap(selected),
-    ppeOtherItems: parseStringList(other, LIMITS.ppeOther, LIMITS.ppeOtherItem),
-  };
+  const ppeSelected = parseBoolMap(selected, 'ppeSelected');
+  if (!ppeSelected.ok) return ppeSelected;
+  const ppeOtherItems = parseStringList(other, 'ppeOtherItems', LIMITS.ppeOther, LIMITS.ppeOtherItem);
+  if (!ppeOtherItems.ok) return ppeOtherItems;
+  return { ok: true, value: { ppeSelected: ppeSelected.value, ppeOtherItems: ppeOtherItems.value } };
 }
 
 /**
@@ -198,30 +259,58 @@ export function adaptGovernedSnapshot(raw: unknown): ArtifactAdaptDecision<JsaAu
   const o = rec(raw);
   if (!o) return fail('malformed', 'root');
 
-  const printedName = clip(o.signature, LIMITS.printedName).trim();
-  if (!printedName) return fail('missing_printed_name', 'signature');
+  const printedName = parseOptionalString(o.signature, 'printedName', LIMITS.printedName, true);
+  if (!printedName.ok) {
+    return printedName.refusal === 'malformed' && printedName.detail === 'printedName'
+      ? fail('missing_printed_name', 'signature')
+      : printedName;
+  }
 
   const png = decodeDrawnPng(o.signatureImage);
   if (!png.ok) return png;
 
+  if (o.stepsAcknowledged !== undefined && typeof o.stepsAcknowledged !== 'boolean') {
+    return fail('malformed', 'stepsAcknowledged');
+  }
+
+  const prepared = parseBoolMap(o.prepared, 'prepared');
+  if (!prepared.ok) return prepared;
+  const locationAcks = parseBoolMap(o.locationAcks, 'locationAcks');
+  if (!locationAcks.ok) return locationAcks;
+  const stepAcks = parseBoolMap(o.stepAcks, 'stepAcks');
+  if (!stepAcks.ok) return stepAcks;
+  const locations = parseStringList(o.locations, 'locations', LIMITS.locations, LIMITS.locationItem);
+  if (!locations.ok) return locations;
   const ppe = ppeFromRecord(o);
+  if (!ppe.ok) return ppe;
+  const notes = parseOptionalString(o.notes, 'notes', LIMITS.notes, false);
+  if (!notes.ok) return notes;
+  const pusher = parseOptionalString(o.pusher, 'pusher', LIMITS.pusher, false);
+  if (!pusher.ok) return pusher;
+  const otherInfo = parseOptionalString(o.otherInfo, 'otherInfo', LIMITS.otherInfo, false);
+  if (!otherInfo.ok) return otherInfo;
+  const truck = parseOptionalString(o.truckNumber, 'truckNumber', LIMITS.truckNumber, false);
+  if (!truck.ok) return truck;
+
   const snapshot: JsaAuthoredSnapshot = {
-    prepared: parseBoolMap(o.prepared),
-    locationAcks: parseBoolMap(o.locationAcks),
-    locations: parseStringList(o.locations, LIMITS.locations, LIMITS.locationItem),
+    prepared: prepared.value,
+    locationAcks: locationAcks.value,
+    locations: locations.value,
     stepsAcknowledged: o.stepsAcknowledged === true,
-    stepAcks: parseBoolMap(o.stepAcks),
-    ppeSelected: ppe.ppeSelected,
-    ppeOtherItems: ppe.ppeOtherItems,
-    notes: clip(o.notes, LIMITS.notes),
-    pusher: clip(o.pusher, LIMITS.pusher).trim(),
-    otherInfo: clip(o.otherInfo, LIMITS.otherInfo),
-    printedName,
+    stepAcks: stepAcks.value,
+    ppeSelected: ppe.value.ppeSelected,
+    ppeOtherItems: ppe.value.ppeOtherItems,
+    notes: notes.value,
+    pusher: pusher.value,
+    otherInfo: otherInfo.value,
+    printedName: printedName.value,
     signature: { mimeType: png.value.mimeType, data: png.value.data },
   };
-  const truck = clip(o.truckNumber, LIMITS.truckNumber).trim();
-  if (truck) snapshot.truckNumber = truck;
-  if (typeof o.date === 'string' && FORM_DATE_RE.test(o.date)) {
+  if (truck.value) snapshot.truckNumber = truck.value;
+  if (o.date !== undefined && o.date !== null && o.date !== '') {
+    if (typeof o.date !== 'string' || !FORM_DATE_RE.test(o.date)) {
+      return fail('malformed', 'formDate');
+    }
     snapshot.formDate = o.date;
   }
   return { ok: true, value: snapshot };
@@ -261,6 +350,22 @@ export function localRecordIdOf(raw: unknown): string | null {
   const o = rec(raw);
   if (!o || typeof o.id !== 'string' || !o.id) return null;
   return o.id;
+}
+
+/** Reuse the first submitted save for this governed request. No new id. */
+export function existingGovernedSave(
+  saves: unknown[],
+  requestId: string,
+): { id: string; record: Record<string, unknown> } | null {
+  if (!isJsaRequestId(requestId) || !Array.isArray(saves)) return null;
+  for (const item of saves) {
+    const o = rec(item);
+    if (!o) continue;
+    if (o.governedRequestRef !== requestId) continue;
+    if (typeof o.id !== 'string' || !o.id) continue;
+    return { id: o.id, record: o };
+  }
+  return null;
 }
 
 /**
@@ -638,17 +743,26 @@ export function parsePersistResult(raw: unknown): { ok: true; value: JsaPersistR
   };
 }
 
-export function classifyPersistError(err: unknown): ArtifactStatusCode {
-  const code = String((err as { code?: unknown } | null)?.code || '').toLowerCase();
-  if (code.includes('resource-exhausted')) return 'rate_limited';
-  if (code.includes('unavailable') || code.includes('internal')) return 'unavailable';
+function firebaseCallableCode(err: unknown): string {
+  const raw = String((err as { code?: unknown } | null)?.code || '');
+  return raw.startsWith('functions/') ? raw.slice('functions/'.length) : raw;
+}
+
+export function backendRefusalReason(err: unknown): string {
   const details = rec((err as { details?: unknown } | null)?.details);
-  const detailRefusal = typeof details?.refusal === 'string' ? details.refusal : '';
-  const message = String((err as { message?: unknown } | null)?.message || '');
-  const blob = `${code} ${detailRefusal} ${message}`.toLowerCase();
-  if (blob.includes('unauthenticated')) return 'auth_unavailable';
-  if (detailRefusal === 'pending' || blob.includes('pending')) return 'pending';
-  return classifyPersistRefusal(detailRefusal || blob);
+  if (typeof details?.reason === 'string' && details.reason) return details.reason;
+  if (typeof details?.refusal === 'string' && details.refusal) return details.refusal;
+  return '';
+}
+
+export function classifyPersistError(err: unknown): ArtifactStatusCode {
+  const code = firebaseCallableCode(err);
+  if (code === 'unauthenticated') return 'auth_unavailable';
+  if (code === 'resource-exhausted') return 'rate_limited';
+  if (code === 'unavailable' || code === 'internal') return 'unavailable';
+  const reason = backendRefusalReason(err);
+  if (reason) return classifyPersistRefusal(reason);
+  return 'unavailable';
 }
 
 export interface ArtifactQueueStore {
@@ -694,22 +808,30 @@ export async function enqueueFrozenSnapshot(
   }
 }
 
-async function processItem(store: ArtifactQueueStore, item: ArtifactQueueItem): Promise<ArtifactQueueItem> {
+async function processItem(store: ArtifactQueueStore, item: ArtifactQueueItem): Promise<{
+  item: ArtifactQueueItem;
+  completeReused: boolean;
+}> {
   let current = item;
+  let completeReused = false;
   if (mayCompleteFromQueue(current) && current.action) {
     const done = await store.complete(current.requestId, current.action, current.localRecordId);
-    if (done.kind === 'completed') current = markCompleteDone(current);
-    else if (done.kind === 'fail_closed' && done.refusal === 'conflict') {
-      return applyStatus(current, 'conflict', store.nowMs());
+    if (done.kind === 'completed') {
+      completeReused = done.reused;
+      current = markCompleteDone(current);
+    } else if (done.kind === 'fail_closed' && done.refusal === 'conflict') {
+      return { item: applyStatus(current, 'conflict', store.nowMs()), completeReused };
     } else {
       const status: ArtifactStatusCode = done.refusal === 'unauthenticated' ? 'auth_unavailable'
         : done.refusal === 'network' ? 'network'
           : done.refusal === 'malformed' ? 'malformed'
             : 'complete_retry';
-      return applyStatus(current, status, store.nowMs());
+      return { item: applyStatus(current, status, store.nowMs()), completeReused };
     }
   }
-  if (!mayPersistFromQueue(current) && current.completeState !== 'completed') return current;
+  if (!mayPersistFromQueue(current) && current.completeState !== 'completed') {
+    return { item: current, completeReused };
+  }
   const persisted = await store.persist(current.requestId, current.snapshot);
   if (persisted.ok) {
     const status: ArtifactStatusCode = persisted.reused ? 'reused' : 'created';
@@ -720,14 +842,22 @@ async function processItem(store: ArtifactQueueStore, item: ArtifactQueueItem): 
       persistedAtMs: store.nowMs(),
     });
     store.log(status);
-    return current;
+    return { item: current, completeReused };
   }
   current = applyStatus(current, persisted.status, store.nowMs());
   store.log(persisted.status);
-  return current;
+  return { item: current, completeReused };
 }
 
 export async function settleArtifactQueue(store: ArtifactQueueStore): Promise<void> {
+  try {
+    await settleArtifactQueueInner(store);
+  } catch {
+    store.log('settle_failed');
+  }
+}
+
+async function settleArtifactQueueInner(store: ArtifactQueueStore): Promise<void> {
   const saves = await store.loadSaves();
   let items = await store.loadQueue();
   const additions = scanSavesForRecovery(saves, items);
@@ -750,8 +880,8 @@ export async function settleArtifactQueue(store: ArtifactQueueStore): Promise<vo
       if (!itemIsDue(latest, store.nowMs())) return;
       const next = await processItem(store, latest);
       const q = await store.loadQueue();
-      if (next.artifactState === 'succeeded') await store.saveQueue(removeQueueItem(q, next.requestId));
-      else await store.saveQueue(upsertQueueItem(q, next));
+      if (next.item.artifactState === 'succeeded') await store.saveQueue(removeQueueItem(q, next.item.requestId));
+      else await store.saveQueue(upsertQueueItem(q, next.item));
     })().finally(() => { inFlight.delete(item.requestId); });
     inFlight.set(item.requestId, run);
     await run;
@@ -795,46 +925,29 @@ export async function commitGovernedAfterLocalSaveWithStore(
       copy: 'Your JSA is saved on this device, but could not be queued for WellBuilt. Stay here and try again. Do not return to Tickets yet.',
     };
   }
-  const done = await store.complete(input.requestId, input.action, input.localRecordId);
+  const processed = await processItem(store, queued);
   const q = await store.loadQueue();
-  const current = q.find((i) => i.requestId === input.requestId) || queued;
-  if (done.kind !== 'completed') {
-    const next = applyStatus(
-      current,
-      done.refusal === 'conflict' ? 'conflict' : 'complete_retry',
-      store.nowMs(),
-    );
-    await store.saveQueue(upsertQueueItem(q, next));
-    if (done.kind === 'pending_retry') {
-      return {
-        kind: 'pending_retry',
-        refusal: done.refusal,
-        copy: 'Your JSA is saved on this device, but WellBuilt could not record completion. Stay here and tap Retry. Do not return to Tickets yet.',
-      };
-    }
+  if (processed.item.artifactState === 'succeeded') {
+    await store.saveQueue(removeQueueItem(q, processed.item.requestId));
+    return {
+      kind: 'completed',
+      reused: processed.completeReused,
+      action: processed.item.action || input.action,
+    };
+  }
+  await store.saveQueue(upsertQueueItem(q, processed.item));
+  if (processed.item.artifactState === 'blocked' && processed.item.lastStatus === 'conflict') {
     return {
       kind: 'fail_closed',
-      refusal: done.refusal,
+      refusal: 'conflict',
       copy: 'This JSA request was already completed differently. Return to WellBuilt Tickets and launch again.',
     };
   }
-  let next = markCompleteDone(current);
-  const persisted = await store.persist(input.requestId, input.snapshot);
-  if (persisted.ok) {
-    next = applyStatus(next, persisted.reused ? 'reused' : 'created', store.nowMs());
-    await store.stampSave(input.localRecordId, {
-      persisted: true,
-      reused: persisted.reused,
-      persistedAtMs: store.nowMs(),
-    });
-    await store.saveQueue(removeQueueItem(q, input.requestId));
-    store.log(persisted.reused ? 'reused' : 'created');
-  } else {
-    next = applyStatus(next, persisted.status, store.nowMs());
-    await store.saveQueue(upsertQueueItem(q, next));
-    store.log(persisted.status);
-  }
-  return { kind: 'completed', reused: done.reused, action: done.action };
+  return {
+    kind: 'pending_retry',
+    refusal: processed.item.lastStatus,
+    copy: 'Your JSA is saved on this device, but WellBuilt could not record completion. Stay here and tap Retry. Do not return to Tickets yet.',
+  };
 }
 
 export function resetArtifactSingleFlightForTests(): void {

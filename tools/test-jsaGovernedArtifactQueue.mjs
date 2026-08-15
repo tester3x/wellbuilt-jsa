@@ -33,6 +33,8 @@ import {
   enqueueFrozenSnapshot,
   settleArtifactQueue,
   resetArtifactSingleFlightForTests,
+  existingGovernedSave,
+  encodeCanonicalBase64,
 } from '../services/sso/jsaArtifactSnapshot.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -465,6 +467,130 @@ check('signoff still returns before legacy jsas write on governed path',
   && /if \(governedActive && governedCtx/.test(signoff));
 check('signoff maps signatureImage not signature as the PNG',
   /adaptGovernedSnapshot\(payload\)/.test(signoff));
+
+{
+  const core = readFileSync(join(root, 'services/sso/jsaArtifactSnapshot.ts'), 'utf8');
+  check('2B-1 no Buffer or other Node globals in the client artifact module',
+    !/\bBuffer\b/.test(core)
+    && !/\bprocess\./.test(core)
+    && !/\brequire\s*\(/.test(core)
+    && !/\bglobal\./.test(core));
+  const round = encodeCanonicalBase64(Uint8Array.from(Buffer.from(PNG_B64, 'base64')));
+  check('2B-1b canonical encoder matches strict standard base64',
+    round === PNG_B64 && decodeDrawnPng(PNG_B64).ok);
+}
+
+{
+  const httpsErr = (code, reason) => ({
+    code,
+    details: { reason },
+    message: reason,
+  });
+  check('2B-2 details.reason=conflict is blocked',
+    classifyPersistError(httpsErr('functions/failed-precondition', 'conflict')) === 'conflict'
+    && classifyArtifactStatus('conflict') === 'blocked');
+  check('2B-2 malformed blocked',
+    classifyPersistError(httpsErr('functions/invalid-argument', 'malformed')) === 'malformed');
+  check('2B-2 binding_mismatch blocked',
+    classifyPersistError(httpsErr('functions/permission-denied', 'binding_mismatch')) === 'binding_mismatch');
+  check('2B-2 wrong_audience blocked',
+    classifyPersistError(httpsErr('functions/permission-denied', 'wrong_audience')) === 'wrong_audience');
+  check('2B-2 authority_unverifiable blocked',
+    classifyPersistError(httpsErr('functions/permission-denied', 'authority_unverifiable')) === 'authority_unverifiable');
+  check('2B-2 not_found blocked',
+    classifyPersistError(httpsErr('functions/failed-precondition', 'not_found')) === 'not_found');
+  check('2B-2 pending is retryable',
+    classifyPersistError(httpsErr('functions/failed-precondition', 'pending')) === 'pending'
+    && classifyArtifactStatus('pending') === 'retryable');
+  check('2B-2 unauthenticated uses callable code',
+    classifyPersistError({ code: 'functions/unauthenticated', details: {} }) === 'auth_unavailable');
+  check('2B-2 resource-exhausted uses callable code',
+    classifyPersistError({ code: 'functions/resource-exhausted', details: {} }) === 'rate_limited');
+  check('2B-2 unavailable uses callable code',
+    classifyPersistError({ code: 'functions/unavailable', details: {} }) === 'unavailable');
+  check('2B-2 details.refusal still tolerated',
+    classifyPersistError({
+      code: 'functions/failed-precondition',
+      details: { refusal: 'conflict' },
+    }) === 'conflict');
+  check('2B-2 combined message is not used as an exact switch key',
+    classifyPersistError({
+      code: 'functions/unknown',
+      message: 'functions/failed-precondition conflict binding_mismatch',
+      details: {},
+    }) === 'unavailable');
+}
+
+{
+  const snapA = adapted.value;
+  const snapB = { ...snapA, notes: 'changed after submit', printedName: 'Other Name' };
+  const { world, store } = memStore({
+    persistImpl: async () => ({ ok: false, status: 'network' }),
+  });
+  await commitGovernedAfterLocalSaveWithStore(store, {
+    requestId: RID, action: 'read_and_acknowledged', localRecordId: 'orig-save',
+    snapshot: snapA, localSaveOk: true,
+  });
+  world.persistImpl = async () => ({ ok: true, reused: false });
+  world.now += 5_000;
+  const retry = await commitGovernedAfterLocalSaveWithStore(store, {
+    requestId: RID, action: 'acknowledged', localRecordId: 'retry-save',
+    snapshot: snapB, localSaveOk: true,
+  });
+  check('2B-3 retry uses frozen queued action/localRecordId/snapshot A',
+    retry.kind === 'completed'
+    && world.completes.every((c) => c.action === 'read_and_acknowledged' && c.localRecordId === 'orig-save')
+    && world.persists.every((p) => p.snapshot.notes === 'clear' && p.snapshot.printedName === PRINTED)
+    && world.stamps[0].id === 'orig-save'
+    && !world.persists.some((p) => p.snapshot.notes === 'changed after submit'));
+}
+
+{
+  const first = {
+    id: 'ack-1',
+    governedRequestRef: RID,
+    signature: PRINTED,
+    signatureImage: PNG_B64,
+  };
+  const saves = [first];
+  const prior = existingGovernedSave(saves, RID);
+  check('2B-4 existing governed save is reused by requestId',
+    prior && prior.id === 'ack-1' && existingGovernedSave(saves, RID2) === null);
+  const ack = readFileSync(join(root, 'app/acknowledge.tsx'), 'utf8');
+  check('2B-4 acknowledge retry consults existingGovernedSave before prepend',
+    ack.includes('existingGovernedSave')
+    && ack.indexOf('existingGovernedSave') < ack.indexOf('setItem(STORAGE_KEYS.saves'));
+}
+
+{
+  check('2B-5 oversized notes fail closed',
+    adaptGovernedSnapshot(vc13Save({ notes: 'n'.repeat(4001) })).refusal === 'oversized');
+  check('2B-5 oversized locations fail closed',
+    adaptGovernedSnapshot(vc13Save({ locations: Array.from({ length: 25 }, (_, i) => `L${i}`) })).refusal === 'oversized');
+  check('2B-5 invalid map value is malformed, not dropped',
+    adaptGovernedSnapshot(vc13Save({ prepared: { trained: 'yes' } })).refusal === 'malformed');
+  check('2B-5 vc13 fixture still adapts without clipping',
+    adapted.ok && adapted.value.notes === 'clear' && adapted.value.pusher === 'Nile'
+    && adapted.value.locations[0] === 'Gab 1');
+}
+
+{
+  const live = readFileSync(join(root, 'services/sso/jsaGovernedLive.ts'), 'utf8');
+  const route = readFileSync(join(root, 'services/sso/jsaGovernedRoute.ts'), 'utf8');
+  const core = readFileSync(join(root, 'services/sso/jsaArtifactSnapshot.ts'), 'utf8');
+  check('2B-6 fire-and-forget settle catches import and settle failure',
+    live.includes(".catch(() => {")
+    && route.includes(".catch(() => {")
+    && /settle_failed/.test(live)
+    && /settle_failed/.test(route)
+    && /settle_failed/.test(core));
+}
+
+{
+  const scanned = scanSavesForRecovery([vc13Save()], []);
+  check('vc13 generic recovery still persist-only with action=null',
+    scanned.length === 1 && scanned[0].action === null && scanned[0].completeState === 'completed');
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
