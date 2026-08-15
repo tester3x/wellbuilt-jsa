@@ -424,11 +424,22 @@ function memStore(init = {}) {
     && card.includes('pairRight')
     && card.includes('textAlign: "left"')
     && card.includes('textAlign: "right"');
+  const twoSiblingCells = /style=\{styles\.pairRow\}[\s\S]{0,220}styles\.pairLeft[\s\S]{0,220}styles\.pairRight/.test(card)
+    && /pairRow: \{[\s\S]{0,80}flexWrap:\s*"nowrap"/.test(card)
+    && /pairLeft: \{[\s\S]{0,120}minWidth:\s*0/.test(card)
+    && /pairRight: \{[\s\S]{0,120}minWidth:\s*0/.test(card)
+    && /pairLeft: \{[\s\S]{0,80}flexShrink:\s*1/.test(card)
+    && /pairRight: \{[\s\S]{0,80}flexShrink:\s*1/.test(card)
+    && /pairRow: \{[\s\S]{0,80}alignItems:\s*"flex-start"/.test(card);
   const oldSameRowGone = !/styles\.label\}\>\{t\("Location & Activity"\)\}[\s\S]{0,80}valueContainer/.test(card)
     && !/\[\{r\.resolvedActivity\}\]/.test(card)
-    && !card.includes('valueContainer');
+    && !card.includes('valueContainer')
+    && !/numberOfLines=\{1\}/.test(card);
   check('summary title is a full-width row and values are on the next row',
     titleOwnRow && oldSameRowGone);
+  check('values row is two independent shrinkable columns',
+    twoSiblingCells
+    && !/pairRow: \{[\s\S]{0,80}flexWrap:\s*"wrap"/.test(card));
   check('governed summary does not restore missing activity from route params',
     /jobHandoff\.source === 'nav_params'[\s\S]{0,80}jobActivityName, task/.test(stepsSrc)
     && /jobSource === 'nav_params' \? \(jobActivity \|\| task\) : jobActivity/.test(ppeSrc)

@@ -45,13 +45,13 @@ export function JsaSummaryCard({ driverName, truckNumber, rows, date }: Props) {
             <View key={`r-${i}`} style={styles.pairRow}>
               <View style={styles.pairLeft}>
                 <Text style={styles.pairLabel}>{t("Location")}</Text>
-                <Text style={styles.pairValueLeft} numberOfLines={1}>
+                <Text style={styles.pairValueLeft}>
                   {r.name}
                 </Text>
               </View>
               <View style={styles.pairRight}>
                 <Text style={styles.pairLabel}>{t("Activity")}</Text>
-                <Text style={styles.pairValueRight} numberOfLines={1}>
+                <Text style={styles.pairValueRight}>
                   {r.resolvedActivity}
                 </Text>
               </View>
@@ -122,16 +122,22 @@ const styles = StyleSheet.create({
   },
   pairRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    flexWrap: "nowrap",
     alignItems: "flex-start",
     gap: 12,
   },
   pairLeft: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: "flex-start",
   },
   pairRight: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: "flex-end",
   },
   pairLabel: {
@@ -144,12 +150,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     textAlign: "left",
+    alignSelf: "stretch",
+    flexShrink: 1,
   },
   pairValueRight: {
     color: colors.textDark,
     fontSize: 14,
     fontWeight: "600",
     textAlign: "right",
+    alignSelf: "stretch",
+    flexShrink: 1,
   },
   separator: {
     height: 1,
