@@ -956,3 +956,40 @@ export async function commitGovernedAfterLocalSaveWithStore(
 export function resetArtifactSingleFlightForTests(): void {
   inFlight.clear();
 }
+
+/** Foreground only. Background/inactive must not settle. */
+export function shouldSettleOnAppStateChange(state: string): boolean {
+  return state === 'active';
+}
+
+/**
+ * Settlement is gated on restored governed Firebase Auth plus a usable
+ * governed session. Manual/legacy identity is not a substitute.
+ */
+export function maySettleGovernedArtifacts(input: {
+  authReady: boolean;
+  usableSession: unknown;
+}): boolean {
+  if (input.authReady !== true) return false;
+  return !!input.usableSession
+    && typeof input.usableSession === 'object'
+    && !Array.isArray(input.usableSession);
+}
+
+/**
+ * Await Auth restoration, then settle only if a usable governed session
+ * exists. No navigation, get, or local-save creation.
+ */
+export async function settleIfAuthenticated(input: {
+  awaitAuthReady: () => Promise<void>;
+  loadUsableSession: () => Promise<unknown>;
+  settle: () => Promise<void>;
+}): Promise<'settled' | 'skipped_no_session'> {
+  await input.awaitAuthReady();
+  const session = await input.loadUsableSession();
+  if (!maySettleGovernedArtifacts({ authReady: true, usableSession: session })) {
+    return 'skipped_no_session';
+  }
+  await input.settle();
+  return 'settled';
+}

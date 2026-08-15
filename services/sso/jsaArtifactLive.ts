@@ -11,6 +11,7 @@ import {
   parseQueueItem,
   settleArtifactQueue,
   commitGovernedAfterLocalSaveWithStore,
+  settleIfAuthenticated,
   type ArtifactQueueItem,
   type ArtifactQueueStore,
   type ArtifactSaveStamp,
@@ -83,6 +84,28 @@ function liveStore(): ArtifactQueueStore {
 export async function settleGovernedArtifactQueue(): Promise<void> {
   try {
     await settleArtifactQueue(liveStore());
+  } catch {
+    console.log(JSON.stringify({ tag: '[jsa-artifact-queue]', outcome: 'settle_failed' }));
+  }
+}
+
+/**
+ * Root lifecycle settlement. Waits for governed Auth restoration, then
+ * settles only when a usable governed session exists. Independent of
+ * route/screen. Does not register a request, get, navigate, or create a local save.
+ */
+export async function settleGovernedArtifactQueueIfAuthenticated(): Promise<void> {
+  try {
+    const { awaitGovernedAuthReady, loadUsableGovernedSession } =
+      await import('./jsaGovernedAuthLive');
+    const outcome = await settleIfAuthenticated({
+      awaitAuthReady: () => awaitGovernedAuthReady(),
+      loadUsableSession: () => loadUsableGovernedSession(),
+      settle: () => settleGovernedArtifactQueue(),
+    });
+    if (outcome === 'skipped_no_session') {
+      console.log(JSON.stringify({ tag: '[jsa-artifact-queue]', outcome: 'skipped_no_session' }));
+    }
   } catch {
     console.log(JSON.stringify({ tag: '[jsa-artifact-queue]', outcome: 'settle_failed' }));
   }

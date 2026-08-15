@@ -35,6 +35,9 @@ import {
   resetArtifactSingleFlightForTests,
   existingGovernedSave,
   encodeCanonicalBase64,
+  shouldSettleOnAppStateChange,
+  maySettleGovernedArtifacts,
+  settleIfAuthenticated,
 } from '../services/sso/jsaArtifactSnapshot.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -681,6 +684,195 @@ check('signoff maps signatureImage not signature as the PNG',
   );
   check('2C-8b pending remains retryable, not blocked',
     pendingItem.artifactState === 'unsent' && classifyArtifactStatus('pending') === 'retryable');
+}
+
+{
+  check('4C-1 only active app-state transitions settle',
+    shouldSettleOnAppStateChange('active') === true
+    && shouldSettleOnAppStateChange('background') === false
+    && shouldSettleOnAppStateChange('inactive') === false);
+  check('4C-2 settlement requires restored auth and a usable governed session',
+    maySettleGovernedArtifacts({ authReady: true, usableSession: { uid: 'u' } }) === true
+    && maySettleGovernedArtifacts({ authReady: false, usableSession: { uid: 'u' } }) === false
+    && maySettleGovernedArtifacts({ authReady: true, usableSession: null }) === false
+    && maySettleGovernedArtifacts({ authReady: true, usableSession: 'legacy-hash' }) === false);
+}
+
+{
+  const order = [];
+  const skipped = await settleIfAuthenticated({
+    awaitAuthReady: async () => { order.push('ready'); },
+    loadUsableSession: async () => { order.push('session'); return null; },
+    settle: async () => { order.push('settle'); },
+  });
+  check('4C-3 auth restoration is awaited before the session decision',
+    order[0] === 'ready' && order[1] === 'session' && !order.includes('settle')
+    && skipped === 'skipped_no_session');
+}
+
+{
+  const { world, store } = memStore({ saves: [vc13Save()] });
+  const noSession = await settleIfAuthenticated({
+    awaitAuthReady: async () => {},
+    loadUsableSession: async () => null,
+    settle: () => settleArtifactQueue(store),
+  });
+  check('4C-4 no usable session means no complete or persist',
+    noSession === 'skipped_no_session'
+    && world.completes.length === 0
+    && world.persists.length === 0
+    && world.queue.length === 0
+    && world.saves.length === 1);
+}
+
+{
+  resetArtifactSingleFlightForTests();
+  const { world, store } = memStore({ saves: [vc13Save()] });
+  const completedHomeRouted = { navigated: false };
+  const routeCompletedHome = () => { completedHomeRouted.navigated = true; };
+  const outcome = await settleIfAuthenticated({
+    awaitAuthReady: async () => {},
+    loadUsableSession: async () => ({ uid: 'governed' }),
+    settle: () => settleArtifactQueue(store),
+  });
+  routeCompletedHome();
+  check('4C-5 cold startup settles even when home routes completed context away',
+    outcome === 'settled'
+    && completedHomeRouted.navigated === true
+    && world.logs.includes('recovered')
+    && world.persists.length === 1
+    && world.queue.length === 0
+    && world.stamps.length === 1
+    && world.stamps[0].stamp.persisted === true
+    && world.saves.length === 1);
+  check('4C-6 recovered completed save is one frozen persist-only item',
+    world.completes.length === 0
+    && world.persists[0].requestId === RID
+    && world.stamps[0].id === String(1_786_741_459_475)
+    && world.persists[0].snapshot.notes === 'clear');
+}
+
+{
+  const frozen = scanSavesForRecovery([vc13Save()], [])[0];
+  const again = scanSavesForRecovery([vc13Save()], [])[0];
+  check('4C-7 frozen snapshot/request/local-record/action stay unchanged',
+    frozen.requestId === again.requestId
+    && frozen.localRecordId === again.localRecordId
+    && frozen.action === again.action
+    && frozen.snapshot.printedName === again.snapshot.printedName
+    && JSON.stringify(frozen.snapshot) === JSON.stringify(again.snapshot));
+}
+
+{
+  resetArtifactSingleFlightForTests();
+  let persistCalls = 0;
+  const { world, store } = memStore({
+    saves: [vc13Save()],
+    persistImpl: async () => {
+      persistCalls += 1;
+      await new Promise((r) => setTimeout(r, 20));
+      return { ok: true, reused: persistCalls > 1 };
+    },
+  });
+  await Promise.all([
+    settleIfAuthenticated({
+      awaitAuthReady: async () => {},
+      loadUsableSession: async () => ({ uid: 'governed' }),
+      settle: () => settleArtifactQueue(store),
+    }),
+    settleIfAuthenticated({
+      awaitAuthReady: async () => {},
+      loadUsableSession: async () => ({ uid: 'governed' }),
+      settle: () => settleArtifactQueue(store),
+    }),
+  ]);
+  check('4C-8 concurrent startup/recovery keep one remote persist per request',
+    persistCalls === 1 && world.queue.length === 0);
+}
+
+{
+  resetArtifactSingleFlightForTests();
+  const { world, store } = memStore({ saves: [vc13Save()] });
+  await settleIfAuthenticated({
+    awaitAuthReady: async () => {},
+    loadUsableSession: async () => ({ uid: 'governed' }),
+    settle: () => settleArtifactQueue(store),
+  });
+  world.saves = [{
+    ...world.saves[0],
+    governedArtifact: { persisted: true, reused: false, persistedAtMs: 1 },
+  }];
+  resetArtifactSingleFlightForTests();
+  await settleIfAuthenticated({
+    awaitAuthReady: async () => {},
+    loadUsableSession: async () => ({ uid: 'governed' }),
+    settle: () => settleArtifactQueue(store),
+  });
+  check('4C-9 exact retry after success is idempotent and creates no second save',
+    world.persists.length === 1
+    && world.saves.length === 1
+    && world.queue.length === 0);
+}
+
+{
+  let foregroundSettles = 0;
+  const kick = async (state) => {
+    if (!shouldSettleOnAppStateChange(state)) return;
+    await settleIfAuthenticated({
+      awaitAuthReady: async () => {},
+      loadUsableSession: async () => ({ uid: 'governed' }),
+      settle: async () => { foregroundSettles += 1; },
+    });
+  };
+  await kick('background');
+  await kick('inactive');
+  await kick('active');
+  check('4C-10 foreground triggers settlement; background/inactive do not',
+    foregroundSettles === 1);
+}
+
+{
+  const live = readFileSync(join(root, 'services/sso/jsaArtifactLive.ts'), 'utf8');
+  const core = readFileSync(join(root, 'services/sso/jsaArtifactSnapshot.ts'), 'utf8');
+  const layout = readFileSync(join(root, 'app/_layout.tsx'), 'utf8');
+  const indexSrc = readFileSync(join(root, 'app/(tabs)/index.tsx'), 'utf8');
+  const statusSrc = readFileSync(join(root, 'app/governed-status.tsx'), 'utf8');
+  const recoverSrc = readFileSync(join(root, 'services/sso/jsaGovernedLive.ts'), 'utf8');
+  const routeSrc = readFileSync(join(root, 'services/sso/jsaGovernedRoute.ts'), 'utf8');
+  const authLive = readFileSync(join(root, 'services/sso/jsaGovernedAuthLive.ts'), 'utf8');
+  const helper = live.slice(live.indexOf('settleGovernedArtifactQueueIfAuthenticated'));
+  const layoutKick = layout.slice(
+    layout.indexOf('settleGovernedArtifactQueueIfAuthenticated') - 500,
+    layout.indexOf('settleGovernedArtifactQueueIfAuthenticated') + 450,
+  );
+  check('4C-11 root lifecycle owns authenticated settlement, not governed-status',
+    layout.includes('settleGovernedArtifactQueueIfAuthenticated')
+    && layoutKick.includes("state === 'active'")
+    && !/isAuthenticated/.test(layoutKick)
+    && !statusSrc.includes('settleGovernedArtifactQueue')
+    && !statusSrc.includes('jsaPersistGovernedArtifact'));
+  check('4C-12 completed home shortcut is unchanged and not the persist owner',
+    /governedCtx\?\.state === 'completed'/.test(indexSrc)
+    && indexSrc.includes("pathname: '/governed-status'")
+    && !indexSrc.includes('settleGovernedArtifactQueueIfAuthenticated'));
+  check('4C-13 helper adds no remint/register/get/navigation/timer',
+    !/jsaRegisterReadRequest|jsaGetReadRequest|mintAttempt/.test(helper)
+    && !/router|Linking|replace\(|navigate|href/.test(helper)
+    && !/setInterval|setTimeout|requestAnimationFrame/.test(helper)
+    && !/setInterval|setTimeout/.test(core.slice(core.indexOf('shouldSettleOnAppStateChange'))));
+  const usableFn = authLive.slice(authLive.indexOf('export async function loadUsableGovernedSession'));
+  check('4C-14 live helper awaits usable governed session before settle',
+    helper.includes('awaitGovernedAuthReady')
+    && helper.includes('loadUsableGovernedSession')
+    && helper.includes('settleIfAuthenticated')
+    && usableFn.includes('await awaitGovernedAuthReady()')
+    && usableFn.indexOf('awaitGovernedAuthReady') < usableFn.indexOf('loadGovernedSession'));
+  check('4C-15 existing post-save and retry-complete settlement paths remain',
+    recoverSrc.includes('settleGovernedArtifactQueue')
+    && routeSrc.includes("decision.next === 'retry_complete'")
+    && routeSrc.includes('settleGovernedArtifactQueue')
+    && live.includes('export async function settleGovernedArtifactQueue')
+    && live.includes('commitGovernedAfterLocalSaveWithStore'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

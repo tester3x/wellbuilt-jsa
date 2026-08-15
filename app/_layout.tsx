@@ -331,6 +331,22 @@ function AppContent() {
     resolveUnauthSurface();
   }, []);
 
+  // Authenticated artifact settlement — independent of navigation/screen.
+  // Direct-icon and foreground recoveries must persist even when home
+  // immediately routes a completed context to governed-status.
+  useEffect(() => {
+    const settleIfUsable = () => {
+      void import('../services/sso/jsaArtifactLive')
+        .then((m) => m.settleGovernedArtifactQueueIfAuthenticated())
+        .catch(() => {});
+    };
+    settleIfUsable();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') settleIfUsable();
+    });
+    return () => sub.remove();
+  }, []);
+
   // Direct-icon / cold start: begin Suite PKCE automatically. Never
   // substitute manual login for governed auth.
   useEffect(() => {
