@@ -369,6 +369,32 @@ export function existingGovernedSave(
 }
 
 /**
+ * One local save per governedRequestRef. Reuse the frozen record even
+ * when pendingComplete is missing. Never prepend a second save.
+ */
+export function applyGovernedLocalSave(
+  saves: unknown[],
+  requestId: string,
+  candidate: Record<string, unknown>,
+): {
+  saves: unknown[];
+  record: Record<string, unknown>;
+  id: string;
+  created: boolean;
+} {
+  const list = Array.isArray(saves) ? saves.slice() : [];
+  const prior = existingGovernedSave(list, requestId);
+  if (prior) {
+    return { saves: list, record: prior.record, id: prior.id, created: false };
+  }
+  const id = typeof candidate.id === 'string' && candidate.id ? candidate.id : '';
+  if (!id || !isJsaRequestId(requestId)) {
+    return { saves: list, record: candidate, id, created: false };
+  }
+  return { saves: [candidate, ...list], record: candidate, id, created: true };
+}
+
+/**
  * vc13 submit evidence. `@jsa/saves` records receive `governedRequestRef`
  * only on the Submit path after a drawn PNG is required. Drafts live in
  * other keys and never get that field. That pair is the stored-field

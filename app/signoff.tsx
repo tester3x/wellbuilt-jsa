@@ -24,6 +24,7 @@ import { redactRequestIds } from "../services/wbtReadRequest";
 import SignatureModal from "../components/SignatureModal";
 import { colors } from "../constants/colors";
 import {
+    JSA_STEPS,
     PREPARED_FOR_WORK_ITEMS,
 } from "../constants/jsaTemplate";
 import { STORAGE_KEYS } from "../constants/storageKeys";
@@ -47,6 +48,8 @@ type Params = {
   locations?: string;
   locationAcks?: string;
   jsaSessionId?: string;
+  stepAcks?: string;
+  stepsAcknowledged?: string;
 };
 
 export default function SignoffScreen() {
@@ -85,6 +88,7 @@ export default function SignoffScreen() {
         const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
         const { legalAcknowledgmentName } = await import('../services/sso/jsaSession');
         const legal = legalAcknowledgmentName(await loadGovernedSession());
+        setGovernedPrintedName(legal);
         setSignature(legal);
       } catch {}
     })();
@@ -113,6 +117,10 @@ export default function SignoffScreen() {
   const [jobGate, setJobGate] = useState<'pending' | 'ready' | 'failed'>('pending');
   const [jobSource, setJobSource] = useState<'governed_snapshot' | 'nav_params' | null>(null);
   const [attestScope, setAttestScope] = useState<{ kind: 'governed' | 'standalone'; scopeId: string } | null>(null);
+  const [stepAcks, setStepAcks] = useState<Record<string, boolean>>({});
+  const [stepsAcknowledged, setStepsAcknowledged] = useState(false);
+  const [governedPrintedName, setGovernedPrintedName] = useState('');
+  const submitLockRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,9 +176,13 @@ export default function SignoffScreen() {
           await forgetLegacyAttestationKeys(AsyncStorage);
           if (cancelled) return;
           setPrepared(draft.prepared);
+          setStepAcks(draft.stepAcks);
+          setStepsAcknowledged(draft.stepsAcknowledged === true);
           setAttestScope(scopeDec.scope);
         } else {
           setPrepared({});
+          setStepAcks({});
+          setStepsAcknowledged(false);
           setAttestScope(null);
         }
         isLoadedRef.current = true;
@@ -255,6 +267,7 @@ export default function SignoffScreen() {
 
   const handleSubmit = () => {
     if (jobGate !== 'ready' || !jobSource) return;
+    if (submitLockRef.current) return;
     // Validation: Drawn signature required
     if (!signatureImage) {
       Alert.alert(
@@ -363,6 +376,33 @@ export default function SignoffScreen() {
       if (frozenJob.source !== 'governed_snapshot' && frozenJob.source !== 'nav_params') {
         return;
       }
+      const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
+      const { legalAcknowledgmentName } = await import('../services/sso/jsaSession');
+      const { decideGovernedSubmitEvidence } = await import('../services/sso/jsaGovernedFormEvidence');
+      const requiredStepIds = (jsaTemplate?.steps ?? JSA_STEPS).map((s: { id: string }) => s.id);
+      const submitEvidence = decideGovernedSubmitEvidence({
+        source: frozenJob.source,
+        legalName: legalAcknowledgmentName(await loadGovernedSession()),
+        standalonePrintedName: signature,
+        signatureImage,
+        requiredStepIds,
+        stepAcks,
+        stepsAcknowledged,
+      });
+      if (submitEvidence.kind === 'fail_closed') {
+        Alert.alert(
+          t('Cannot complete') || 'Cannot complete',
+          submitEvidence.reason === 'missing_legal_name'
+            ? (t('Legal name is required') || 'Legal name is required to submit this JSA.')
+            : submitEvidence.reason === 'missing_step_evidence'
+              ? (t('Please review all steps before continuing.') || 'Please review all steps before continuing.')
+              : (t('Signature Required') || 'Please sign before submitting.'),
+        );
+        return;
+      }
+      const printedNameForSave = submitEvidence.printedName;
+      const stepAcksForSave = submitEvidence.stepAcks;
+      const stepsAcknowledgedForSave = submitEvidence.stepsAcknowledged;
       const { finalizeSaveActivityFields } = await import('../services/sso/jsaGovernedJobFields');
       const activityFields = finalizeSaveActivityFields({
         source: frozenJob.source,
@@ -485,8 +525,10 @@ export default function SignoffScreen() {
         locationAcks,
         prepared,
         notes,
-        signature,
+        signature: printedNameForSave,
         signatureImage: signatureImage || '',
+        stepAcks: stepAcksForSave,
+        stepsAcknowledged: stepsAcknowledgedForSave,
         ...(governedActive ? governedRecordLink(governedCtx.requestId) : {}),
         ...(governedActive && governedAction ? {
           governedSubmitCommit: {
@@ -496,13 +538,28 @@ export default function SignoffScreen() {
           },
         } : {}),
       };
-      const skipDuplicateSave = !!(
-        pendingComplete
-        && governedActive
-        && pendingComplete.requestId === governedCtx.requestId
-      );
-      let localSaveOk = skipDuplicateSave;
-      if (!skipDuplicateSave) {
+      const { applyGovernedLocalSave } = await import('../services/sso/jsaArtifactSnapshot');
+      let payloadForComplete = payload;
+      let localSaveOk = false;
+      if (governedActive && governedCtx) {
+        try {
+          const existing = await AsyncStorage.getItem(STORAGE_KEYS.saves);
+          const list = existing ? JSON.parse(existing) : [];
+          const applied = applyGovernedLocalSave(
+            Array.isArray(list) ? list : [],
+            governedCtx.requestId,
+            payload,
+          );
+          if (applied.created) {
+            await AsyncStorage.setItem(STORAGE_KEYS.saves, JSON.stringify(applied.saves));
+          }
+          payloadForComplete = applied.record as typeof payload;
+          localSaveOk = true;
+        } catch (error) {
+          console.warn("Failed to save JSA", error);
+          localSaveOk = false;
+        }
+      } else {
         try {
           const existing = await AsyncStorage.getItem(STORAGE_KEYS.saves);
           const list = existing ? JSON.parse(existing) : [];
@@ -527,14 +584,14 @@ export default function SignoffScreen() {
       try {
         const raw = await AsyncStorage.getItem('@jsa/dismissedIds');
         const ids: string[] = raw ? JSON.parse(raw) : [];
-        if (!ids.includes(payload.id)) ids.push(payload.id);
+        if (!ids.includes(payloadForComplete.id)) ids.push(payloadForComplete.id);
         await AsyncStorage.setItem('@jsa/dismissedIds', JSON.stringify(ids));
         // Also drop any active tab matching this id so this session clears it instantly
         const activeRaw = await AsyncStorage.getItem('@jsa/activeJsas');
         if (activeRaw) {
           const active = JSON.parse(activeRaw);
           if (Array.isArray(active)) {
-            const filtered = active.filter((j: any) => j?.id !== payload.id);
+            const filtered = active.filter((j: any) => j?.id !== payloadForComplete.id);
             await AsyncStorage.setItem('@jsa/activeJsas', JSON.stringify(filtered));
           }
         }
@@ -545,7 +602,7 @@ export default function SignoffScreen() {
       // does not create a second JSA.
       if (governedActive && governedCtx && governedAction) {
         const launch = await (await import('../services/sso/jsaRuntime')).loadLaunchContext();
-        const adapted = adaptGovernedSnapshot(payload);
+        const adapted = adaptGovernedSnapshot(payloadForComplete);
         if (!adapted.ok) {
           Alert.alert(
             t('Cannot complete') || 'Cannot complete',
@@ -556,7 +613,7 @@ export default function SignoffScreen() {
         const done = await commitGovernedAfterLocalSave({
           requestId: governedCtx.requestId,
           action: governedAction,
-          localRecordId: payload.id,
+          localRecordId: payloadForComplete.id,
           snapshot: adapted.value,
           localSaveOk,
         });
@@ -1397,6 +1454,7 @@ export default function SignoffScreen() {
     // the branded completion modal is the only confirmation surface now.
     // Wrap in a top-level catch so ANY failure in saveAndGo still surfaces
     // the modal (driver must not be stranded on signoff after tap).
+    submitLockRef.current = true;
     saveAndGo().catch((err) => {
       console.error('[JSA-Signoff] saveAndGo failed — forcing HONEST modal:', err);
       // 8/6 — the forced modal no longer claims success: cloudPending copy
@@ -1406,6 +1464,8 @@ export default function SignoffScreen() {
       setCompleteReturnScheme(null);
       setCompleteOrigin('standalone');
       setShowCompleteModal(true);
+    }).finally(() => {
+      submitLockRef.current = false;
     });
   };
 
@@ -1617,7 +1677,11 @@ export default function SignoffScreen() {
                   />
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>{signature || params.driverName}</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>{
+                    jobSource === 'governed_snapshot'
+                      ? (governedPrintedName || signature)
+                      : (signature || params.driverName)
+                  }</Text>
                   <TouchableOpacity onPress={() => setShowSigModal(true)}>
                     <Text style={{ color: accent, fontSize: 13, fontWeight: '600' }}>{t("Re-sign")}</Text>
                   </TouchableOpacity>
@@ -1637,7 +1701,8 @@ export default function SignoffScreen() {
               placeholder={t("Print full name")}
               placeholderTextColor={colors.textMuted}
               value={signature}
-              onChangeText={setSignature}
+              onChangeText={jobSource === 'governed_snapshot' ? () => {} : setSignature}
+              editable={jobSource !== 'governed_snapshot'}
               returnKeyType="done"
             />
           </View>
@@ -1648,7 +1713,7 @@ export default function SignoffScreen() {
             onSave={(base64) => {
               setSignatureImage(base64);
               // Auto-fill typed name if empty
-              if (!signature.trim() && params.driverName) {
+              if (!signature.trim() && jobSource !== 'governed_snapshot' && params.driverName) {
                 setSignature(params.driverName as string);
               }
             }}

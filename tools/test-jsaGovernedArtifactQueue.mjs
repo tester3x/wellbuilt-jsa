@@ -469,7 +469,8 @@ check('signoff still returns before legacy jsas write on governed path',
   signoff.indexOf('commitGovernedAfterLocalSave') < signoff.indexOf('runCloudPersist')
   && /if \(governedActive && governedCtx/.test(signoff));
 check('signoff maps signatureImage not signature as the PNG',
-  /adaptGovernedSnapshot\(payload\)/.test(signoff));
+  /adaptGovernedSnapshot\(payloadForComplete\)/.test(signoff)
+  && /signatureImage:\s*signatureImage\s*\|\|/.test(signoff));
 
 {
   const core = readFileSync(join(root, 'services/sso/jsaArtifactSnapshot.ts'), 'utf8');
@@ -560,9 +561,9 @@ check('signoff maps signatureImage not signature as the PNG',
   check('2B-4 existing governed save is reused by requestId',
     prior && prior.id === 'ack-1' && existingGovernedSave(saves, RID2) === null);
   const ack = readFileSync(join(root, 'app/acknowledge.tsx'), 'utf8');
-  check('2B-4 acknowledge retry consults existingGovernedSave before prepend',
-    ack.includes('existingGovernedSave')
-    && ack.indexOf('existingGovernedSave') < ack.indexOf('setItem(STORAGE_KEYS.saves'));
+  check('2B-4 acknowledge retry consults applyGovernedLocalSave before prepend',
+    ack.includes('applyGovernedLocalSave')
+    && ack.indexOf('applyGovernedLocalSave') < ack.indexOf('setItem(STORAGE_KEYS.saves'));
 }
 
 {

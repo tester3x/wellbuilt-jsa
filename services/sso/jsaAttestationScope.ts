@@ -38,6 +38,8 @@ export interface AttestationState {
   ppeSelected: Record<string, boolean>;
   ppeOther: string[];
   prepared: Record<string, boolean>;
+  stepAcks: Record<string, boolean>;
+  stepsAcknowledged: boolean;
 }
 
 export interface AttestationEnvelope extends AttestationState {
@@ -66,7 +68,13 @@ export interface AttestationStore {
 }
 
 export function emptyAttestation(): AttestationState {
-  return { ppeSelected: {}, ppeOther: [], prepared: {} };
+  return {
+    ppeSelected: {},
+    ppeOther: [],
+    prepared: {},
+    stepAcks: {},
+    stepsAcknowledged: false,
+  };
 }
 
 export function isGovernedAttestationRequestId(v: unknown): v is string {
@@ -155,6 +163,17 @@ export function parseAttestationEnvelope(raw: unknown): AttestationEnvelope | nu
   const prepared = parseBoolMap(o.prepared);
   const ppeOther = parseOther(o.ppeOther);
   if (!ppeSelected || !prepared || !ppeOther) return null;
+  let stepAcks: Record<string, boolean> = {};
+  if (o.stepAcks !== undefined) {
+    const parsedSteps = parseBoolMap(o.stepAcks);
+    if (!parsedSteps) return null;
+    stepAcks = parsedSteps;
+  }
+  let stepsAcknowledged = false;
+  if (o.stepsAcknowledged !== undefined) {
+    if (typeof o.stepsAcknowledged !== 'boolean') return null;
+    stepsAcknowledged = o.stepsAcknowledged;
+  }
   return {
     v: 1,
     kind: o.kind,
@@ -162,6 +181,8 @@ export function parseAttestationEnvelope(raw: unknown): AttestationEnvelope | nu
     ppeSelected,
     ppeOther,
     prepared,
+    stepAcks,
+    stepsAcknowledged,
   };
 }
 
@@ -177,6 +198,8 @@ export function attestationFromEnvelope(env: AttestationEnvelope): AttestationSt
     ppeSelected: { ...env.ppeSelected },
     ppeOther: [...env.ppeOther],
     prepared: { ...env.prepared },
+    stepAcks: { ...env.stepAcks },
+    stepsAcknowledged: env.stepsAcknowledged === true,
   };
 }
 
@@ -194,10 +217,13 @@ function sanitizeState(patch: Partial<AttestationState>): AttestationState {
   const selected = parseBoolMap(patch.ppeSelected ?? {});
   const prepared = parseBoolMap(patch.prepared ?? {});
   const other = parseOther(patch.ppeOther ?? []);
+  const stepAcks = parseBoolMap(patch.stepAcks ?? {});
   return {
     ppeSelected: selected || base.ppeSelected,
     ppeOther: other || base.ppeOther,
     prepared: prepared || base.prepared,
+    stepAcks: stepAcks || base.stepAcks,
+    stepsAcknowledged: patch.stepsAcknowledged === true,
   };
 }
 
@@ -245,6 +271,8 @@ export async function writeAttestationDraft(
     ppeSelected: patch.ppeSelected ?? existing.ppeSelected,
     ppeOther: patch.ppeOther ?? existing.ppeOther,
     prepared: patch.prepared ?? existing.prepared,
+    stepAcks: patch.stepAcks ?? existing.stepAcks,
+    stepsAcknowledged: patch.stepsAcknowledged ?? existing.stepsAcknowledged,
   });
   if (!next) return false;
   const encoded = JSON.stringify(next);

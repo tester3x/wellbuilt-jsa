@@ -1,5 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
     ScrollView,
     StyleSheet,
@@ -208,16 +209,56 @@ const locationsList = useMemo(() => {
   const { t } = useLanguage();
   const { accent, jsaTemplate } = useTheme();
   const steps: JSAStep[] = jsaTemplate?.steps ?? JSA_STEPS;
+  const requiredStepIds = useMemo(() => steps.map((s) => s.id), [steps]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set()); // Steps that have been navigated away from
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+  const [stepAcks, setStepAcks] = useState<Record<string, boolean>>({});
+  const [attestScope, setAttestScope] = useState<{ kind: 'governed' | 'standalone'; scopeId: string } | null>(null);
+  const stepsLoadedRef = useRef(false);
   const checkScale = useSharedValue(0);
   const checkOpacity = useSharedValue(0);
 
-  // Reset completed steps when starting a new JSA (session ID changes)
   useEffect(() => {
-    setCurrentStepIndex(0);
-    setCompletedSteps(new Set());
-  }, [jsaSessionId]);
+    let cancelled = false;
+    stepsLoadedRef.current = false;
+    void (async () => {
+      const {
+        decideAttestationScope,
+        readAttestationDraft,
+      } = await import('../services/sso/jsaAttestationScope');
+      const { buildStepEvidence } = await import('../services/sso/jsaGovernedFormEvidence');
+      const dec = decideAttestationScope({
+        source: jobHandoff.source,
+        governedRequestId: jobHandoff.requestId,
+        standaloneSessionId: jsaSessionId,
+      });
+      if (jobHandoff.source === 'governed_snapshot' && dec.kind !== 'ready') {
+        router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
+        return;
+      }
+      if (dec.kind === 'ready') {
+        const draft = await readAttestationDraft(AsyncStorage, dec.scope);
+        if (cancelled) return;
+        const evidence = buildStepEvidence(requiredStepIds, draft.stepAcks);
+        const acked = new Set<number>();
+        steps.forEach((s, i) => {
+          if (evidence.stepAcks[s.id] === true) acked.add(i);
+        });
+        setAttestScope(dec.scope);
+        setStepAcks(evidence.stepAcks);
+        setCompletedSteps(acked);
+        const firstOpen = steps.findIndex((s) => evidence.stepAcks[s.id] !== true);
+        setCurrentStepIndex(firstOpen === -1 ? Math.max(0, steps.length - 1) : firstOpen);
+      } else {
+        setAttestScope(null);
+        setStepAcks({});
+        setCompletedSteps(new Set());
+        setCurrentStepIndex(0);
+      }
+      stepsLoadedRef.current = true;
+    })();
+    return () => { cancelled = true; };
+  }, [jobHandoff.source, jobHandoff.requestId, jsaSessionId, requiredStepIds, router]);
   const checkStyle = useAnimatedStyle(() => ({
     transform: [{ scale: checkScale.value }],
     opacity: checkOpacity.value,
@@ -227,6 +268,30 @@ const locationsList = useMemo(() => {
   const totalSteps = steps.length;
   const isFirst = currentStepIndex === 0;
   const isLast = currentStepIndex === totalSteps - 1;
+
+  const persistStepEvidence = useCallback((acks: Record<string, boolean>) => {
+    if (!attestScope) return;
+    void import('../services/sso/jsaGovernedFormEvidence').then(({ buildStepEvidence }) => {
+      const evidence = buildStepEvidence(requiredStepIds, acks);
+      void import('../services/sso/jsaAttestationScope').then(({ writeAttestationDraft }) => {
+        writeAttestationDraft(AsyncStorage, attestScope, {
+          stepAcks: evidence.stepAcks,
+          stepsAcknowledged: evidence.stepsAcknowledged,
+        }).catch(() => {});
+      });
+    });
+  }, [attestScope, requiredStepIds]);
+
+  const markStep = useCallback((index: number) => {
+    const id = steps[index]?.id;
+    if (!id) return;
+    setCompletedSteps((prev) => new Set(prev).add(index));
+    setStepAcks((prev) => {
+      const next = { ...prev, [id]: true };
+      persistStepEvidence(next);
+      return next;
+    });
+  }, [steps, persistStepEvidence]);
 
   const triggerCheck = useCallback(() => {
     checkScale.value = 1;
@@ -298,7 +363,9 @@ const locationsList = useMemo(() => {
             rows={buildLocationActivityRows(
               wellsList,
               locationsList,
-              { jobActivityName, task },
+              jobHandoff.source === 'nav_params'
+                ? { jobActivityName, task }
+                : { jobActivityName },
             )}
             date={date}
           />
@@ -332,8 +399,7 @@ const locationsList = useMemo(() => {
                   isFirst && styles.navButtonDisabled,
                 ]}
                 onPress={() => {
-                  // Mark current step as completed before going back
-                  setCompletedSteps((prev) => new Set(prev).add(currentStepIndex));
+                  markStep(currentStepIndex);
                   const newIndex = Math.max(0, currentStepIndex - 1);
                   setCurrentStepIndex(newIndex);
                 }}
@@ -354,44 +420,65 @@ const locationsList = useMemo(() => {
                   triggerCheck();
                   const proceed = () => {
                     if (isLast) {
-                      // Validate all steps have been visited
-                      const allVisited = completedSteps.size >= totalSteps - 1; // current step not in set yet
-                      if (!allVisited) {
-                        const { Alert } = require('react-native');
-                        const missing = [];
-                        for (let s = 0; s < totalSteps; s++) {
-                          if (s !== currentStepIndex && !completedSteps.has(s)) {
-                            missing.push(`Step ${s + 1}`);
-                          }
+                      const id = steps[currentStepIndex]?.id;
+                      const nextAcks = id ? { ...stepAcks, [id]: true } : { ...stepAcks };
+                      void import('../services/sso/jsaGovernedFormEvidence').then(({ buildStepEvidence, requiredStepEvidencePresent }) => {
+                        const evidence = buildStepEvidence(requiredStepIds, nextAcks);
+                        if (jobHandoff.source === 'governed_snapshot'
+                          && !requiredStepEvidencePresent({
+                            requiredStepIds,
+                            stepAcks: evidence.stepAcks,
+                            stepsAcknowledged: evidence.stepsAcknowledged,
+                          })) {
+                          const { Alert } = require('react-native');
+                          Alert.alert(
+                            t("Review All Steps"),
+                            t("Please review all steps before continuing."),
+                            [{ text: t("OK") }],
+                          );
+                          return;
                         }
-                        Alert.alert(
-                          t("Review All Steps"),
-                          t("Please review all steps before continuing.") + (missing.length ? `\n\nSkipped: ${missing.join(', ')}` : ''),
-                          [{ text: t("OK") }],
-                        );
-                        return;
-                      }
-                      router.push({
-                        pathname: "/ppe",
-                        params: {
-                          driverName,
-                          truckNumber,
-                          jobActivityName,
-                          pusher,
-                          wellName,
-                          wells,
-                          otherInfo,
-                          location,
-                          locations,
-                          locationAcks,
-                          task,
-                          date,
-                          jsaSessionId,
-                        },
+                        const allVisited = completedSteps.size >= totalSteps - 1;
+                        if (!allVisited) {
+                          const { Alert } = require('react-native');
+                          const missing = [];
+                          for (let s = 0; s < totalSteps; s++) {
+                            if (s !== currentStepIndex && !completedSteps.has(s)) {
+                              missing.push(`Step ${s + 1}`);
+                            }
+                          }
+                          Alert.alert(
+                            t("Review All Steps"),
+                            t("Please review all steps before continuing.") + (missing.length ? `\n\nSkipped: ${missing.join(', ')}` : ''),
+                            [{ text: t("OK") }],
+                          );
+                          return;
+                        }
+                        markStep(currentStepIndex);
+                        persistStepEvidence(nextAcks);
+                        router.push({
+                          pathname: "/ppe",
+                          params: {
+                            driverName,
+                            truckNumber,
+                            jobActivityName,
+                            pusher,
+                            wellName,
+                            wells,
+                            otherInfo,
+                            location,
+                            locations,
+                            locationAcks,
+                            task,
+                            date,
+                            jsaSessionId,
+                            stepAcks: JSON.stringify(evidence.stepAcks),
+                            stepsAcknowledged: evidence.stepsAcknowledged ? '1' : '0',
+                          },
+                        });
                       });
                     } else {
-                      // Mark current step as completed before moving forward
-                      setCompletedSteps((prev) => new Set(prev).add(currentStepIndex));
+                      markStep(currentStepIndex);
                       const newIndex = Math.min(totalSteps - 1, currentStepIndex + 1);
                       setCurrentStepIndex(newIndex);
                     }

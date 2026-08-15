@@ -12,7 +12,7 @@ type Props = {
    * Pre-resolved rows. Each row is guaranteed to have `name` and
    * `resolvedActivity` populated by the caller via `buildLocationActivityRows`.
    * This component does NOT perform any fallback lookups — if a row's
-   * resolvedActivity is empty, that's a data-layer bug, not a render bug.
+   * resolvedActivity is empty, the Activity cell stays empty.
    */
   rows: LocationActivityRow[];
   date: string;
@@ -22,14 +22,12 @@ type Props = {
  * Canonical top summary card for every downstream JSA screen
  * (Steps, PPE, Review/Submit, View Saved JSA).
  *
- * Renders EXACTLY four rows:
+ * Renders:
  *   1. Driver Name
  *   2. Truck #
- *   3. Location & Activity  (each row.name + row.resolvedActivity inline)
- *   4. Date
- *
- * There is no Job/Activity row here — activity is row-level, baked at the
- * data layer before the component is called.
+ *   3. Location & Activity title on its own full-width row
+ *   4. Value row(s): location left, activity right
+ *   5. Date
  */
 export function JsaSummaryCard({ driverName, truckNumber, rows, date }: Props) {
   const { t } = useLanguage();
@@ -40,29 +38,37 @@ export function JsaSummaryCard({ driverName, truckNumber, rows, date }: Props) {
       <View style={styles.separator} />
       <Row label={t("Truck #")} value={truckNumber || "-"} />
       <View style={styles.separator} />
-      <View style={styles.row}>
-        <Text style={styles.label}>{t("Location & Activity")}</Text>
-        <View style={styles.valueContainer}>
-          {rows.length > 0 ? (
-            rows.map((r, i) => (
-              <View key={`r-${i}`} style={styles.entryRow}>
-                <Text style={styles.entryName} numberOfLines={1}>
+      <View style={styles.locationActivitySection}>
+        <Text style={styles.sectionTitle}>{t("Location & Activity")}</Text>
+        {rows.length > 0 ? (
+          rows.map((r, i) => (
+            <View key={`r-${i}`} style={styles.pairRow}>
+              <View style={styles.pairLeft}>
+                <Text style={styles.pairLabel}>{t("Location")}</Text>
+                <Text style={styles.pairValueLeft} numberOfLines={1}>
                   {r.name}
                 </Text>
-                {/* Temporary debug format — brackets around activity so
-                    field-test can visually confirm data is present. If
-                    resolvedActivity is empty, the bracket pair renders empty
-                    and that's a data-layer bug (logged via console.warn
-                    inside buildLocationActivityRows). */}
-                <Text style={styles.entryJob} numberOfLines={1}>
-                  [{r.resolvedActivity}]
+              </View>
+              <View style={styles.pairRight}>
+                <Text style={styles.pairLabel}>{t("Activity")}</Text>
+                <Text style={styles.pairValueRight} numberOfLines={1}>
+                  {r.resolvedActivity}
                 </Text>
               </View>
-            ))
-          ) : (
-            <Text style={styles.value}>-</Text>
-          )}
-        </View>
+            </View>
+          ))
+        ) : (
+          <View style={styles.pairRow}>
+            <View style={styles.pairLeft}>
+              <Text style={styles.pairLabel}>{t("Location")}</Text>
+              <Text style={styles.pairValueLeft}>-</Text>
+            </View>
+            <View style={styles.pairRight}>
+              <Text style={styles.pairLabel}>{t("Activity")}</Text>
+              <Text style={styles.pairValueRight} />
+            </View>
+          </View>
+        )}
       </View>
       <View style={styles.separator} />
       <Row label={t("Date")} value={date || "-"} />
@@ -97,11 +103,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
   },
-  valueContainer: {
-    flex: 1,
-    marginLeft: 12,
-    alignItems: "flex-end",
-  },
   value: {
     color: colors.textDark,
     fontSize: 14,
@@ -110,22 +111,45 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 12,
   },
-  entryRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 2,
-    alignItems: "baseline",
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
+  locationActivitySection: {
+    paddingVertical: 4,
   },
-  entryName: {
+  sectionTitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    alignSelf: "stretch",
+    marginBottom: 6,
+  },
+  pairRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  pairLeft: {
+    flex: 1,
+    alignItems: "flex-start",
+  },
+  pairRight: {
+    flex: 1,
+    alignItems: "flex-end",
+  },
+  pairLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  pairValueLeft: {
     color: colors.textDark,
     fontSize: 14,
     fontWeight: "600",
+    textAlign: "left",
   },
-  entryJob: {
-    fontSize: 12,
-    color: "#888",
+  pairValueRight: {
+    color: colors.textDark,
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "right",
   },
   separator: {
     height: 1,

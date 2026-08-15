@@ -37,6 +37,8 @@ type Params = {
   locations?: string;
   locationAcks?: string;
   jsaSessionId?: string;
+  stepAcks?: string;
+  stepsAcknowledged?: string;
 };
 
 export default function PpeScreen() {
@@ -55,6 +57,8 @@ export default function PpeScreen() {
     locations = "[]",
     locationAcks = "{}",
     jsaSessionId = "",
+    stepAcks = "{}",
+    stepsAcknowledged = "",
   } = useLocalSearchParams<Params>();
   const resolvedTask = jsaType || task;
   const router = useRouter();
@@ -234,6 +238,8 @@ export default function PpeScreen() {
         date,
         ppeSelected: JSON.stringify({ selected, otherItems }),
         jsaSessionId,
+        stepAcks,
+        stepsAcknowledged,
       },
     });
   };

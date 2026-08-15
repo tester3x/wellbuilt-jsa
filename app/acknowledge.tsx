@@ -19,7 +19,7 @@ import SignatureModal from '../components/SignatureModal';
 import { colors } from '../constants/colors';
 import { STORAGE_KEYS } from '../constants/storageKeys';
 import { commitGovernedAfterLocalSave } from '../services/sso/jsaArtifactLive';
-import { adaptGovernedSnapshot, existingGovernedSave } from '../services/sso/jsaArtifactSnapshot';
+import { adaptGovernedSnapshot, applyGovernedLocalSave } from '../services/sso/jsaArtifactSnapshot';
 import { decideGovernedReturn } from '../services/sso/jsaReturn';
 import {
   failClosedCopy,
@@ -82,16 +82,13 @@ export default function AcknowledgeScreen() {
     try {
       const existing = await AsyncStorage.getItem(STORAGE_KEYS.saves);
       const list = existing ? JSON.parse(existing) : [];
-      const prior = existingGovernedSave(Array.isArray(list) ? list : [], ctx.requestId);
-      if (prior) {
-        localRecordId = prior.id;
-        payload = prior.record;
-        localSaveOk = true;
-      } else {
-        const nextList = Array.isArray(list) ? [payload, ...list] : [payload];
-        await AsyncStorage.setItem(STORAGE_KEYS.saves, JSON.stringify(nextList));
-        localSaveOk = true;
+      const applied = applyGovernedLocalSave(Array.isArray(list) ? list : [], ctx.requestId, payload);
+      if (applied.created) {
+        await AsyncStorage.setItem(STORAGE_KEYS.saves, JSON.stringify(applied.saves));
       }
+      localRecordId = applied.id;
+      payload = applied.record;
+      localSaveOk = true;
     } catch {
       Alert.alert('Not saved', failClosedCopy('local_save_failed'));
       return;
