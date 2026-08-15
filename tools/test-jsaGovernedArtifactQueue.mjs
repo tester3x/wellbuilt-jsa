@@ -592,5 +592,96 @@ check('signoff maps signatureImage not signature as the PNG',
     scanned.length === 1 && scanned[0].action === null && scanned[0].completeState === 'completed');
 }
 
+{
+  async function retryBlocked(status) {
+    const { world, store } = memStore();
+    const blocked = applyStatus(
+      freezeQueueItem({
+        requestId: RID, localRecordId: 'orig', snapshot: adapted.value,
+        action: 'read_and_acknowledged', nowMs: 1,
+      }),
+      status,
+      1,
+    );
+    world.queue = [blocked];
+    const out = await commitGovernedAfterLocalSaveWithStore(store, {
+      requestId: RID, action: 'acknowledged', localRecordId: 'retry',
+      snapshot: { ...adapted.value, notes: 'changed' }, localSaveOk: true,
+    });
+    return { world, out, blocked };
+  }
+  const conflict = await retryBlocked('conflict');
+  check('2C-1 blocked conflict Retry causes zero additional complete calls',
+    conflict.world.completes.length === 0);
+  check('2C-2 blocked conflict Retry causes zero additional persist calls',
+    conflict.world.persists.length === 0 && conflict.world.stamps.length === 0);
+  let remote = 0;
+  for (const status of ['malformed', 'binding_mismatch', 'wrong_audience', 'not_found']) {
+    const r = await retryBlocked(status);
+    if (r.world.completes.length || r.world.persists.length || r.out.kind !== 'fail_closed') remote += 1;
+  }
+  check('2C-3 blocked malformed/binding/audience/not_found cause zero remote effects',
+    remote === 0);
+  check('2C-4 blocked Retry returns fail_closed, not pending_retry',
+    conflict.out.kind === 'fail_closed'
+    && conflict.out.refusal === 'conflict'
+    && !/Stay here and tap Retry/i.test(conflict.out.copy)
+    && /could not be securely archived/i.test(conflict.out.copy));
+  check('2C-5 blocked item remains stored and inspectable',
+    conflict.world.queue.length === 1
+    && conflict.world.queue[0].artifactState === 'blocked'
+    && conflict.world.queue[0].lastStatus === 'conflict'
+    && conflict.world.queue[0].snapshot.notes === 'clear');
+}
+
+{
+  const { world, store } = memStore();
+  const succeeded = applyStatus(
+    freezeQueueItem({
+      requestId: RID, localRecordId: 'orig', snapshot: adapted.value,
+      action: 'read_and_acknowledged', nowMs: 1,
+    }),
+    'created',
+    1,
+  );
+  world.queue = [succeeded];
+  const out = await commitGovernedAfterLocalSaveWithStore(store, {
+    requestId: RID, action: 'acknowledged', localRecordId: 'retry',
+    snapshot: { ...adapted.value, notes: 'changed' }, localSaveOk: true,
+  });
+  check('2C-6 succeeded-but-not-dequeued Retry causes zero remote effects',
+    world.completes.length === 0 && world.persists.length === 0 && world.stamps.length === 0);
+  check('2C-7 succeeded-but-not-dequeued item is removed locally and returns completed',
+    out.kind === 'completed' && world.queue.length === 0);
+}
+
+{
+  const { world, store } = memStore({
+    persistImpl: async () => ({ ok: false, status: 'unavailable' }),
+  });
+  const first = await commitGovernedAfterLocalSaveWithStore(store, {
+    requestId: RID, action: 'read_and_acknowledged', localRecordId: '1',
+    snapshot: adapted.value, localSaveOk: true,
+  });
+  world.now += 5_000;
+  world.persistImpl = async () => ({ ok: true, reused: false });
+  const again = await commitGovernedAfterLocalSaveWithStore(store, {
+    requestId: RID, action: 'read_and_acknowledged', localRecordId: '1',
+    snapshot: adapted.value, localSaveOk: true,
+  });
+  check('2C-8 retryable unavailable still retries',
+    first.kind === 'pending_retry' && again.kind === 'completed' && world.persists.length === 2);
+  const pendingItem = applyStatus(
+    freezeQueueItem({
+      requestId: RID2, localRecordId: 'p', snapshot: adapted.value,
+      action: 'read_and_acknowledged', nowMs: 1,
+    }),
+    'pending',
+    1,
+  );
+  check('2C-8b pending remains retryable, not blocked',
+    pendingItem.artifactState === 'unsent' && classifyArtifactStatus('pending') === 'retryable');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

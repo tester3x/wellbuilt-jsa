@@ -814,6 +814,9 @@ async function processItem(store: ArtifactQueueStore, item: ArtifactQueueItem): 
 }> {
   let current = item;
   let completeReused = false;
+  if (current.artifactState === 'blocked' || current.artifactState === 'succeeded') {
+    return { item: current, completeReused };
+  }
   if (mayCompleteFromQueue(current) && current.action) {
     const done = await store.complete(current.requestId, current.action, current.localRecordId);
     if (done.kind === 'completed') {
@@ -829,7 +832,7 @@ async function processItem(store: ArtifactQueueStore, item: ArtifactQueueItem): 
       return { item: applyStatus(current, status, store.nowMs()), completeReused };
     }
   }
-  if (!mayPersistFromQueue(current) && current.completeState !== 'completed') {
+  if (!mayPersistFromQueue(current)) {
     return { item: current, completeReused };
   }
   const persisted = await store.persist(current.requestId, current.snapshot);
@@ -936,11 +939,11 @@ export async function commitGovernedAfterLocalSaveWithStore(
     };
   }
   await store.saveQueue(upsertQueueItem(q, processed.item));
-  if (processed.item.artifactState === 'blocked' && processed.item.lastStatus === 'conflict') {
+  if (processed.item.artifactState === 'blocked') {
     return {
       kind: 'fail_closed',
-      refusal: 'conflict',
-      copy: 'This JSA request was already completed differently. Return to WellBuilt Tickets and launch again.',
+      refusal: processed.item.lastStatus,
+      copy: 'Your JSA is saved on this device, but it could not be securely archived. Do not tap Retry. Return to WellBuilt Tickets if you need a new request.',
     };
   }
   return {
