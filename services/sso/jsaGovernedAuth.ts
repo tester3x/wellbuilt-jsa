@@ -79,6 +79,32 @@ export function resolveGovernedLegalName(
   return collapsed;
 }
 
+export type ExchangeLegalNameClass =
+  | { kind: 'absent' }
+  | { kind: 'ok'; value: string }
+  | { kind: 'invalid' };
+
+/**
+ * Own-property classification for an exchange payload's legalName.
+ * Absent → persist null. Present valid → persist normalized.
+ * Present invalid → reject the entire exchange.
+ */
+export function classifyExchangeLegalName(
+  payload: unknown,
+  displayName?: string | null,
+): ExchangeLegalNameClass {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return { kind: 'absent' };
+  }
+  const o = payload as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(o, 'legalName')) {
+    return { kind: 'absent' };
+  }
+  const resolved = resolveGovernedLegalName(o.legalName, displayName);
+  if (!resolved) return { kind: 'invalid' };
+  return { kind: 'ok', value: resolved };
+}
+
 export const SESSION_FORBIDDEN_PERSIST_KEYS = Object.freeze([
   'customToken',
   'idToken',

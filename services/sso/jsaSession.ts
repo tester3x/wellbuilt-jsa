@@ -4,12 +4,14 @@
  */
 import { isJsaBinding, type JsaBinding } from './jsaBinding';
 import {
+  classifyExchangeLegalName,
   resolveGovernedLegalName,
   sanitizeSessionForPersist,
   validatePersistedGovernedSession,
 } from './jsaGovernedAuth';
 
 export {
+  classifyExchangeLegalName,
   resolveGovernedLegalName,
   sanitizeSessionForPersist,
   validatePersistedGovernedSession,
@@ -48,7 +50,8 @@ export function validateExchangePayload(raw: unknown): ExchangePayload | null {
   if (typeof o.companyId !== 'string' || !o.companyId) return null;
   if (!isJsaBinding(o.jsaBinding)) return null;
   const displayName = typeof o.displayName === 'string' ? o.displayName : undefined;
-  const legalName = resolveGovernedLegalName(o.legalName, displayName);
+  const classified = classifyExchangeLegalName(o, displayName);
+  if (classified.kind === 'invalid') return null;
   return {
     protocolVersion: 1,
     customToken: o.customToken,
@@ -56,7 +59,7 @@ export function validateExchangePayload(raw: unknown): ExchangePayload | null {
     driverId: o.driverId,
     companyId: o.companyId,
     displayName,
-    ...(legalName ? { legalName } : {}),
+    ...(classified.kind === 'ok' ? { legalName: classified.value } : {}),
     jsaBinding: o.jsaBinding,
   };
 }

@@ -10,6 +10,7 @@ import {
   sanitizeSessionForPersist,
   sessionViewFromExchange,
   resolveGovernedLegalName,
+  classifyExchangeLegalName,
   SESSION_FORBIDDEN_PERSIST_KEYS,
   decideStoredSessionBranch,
   isUsableGovernedSession,
@@ -242,28 +243,55 @@ check('sanitize drops any extra token field if a caller stuffed one',
   !('customToken' in sanitizeSessionForPersist(validSession()))
   && SESSION_FORBIDDEN_PERSIST_KEYS.includes('customToken'));
 
-// ── authenticated exchange legalName: accept / persist / reload / use ──────
+// ── authenticated exchange legalName: absent / valid / present-invalid ────
 {
   const sessionSrc = readFileSync(join(root, 'services/sso/jsaSession.ts'), 'utf8');
   const livePersist = readFileSync(join(root, 'services/sso/jsaGovernedAuthLive.ts'), 'utf8');
-  check('validateExchangePayload resolves optional exchange legalName',
-    sessionSrc.includes('legalName?: string')
-    && sessionSrc.includes('resolveGovernedLegalName(o.legalName, displayName)'));
+  const callbackLive = readFileSync(join(root, 'services/sso/jsaCallbackLive.ts'), 'utf8');
+  check('validateExchangePayload uses own-property classification',
+    sessionSrc.includes('classifyExchangeLegalName(o, displayName)')
+    && sessionSrc.includes("classified.kind === 'invalid'")
+    && /if \(classified\.kind === 'invalid'\) return null/.test(sessionSrc));
   check('live persistAfterExchange uses payload.legalName, never hardcodes null',
     /legalName:\s*payload\.legalName\s*\?\?\s*null/.test(livePersist)
     && !/legalName:\s*null/.test(livePersist));
+  check('callback validates the exchange before persistAfterExchange',
+    callbackLive.includes('validateExchangePayload')
+    && callbackLive.includes('persistAfterExchange')
+    && callbackLive.indexOf('validateExchangePayload') < callbackLive.indexOf('persistAfterExchange'));
+
+  const base = validPayload({ displayName: 'Mikezfold' });
+  check('absent legalName is accepted',
+    classifyExchangeLegalName(base, 'Mikezfold').kind === 'absent');
+  check('present valid legalName is accepted and normalized',
+    JSON.stringify(classifyExchangeLegalName(
+      { ...base, legalName: '  Michael S Burger  ' }, 'Mikezfold',
+    )) === JSON.stringify({ kind: 'ok', value: 'Michael S Burger' }));
+
+  const presentInvalid = [
+    ['null', { ...base, legalName: null }],
+    ['undefined own-property', { ...base, legalName: undefined }],
+    ['boolean', { ...base, legalName: true }],
+    ['number', { ...base, legalName: 42 }],
+    ['object', { ...base, legalName: { name: 'Michael' } }],
+    ['array', { ...base, legalName: ['Michael'] }],
+    ['empty string', { ...base, legalName: '' }],
+    ['whitespace-only', { ...base, legalName: '   ' }],
+    ['over 64 characters', { ...base, legalName: 'x'.repeat(65) }],
+    ['control characters', { ...base, legalName: `Michael${String.fromCharCode(0)}` }],
+    ['indistinguishable from displayName', { ...base, legalName: 'Mikezfold' }],
+    ['displayName case-insensitive', { ...base, legalName: 'mikezfold' }],
+  ];
+  for (const [label, payload] of presentInvalid) {
+    check(`present-invalid legalName (${label}) rejects the exchange`,
+      classifyExchangeLegalName(payload, 'Mikezfold').kind === 'invalid');
+  }
 
   check('distinct legalName is accepted after trim',
     resolveGovernedLegalName('  Michael S Burger  ', 'Mikezfold') === 'Michael S Burger');
-  check('displayName-identical legalName is omitted, never substituted',
+  check('resolver still never copies displayName',
     resolveGovernedLegalName('Mikezfold', 'Mikezfold') === null
-    && resolveGovernedLegalName('mikezfold', 'Mikezfold') === null
     && resolveGovernedLegalName(null, 'Mikezfold') === null);
-  check('unusable legalName is omitted',
-    resolveGovernedLegalName('', 'Mikezfold') === null
-    && resolveGovernedLegalName(42, 'Mikezfold') === null
-    && resolveGovernedLegalName('x'.repeat(65), 'Mikezfold') === null
-    && resolveGovernedLegalName(`Michael${String.fromCharCode(0)}`, 'Mikezfold') === null);
 
   const persisted = [];
   const installed = await installGovernedAuthSession({
@@ -293,15 +321,38 @@ check('sanitize drops any extra token field if a caller stuffed one',
     persist: async (session) => { missingPersisted.push(session); },
   });
   const missingReloaded = validatePersistedGovernedSession(missingPersisted[0]);
-  check('missing legalName persists as null and is not substituted from displayName',
+  check('absent legalName persists as null and is not substituted from displayName',
     missingReloaded?.legalName === null
     && missingReloaded?.displayName === 'Mikezfold');
-  check('identical-to-displayName legalName is not persisted',
-    sessionViewFromExchange(
-      validPayload({ displayName: 'Mikezfold', legalName: 'Mikezfold' }),
-      'Mikezfold',
-      'g-same',
-    ).legalName === null);
+
+  let persistCalls = 0;
+  const existing = validSession({ legalName: 'Michael S Burger', generation: 'keep-me' });
+  const invalidClass = classifyExchangeLegalName(
+    { ...base, legalName: '' }, 'Mikezfold',
+  );
+  if (invalidClass.kind !== 'invalid') persistCalls += 1;
+  check('present-invalid payload creates no session and does not replace an existing one',
+    invalidClass.kind === 'invalid'
+    && persistCalls === 0
+    && existing.legalName === 'Michael S Burger'
+    && existing.generation === 'keep-me');
+
+  const scanLegal = [
+    'services/sso/jsaSession.ts',
+    'services/sso/jsaGovernedAuth.ts',
+    'services/sso/jsaGovernedAuthLive.ts',
+  ];
+  const legalLogs = [];
+  for (const f of scanLegal) {
+    const src = readFileSync(join(root, f), 'utf8');
+    src.split(/\r?\n/).forEach((line, i) => {
+      if (!/console\.(log|warn|error|info|debug)\(/.test(line)) return;
+      const args = /console\.(log|warn|error|info|debug)\((.*)$/.exec(line)?.[2] || '';
+      const withoutStrings = args.replace(/'[^']*'|"[^"]*"|`[^`$]*`/g, '');
+      if (/\blegalName\b/.test(withoutStrings)) legalLogs.push(`${f}:${i + 1}`);
+    });
+  }
+  check('authorized legalName files never log legalName', legalLogs.length === 0, legalLogs.join(', '));
 }
 
 // ── exact unauthenticated classification ──────────────────────────────────
