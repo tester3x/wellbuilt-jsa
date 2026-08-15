@@ -18,11 +18,13 @@ import {
   decideGovernedJobPopulate,
   decideGovernedJobScreen,
   freezeGovernedJobForSave,
+  finalizeSaveActivityFields,
   jobWorkflowMayAdvance,
   pendingGovernedReadMaySave,
   shouldApplyLegacyJobHydration,
   snapshotFromPopulate,
 } from '../services/sso/jsaGovernedJobFields.ts';
+import { adaptGovernedSnapshot } from '../services/sso/jsaArtifactSnapshot.ts';
 import { decideJobDetailsIsolation } from '../services/sso/jsaJobDetailsIsolation.ts';
 import { decideAutoNavigation } from '../services/jsaAutoNav.ts';
 
@@ -406,6 +408,117 @@ check('5A-1 failed/terminal resolution produces no save or legacy cloud write',
   && signoffSrc.includes("pendingGovernedReadMaySave")
   && signoffSrc.includes("frozenJob.source !== 'governed_snapshot'")
   && !/jsaRegisterReadRequest|runCloudPersist/.test(liveSrc));
+
+{
+  const noTypePop = decideGovernedJobPopulate({
+    launchRequestId: RID,
+    context: { requestId: RID, state: 'pending', intent: 'read', jobRef: JOB, wellName: 'Gab 1' },
+    explicitFailure: false,
+  });
+  const hostileWells = [{ name: 'Gab 1', jobType: 'oil' }];
+  const frozenHostile = freezeGovernedJobForSave({
+    populate: noTypePop,
+    wells: hostileWells,
+    wellName: 'Gab 1',
+    jobActivityName: 'oil',
+  });
+  const canonicalHostile = 'oil';
+  const paramsTaskHostile = 'oil';
+  const governedFields = finalizeSaveActivityFields({
+    source: frozenHostile.source,
+    frozenJobActivityName: frozenHostile.jobActivityName,
+    frozenWellName: frozenHostile.wellName,
+    frozenWells: frozenHostile.wells,
+    canonicalActivity: canonicalHostile,
+    paramsTask: paramsTaskHostile,
+    standaloneWellName: 'Gab 1',
+    standaloneWells: hostileWells,
+  });
+  const governedPayload = {
+    jobActivityName: governedFields.jobActivityName,
+    wellName: governedFields.wellName,
+    wells: governedFields.wells,
+    task: governedFields.task,
+    locations: ['Gab 1'],
+    locationAcks: { 'Gab 1': true },
+    signature: 'Mike Burger',
+    signatureImage: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    prepared: { trained: true },
+    notes: '',
+    pusher: '',
+    otherInfo: '',
+    date: '2026-08-12',
+  };
+  const activityBlob = JSON.stringify({
+    jobActivityName: governedPayload.jobActivityName,
+    task: governedPayload.task,
+    jobType: governedPayload.jobType,
+    wells: governedPayload.wells,
+  });
+  const adapted = adaptGovernedSnapshot(governedPayload);
+  check('5A-2 freeze still leaves missing jobType empty against hostile oil',
+    noTypePop.kind === 'populate' && !noTypePop.jobType
+    && frozenHostile.source === 'governed_snapshot'
+    && frozenHostile.wellName === 'Gab 1'
+    && frozenHostile.jobActivityName === ''
+    && !frozenHostile.wells[0].jobType);
+  check('5A-2 governed pre-adapter payload keeps Gab 1 and empty activity',
+    governedPayload.wellName === 'Gab 1'
+    && governedPayload.jobActivityName === ''
+    && governedPayload.task === ''
+    && Array.isArray(governedPayload.wells)
+    && governedPayload.wells[0].name === 'Gab 1'
+    && !governedPayload.wells[0].jobType
+    && !('jobType' in governedPayload));
+  check('5A-2 governed pre-adapter activity fields contain no oil',
+    !/oil/.test(activityBlob)
+    && !/oil/.test(governedPayload.jobActivityName)
+    && !/oil/.test(governedPayload.task)
+    && !governedPayload.wells.some((w) => /oil/.test(JSON.stringify(w.jobType || ''))));
+  check('5A-2 adapter input payload is the finalized request-bound fields',
+    adapted.ok === true
+    && !/oil/.test(JSON.stringify({
+      jobActivityName: governedPayload.jobActivityName,
+      task: governedPayload.task,
+      wells: governedPayload.wells,
+    })));
+
+  const standalonePop = { kind: 'none', reason: 'no_launch' };
+  const standaloneFrozen = freezeGovernedJobForSave({
+    populate: standalonePop,
+    wells: hostileWells,
+    wellName: 'Gab 1',
+    jobActivityName: 'oil',
+  });
+  const standaloneFields = finalizeSaveActivityFields({
+    source: standaloneFrozen.source,
+    frozenJobActivityName: standaloneFrozen.jobActivityName,
+    frozenWellName: standaloneFrozen.wellName,
+    frozenWells: standaloneFrozen.wells,
+    canonicalActivity: canonicalHostile,
+    paramsTask: paramsTaskHostile,
+    standaloneWellName: 'Gab 1',
+    standaloneWells: hostileWells,
+  });
+  const standalonePayload = {
+    jobActivityName: standaloneFields.jobActivityName,
+    wellName: standaloneFields.wellName,
+    wells: standaloneFields.wells,
+    task: standaloneFields.task,
+  };
+  check('5A-2 standalone fixture retains legacy oil activity',
+    standaloneFrozen.source === 'nav_params'
+    && standalonePayload.wellName === 'Gab 1'
+    && standalonePayload.jobActivityName === 'oil'
+    && standalonePayload.task === 'oil'
+    && standalonePayload.wells[0].jobType === 'oil');
+}
+
+check('5A-2 signoff finalizes activity at the adapter payload boundary',
+  signoffSrc.includes('finalizeSaveActivityFields')
+  && signoffSrc.includes('task: taskForSave')
+  && signoffSrc.includes('jobActivityName: activityForSave')
+  && !/task:\s*activityForSave\s*\|\|\s*paramsTask\s*\|\|\s*canonicalActivity/.test(signoffSrc));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

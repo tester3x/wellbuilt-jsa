@@ -351,15 +351,21 @@ export default function SignoffScreen() {
       if (frozenJob.source !== 'governed_snapshot' && frozenJob.source !== 'nav_params') {
         return;
       }
-      const wellsForSave = frozenJob.source === 'governed_snapshot'
-        ? frozenJob.wells
-        : wellsForSaveRaw;
-      const wellNameForSave = frozenJob.source === 'governed_snapshot'
-        ? frozenJob.wellName
-        : (jobWellName || (params.wellName as string) || '');
-      const activityForSave = frozenJob.source === 'governed_snapshot'
-        ? frozenJob.jobActivityName
-        : (frozenJob.jobActivityName || canonicalActivity);
+      const { finalizeSaveActivityFields } = await import('../services/sso/jsaGovernedJobFields');
+      const activityFields = finalizeSaveActivityFields({
+        source: frozenJob.source,
+        frozenJobActivityName: frozenJob.jobActivityName,
+        frozenWellName: frozenJob.wellName,
+        frozenWells: frozenJob.wells,
+        canonicalActivity,
+        paramsTask,
+        standaloneWellName: jobWellName || (params.wellName as string) || '',
+        standaloneWells: wellsForSaveRaw,
+      });
+      const wellsForSave = activityFields.wells;
+      const wellNameForSave = activityFields.wellName;
+      const activityForSave = activityFields.jobActivityName;
+      const taskForSave = activityFields.task;
 
       // Resolve session up front so linkage fields land in BOTH the local
       // AsyncStorage save (replayed by syncToCloud) AND the direct Firestore
@@ -458,7 +464,7 @@ export default function SignoffScreen() {
         wells: wellsForSave,
         otherInfo: params.otherInfo ?? "",
         location: params.location ?? "",
-        task: activityForSave || paramsTask || canonicalActivity,
+        task: taskForSave,
         date: params.date ?? "",
         ppeSelected: ppeObj,
         ppeOtherItems,

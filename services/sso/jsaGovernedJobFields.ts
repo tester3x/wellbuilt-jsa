@@ -222,3 +222,43 @@ export function freezeGovernedJobForSave(input: {
     source: handoff.source,
   };
 }
+
+/**
+ * Last-mile save fields presented to adaptGovernedSnapshot.
+ * Governed snapshot activity is request-bound only. Standalone keeps
+ * canonical-activity fallbacks.
+ */
+export function finalizeSaveActivityFields(input: {
+  source: JobHandoffSource;
+  frozenJobActivityName: string;
+  frozenWellName: string;
+  frozenWells: unknown[];
+  canonicalActivity: string;
+  paramsTask: string;
+  standaloneWellName: string;
+  standaloneWells: unknown[];
+}): {
+  jobActivityName: string;
+  task: string;
+  wellName: string;
+  wells: unknown[];
+} {
+  if (input.source === 'governed_snapshot') {
+    const activity = typeof input.frozenJobActivityName === 'string'
+      ? input.frozenJobActivityName
+      : '';
+    return {
+      jobActivityName: activity,
+      task: activity,
+      wellName: input.frozenWellName || '',
+      wells: Array.isArray(input.frozenWells) ? input.frozenWells : [],
+    };
+  }
+  const standalone = input.canonicalActivity || '';
+  return {
+    jobActivityName: standalone,
+    task: standalone || input.paramsTask || '',
+    wellName: input.standaloneWellName || '',
+    wells: Array.isArray(input.standaloneWells) ? input.standaloneWells : [],
+  };
+}
