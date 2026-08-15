@@ -465,6 +465,10 @@ export const clearDriverSession = async (): Promise<void> => {
       "jsa_autofill",
       "jsa_returnTo",
       "jsa_resume",
+      "@jsa/freshGovernedSubmitted",
+      "@jsa/governedLaunchContext",
+      "@jsa/governedLaunchOwnership",
+      "@jsa/governedUiStage",
     ]);
   } catch (err) {
     console.warn("[logout] period-cache clear failed (non-fatal):", err);

@@ -286,10 +286,37 @@ export async function clearGovernedUiStage(): Promise<void> {
   await AsyncStorage.removeItem(GOVERNED_UI_STAGE_KEY);
 }
 
-/** Stay on JSA: drop only transient launch/nav so home is not the replay surface. */
+/** Stay on JSA / successful Return: drop only transient launch/nav. */
 export async function consumeGovernedLaunchAfterStay(): Promise<void> {
   await clearFreshSubmittedMarker();
   await clearLaunchContext();
   await AsyncStorage.removeItem(GOVERNED_LAUNCH_OWNERSHIP_KEY);
   await clearGovernedUiStage();
+}
+
+/**
+ * Open the governed WB-T return URL, then consume transient nav only if
+ * Linking accepted the handoff. A throw leaves marker + launch in place.
+ */
+export async function handoffGovernedReturnThenConsume(input: {
+  launch: JsaLaunchRequest | null;
+  action: string;
+  reused?: boolean;
+  openUrl: (url: string) => Promise<void>;
+}): Promise<'opened_and_consumed' | 'open_failed_retain' | 'no_url'> {
+  const { decideGovernedReturn } = await import('./jsaReturn');
+  const decided = decideGovernedReturn({
+    launch: input.launch,
+    completion: input.launch
+      ? { requestId: input.launch.requestId, action: input.action as never, reused: !!input.reused }
+      : null,
+  });
+  if (!('open' in decided)) return 'no_url';
+  try {
+    await input.openUrl(decided.open);
+  } catch {
+    return 'open_failed_retain';
+  }
+  await consumeGovernedLaunchAfterStay();
+  return 'opened_and_consumed';
 }

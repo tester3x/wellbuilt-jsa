@@ -7,7 +7,6 @@ import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   Alert,
-  Linking,
   StyleSheet,
   Text,
   TextInput,
@@ -20,13 +19,12 @@ import { colors } from '../constants/colors';
 import { STORAGE_KEYS } from '../constants/storageKeys';
 import { commitGovernedAfterLocalSave } from '../services/sso/jsaArtifactLive';
 import { adaptGovernedSnapshot, applyGovernedLocalSave } from '../services/sso/jsaArtifactSnapshot';
-import { decideGovernedReturn } from '../services/sso/jsaReturn';
 import {
   failClosedCopy,
   governedRecordLink,
   pendingDisplayFields,
 } from '../services/sso/jsaRequestLifecycle';
-import { loadGovernedSession, loadLaunchContext, loadRequestContext } from '../services/sso/jsaRuntime';
+import { loadGovernedSession, loadRequestContext } from '../services/sso/jsaRuntime';
 import { legalAcknowledgmentName } from '../services/sso/jsaSession';
 import { useTheme } from './contexts/ThemeContext';
 
@@ -56,7 +54,6 @@ export default function AcknowledgeScreen() {
 
   const persistAndComplete = async () => {
     const ctx = await loadRequestContext();
-    const launch = await loadLaunchContext();
     if (!ctx || ctx.intent !== 'acknowledge') {
       router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
       return;
@@ -113,24 +110,10 @@ export default function AcknowledgeScreen() {
       router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: done.refusal } } as any);
       return;
     }
-    const ret = decideGovernedReturn({
-      launch,
-      completion: {
-        requestId: ctx.requestId,
-        action: done.action,
-        reused: done.reused,
-      },
-    });
-    if ('open' in ret) {
-      try { await Linking.openURL(ret.open); } catch {}
-      return;
-    }
     const { recordFreshGovernedSubmitted } = await import('../services/sso/jsaRuntime');
-    if (!done.reused) {
-      await recordFreshGovernedSubmitted(ctx.requestId, done.action);
-    }
+    await recordFreshGovernedSubmitted(ctx.requestId, done.action);
     const { resolveCompletedTerminalHref } = await import('../services/sso/jsaGovernedRoute');
-    router.replace((await resolveCompletedTerminalHref(done.reused)) as any);
+    router.replace((await resolveCompletedTerminalHref()) as any);
   };
 
   const onSubmit = () => {

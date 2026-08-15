@@ -36,6 +36,11 @@ check('logout clears the pending WB-T read request',
   clearFn.includes('@jsa/wbtReadRequest'));
 check('logout clears pending current-period UI state (autofill/returnTo/resume)',
   clearFn.includes('jsa_autofill') && clearFn.includes('jsa_returnTo') && clearFn.includes('jsa_resume'));
+check('logout clears the fresh governed submitted marker and launch nav state',
+  clearFn.includes('@jsa/freshGovernedSubmitted')
+  && clearFn.includes('@jsa/governedLaunchContext')
+  && clearFn.includes('@jsa/governedLaunchOwnership')
+  && clearFn.includes('@jsa/governedUiStage'));
 {
   const removeList = clearFn.match(/multiRemove\(\[([\s\S]*?)\]/)?.[1] ?? '';
   check('logout does NOT erase saved/historical JSAs (multiRemove list excludes them)',

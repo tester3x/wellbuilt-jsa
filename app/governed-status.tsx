@@ -7,7 +7,11 @@ import { useEffect, useState } from 'react';
 import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors } from '../constants/colors';
 import { decideGovernedReturn } from '../services/sso/jsaReturn';
-import { consumeGovernedLaunchAfterStay, loadLaunchContext } from '../services/sso/jsaRuntime';
+import {
+  consumeGovernedLaunchAfterStay,
+  handoffGovernedReturnThenConsume,
+  loadLaunchContext,
+} from '../services/sso/jsaRuntime';
 import {
   failClosedCopy,
   type JsaCompletionAction,
@@ -76,7 +80,19 @@ export default function GovernedStatusScreen() {
       await onRetry();
       return;
     }
-    if ((mode === 'completed' || mode === 'submitted') && action) {
+    if (mode === 'submitted' && action) {
+      const launch = await loadLaunchContext();
+      const result = await handoffGovernedReturnThenConsume({
+        launch,
+        action,
+        reused: params.reused === '1',
+        openUrl: (url) => Linking.openURL(url),
+      });
+      if (result === 'opened_and_consumed') return;
+      if (result === 'open_failed_retain') return;
+      return;
+    }
+    if (mode === 'completed' && action) {
       const launch = await loadLaunchContext();
       const decided = decideGovernedReturn({
         launch,

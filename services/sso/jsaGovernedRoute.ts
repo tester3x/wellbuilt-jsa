@@ -58,10 +58,8 @@ export async function resolveEntryRoute(
       void import('./jsaArtifactLive').then((m) => m.settleGovernedArtifactQueue()).catch(() => {
         console.log(JSON.stringify({ tag: '[jsa-artifact-queue]', outcome: 'settle_failed' }));
       });
-      if (!done.reused) {
-        await recordFreshGovernedSubmitted(pending.requestId, done.action);
-      }
-      return resolveCompletedTerminalHref(done.reused);
+      await recordFreshGovernedSubmitted(pending.requestId, done.action);
+      return resolveCompletedTerminalHref();
     }
     return { pathname: '/governed-status', params: { mode: 'fail', refusal: done.refusal } };
   }

@@ -100,3 +100,16 @@ export function submittedHeading(): 'JSA Submitted' {
 export function replayHeading(): 'Already completed' {
   return 'Already completed';
 }
+
+/** Current-flow complete records fresh success even when the server says reused. */
+export function shouldRecordFreshSubmitted(input: { kind: string }): boolean {
+  return input.kind === 'completed';
+}
+
+/**
+ * Return consumes transient launch/nav only after Linking actually accepted the URL.
+ * A failed handoff retains the marker so the submitted surface can be restored.
+ */
+export function decideAfterReturnHandoff(opened: boolean): 'consume' | 'retain' {
+  return opened ? 'consume' : 'retain';
+}
