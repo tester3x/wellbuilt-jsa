@@ -26,6 +26,7 @@ import type { IsolationReason } from "../services/sso/jsaJobDetailsIsolation";
 import {
   applyGovernedJobHandoff,
   decideGovernedJobPopulate,
+  decideGovernedJobScreen,
   type GovernedJobPopulate,
 } from "../services/sso/jsaGovernedJobFields";
 
@@ -87,9 +88,20 @@ export default function StepsScreen() {
         });
         setJobPopulate(pop);
         setGuardReason(isolation.reason);
-        if (pop.kind === 'fail_closed') {
+        const dest = decideGovernedJobScreen(pop);
+        if (dest === 'fail') {
           setStepsGuard('denied');
           router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
+          return;
+        }
+        if (dest === 'completed') {
+          setStepsGuard('denied');
+          router.replace({ pathname: '/governed-status', params: { mode: 'completed' } } as any);
+          return;
+        }
+        if (dest === 'acknowledge') {
+          setStepsGuard('denied');
+          router.replace('/acknowledge' as any);
           return;
         }
         if (!stepsRouteAllowed(isolation.blocked)) {

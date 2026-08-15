@@ -66,6 +66,7 @@ import {
 import {
   applyGovernedJobHandoff,
   decideGovernedJobPopulate,
+  decideGovernedJobScreen,
   shouldApplyLegacyJobHydration,
   type GovernedJobPopulate,
 } from "../../services/sso/jsaGovernedJobFields";
@@ -1924,6 +1925,16 @@ export default function JsaHomeScreen() {
       jobActivityParam: jobActivityName,
     });
     if (jobHandoff.source === 'blocked') return;
+    const nextDest = decideGovernedJobScreen(governedJobPopulate);
+    if (nextDest === 'completed') {
+      router.replace({ pathname: '/governed-status', params: { mode: 'completed' } } as any);
+      return;
+    }
+    if (nextDest === 'acknowledge') {
+      router.replace('/acknowledge' as any);
+      return;
+    }
+    if (nextDest === 'fail') return;
 
     router.push({
       pathname: "/steps",
@@ -2341,6 +2352,16 @@ export default function JsaHomeScreen() {
                   jobActivityParam: jobActivityName,
                 });
                 if (jobHandoff.source === 'blocked') return;
+                const dest = decideGovernedJobScreen(governedJobPopulate);
+                if (dest === 'completed') {
+                  router.replace({ pathname: '/governed-status', params: { mode: 'completed' } } as any);
+                  return;
+                }
+                if (dest === 'acknowledge') {
+                  router.replace('/acknowledge' as any);
+                  return;
+                }
+                if (dest === 'fail') return;
                 router.push({
                   pathname: '/steps',
                   params: {

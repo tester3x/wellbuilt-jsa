@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { JsaSummaryCard, buildLocationActivityRows } from "../components/jsa";
+import GovernedIsolationSurface from "../components/GovernedIsolationSurface";
 import { redactRequestIds } from "../services/wbtReadRequest";
 import SignatureModal from "../components/SignatureModal";
 import { colors } from "../constants/colors";
@@ -105,30 +106,55 @@ export default function SignoffScreen() {
 
   // Parse wells and locations passed from previous screen
   // Parse wells — supports both old (string[]) and new (WellEntry[]) formats
-  const [jobWellsJson, setJobWellsJson] = useState((params.wells as string) || '[]');
-  const [jobWellName, setJobWellName] = useState((params.wellName as string) || '');
-  const [jobActivityResolved, setJobActivityResolved] = useState((params.jobActivityName as string) || '');
+  const [jobWellsJson, setJobWellsJson] = useState('[]');
+  const [jobWellName, setJobWellName] = useState('');
+  const [jobActivityResolved, setJobActivityResolved] = useState('');
+  const [jobGate, setJobGate] = useState<'pending' | 'ready' | 'failed'>('pending');
+  const [jobSource, setJobSource] = useState<'governed_snapshot' | 'nav_params' | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const { resolveGovernedJobHandoff } = await import('../services/sso/jsaGovernedJobLive');
+        const { decideGovernedJobScreen, jobWorkflowMayAdvance } = await import('../services/sso/jsaGovernedJobFields');
         const { populate, handoff } = await resolveGovernedJobHandoff({
           wellsParam: (params.wells as string) || '[]',
           wellNameParam: (params.wellName as string) || '',
           jobActivityParam: (params.jobActivityName as string) || '',
         });
         if (cancelled) return;
-        if (populate.kind === 'fail_closed') {
+        const dest = decideGovernedJobScreen(populate);
+        if (dest === 'fail') {
+          setJobGate('failed');
+          router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
+          return;
+        }
+        if (dest === 'completed') {
+          setJobGate('failed');
+          router.replace({ pathname: '/governed-status', params: { mode: 'completed' } } as any);
+          return;
+        }
+        if (dest === 'acknowledge') {
+          setJobGate('failed');
+          router.replace('/acknowledge' as any);
+          return;
+        }
+        if (!jobWorkflowMayAdvance({ resolution: 'ready', handoff })) {
+          setJobGate('failed');
           router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
           return;
         }
         setJobWellsJson(handoff.wells);
         setJobWellName(handoff.wellName);
-        setJobActivityResolved(handoff.jobActivityName || (params.jobActivityName as string) || '');
+        setJobActivityResolved(handoff.jobActivityName);
+        setJobSource(handoff.source === 'governed_snapshot' || handoff.source === 'nav_params' ? handoff.source : null);
+        setJobGate('ready');
       } catch {
-        if (!cancelled) router.replace('/(tabs)' as any);
+        if (!cancelled) {
+          setJobGate('failed');
+          router.replace('/(tabs)' as any);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -176,11 +202,11 @@ export default function SignoffScreen() {
       wellsList,
       locations,
       {
-        jobActivityName: jobActivityResolved || (params.jobActivityName as string | undefined),
-        task: params.task as string | undefined,
+        jobActivityName: jobActivityResolved,
+        task: jobSource === 'nav_params' ? (params.task as string | undefined) : jobActivityResolved,
       },
     )
-  ), [wellsList, locations, jobActivityResolved, params.jobActivityName, params.task]);
+  ), [wellsList, locations, jobActivityResolved, jobSource, params.task]);
 
   const togglePrepared = (id: string) => {
     setPrepared((prev) => ({
@@ -216,6 +242,7 @@ export default function SignoffScreen() {
   }, [prepared]);
 
   const handleSubmit = () => {
+    if (jobGate !== 'ready' || !jobSource) return;
     // Validation: Drawn signature required
     if (!signatureImage) {
       Alert.alert(
@@ -227,6 +254,7 @@ export default function SignoffScreen() {
     }
 
     const saveAndGo = async () => {
+      if (jobGate !== 'ready' || !jobSource) return;
       // Parse PPE into structured format for JSARecord
       let ppeObj: Record<string, boolean> = {};
       let ppeOtherItems: string[] = [];
@@ -290,25 +318,48 @@ export default function SignoffScreen() {
       const { resolveGovernedJobHandoff } = await import('../services/sso/jsaGovernedJobLive');
       const resolved = await resolveGovernedJobHandoff({
         wellsParam: JSON.stringify(wellsForSaveRaw),
-        wellNameParam: jobWellName || (params.wellName as string) || '',
-        jobActivityParam: jobActivityResolved || canonicalActivity,
+        wellNameParam: jobWellName,
+        jobActivityParam: jobActivityResolved,
       });
-      if (resolved.populate.kind === 'fail_closed') {
+      const { decideGovernedJobScreen, pendingGovernedReadMaySave } =
+        await import('../services/sso/jsaGovernedJobFields');
+      const dest = decideGovernedJobScreen(resolved.populate);
+      if (dest === 'completed') {
+        router.replace({ pathname: '/governed-status', params: { mode: 'completed' } } as any);
+        return;
+      }
+      if (dest === 'acknowledge') {
+        router.replace('/acknowledge' as any);
+        return;
+      }
+      if (dest === 'fail' || resolved.handoff.source === 'blocked') {
         Alert.alert(
           t('Cannot complete') || 'Cannot complete',
           'This JSA request is not valid. Return to WellBuilt Tickets and launch again.',
         );
         return;
       }
+      if (resolved.hasLaunch && !pendingGovernedReadMaySave(resolved.handoff)) {
+        return;
+      }
       const frozenJob = freezeGovernedJobForSave({
         populate: resolved.populate,
         wells: wellsForSaveRaw,
-        wellName: jobWellName || (params.wellName as string) || '',
-        jobActivityName: jobActivityResolved || canonicalActivity,
+        wellName: jobWellName,
+        jobActivityName: jobActivityResolved,
       });
-      const wellsForSave = frozenJob.wells;
-      const wellNameForSave = frozenJob.wellName;
-      const activityForSave = frozenJob.jobActivityName || canonicalActivity;
+      if (frozenJob.source !== 'governed_snapshot' && frozenJob.source !== 'nav_params') {
+        return;
+      }
+      const wellsForSave = frozenJob.source === 'governed_snapshot'
+        ? frozenJob.wells
+        : wellsForSaveRaw;
+      const wellNameForSave = frozenJob.source === 'governed_snapshot'
+        ? frozenJob.wellName
+        : (jobWellName || (params.wellName as string) || '');
+      const activityForSave = frozenJob.source === 'governed_snapshot'
+        ? frozenJob.jobActivityName
+        : (frozenJob.jobActivityName || canonicalActivity);
 
       // Resolve session up front so linkage fields land in BOTH the local
       // AsyncStorage save (replayed by syncToCloud) AND the direct Firestore
@@ -1415,6 +1466,14 @@ export default function SignoffScreen() {
     dismissStack();
     router.replace('/(tabs)');
   };
+
+  if (jobGate !== 'ready') {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <GovernedIsolationSurface kind="connecting" variant="overlay" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>

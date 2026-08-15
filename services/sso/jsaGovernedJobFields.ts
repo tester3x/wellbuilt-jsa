@@ -23,7 +23,10 @@ export type GovernedJobPopulate =
       jobRef?: string;
       intent: string;
     }
-  | { kind: 'fail_closed'; reason: 'missing_well' | 'terminal' | 'mismatch' | 'no_context' }
+  | {
+      kind: 'fail_closed';
+      reason: 'missing_well' | 'terminal' | 'mismatch' | 'no_context' | 'not_pending' | 'not_read_stage';
+    }
   | { kind: 'none'; reason: string };
 
 export function decideGovernedJobPopulate(input: {
@@ -39,9 +42,9 @@ export function decideGovernedJobPopulate(input: {
   }
   if (input.context.state === 'completed') return { kind: 'none', reason: 'completed' };
   if (input.context.intent === 'acknowledge') return { kind: 'none', reason: 'acknowledge_only' };
-  if (input.context.state !== 'pending') return { kind: 'none', reason: 'not_pending' };
+  if (input.context.state !== 'pending') return { kind: 'fail_closed', reason: 'not_pending' };
   if (input.context.intent !== 'read' && input.context.intent !== 'read_and_acknowledge') {
-    return { kind: 'none', reason: 'not_read_stage' };
+    return { kind: 'fail_closed', reason: 'not_read_stage' };
   }
   const wellName = typeof input.context.wellName === 'string' ? input.context.wellName.trim() : '';
   if (!wellName) return { kind: 'fail_closed', reason: 'missing_well' };
@@ -95,7 +98,12 @@ export function snapshotFromPopulate(pop: GovernedJobPopulate): GovernedJobSnaps
   };
 }
 
-export type JobHandoffSource = 'governed_snapshot' | 'nav_params' | 'blocked';
+export type JobHandoffSource =
+  | 'governed_snapshot'
+  | 'nav_params'
+  | 'blocked'
+  | 'completed'
+  | 'acknowledge_only';
 
 export interface GovernedJobHandoff {
   wells: string;
@@ -122,7 +130,18 @@ export function applyGovernedJobHandoff(input: {
     return { wells: '[]', wellName: '', jobActivityName: '', source: 'blocked' };
   }
   const snap = snapshotFromPopulate(input.populate);
-  if (!snap) {
+  if (snap) {
+    return {
+      wells: snap.wellsJson,
+      wellName: snap.wellName,
+      jobActivityName: snap.jobType || '',
+      source: 'governed_snapshot',
+      requestId: snap.requestId,
+      ...(snap.jobRef ? { jobRef: snap.jobRef } : {}),
+      intent: snap.intent,
+    };
+  }
+  if (input.populate.kind === 'none' && input.populate.reason === 'no_launch') {
     return {
       wells: input.wellsParam || '[]',
       wellName: input.wellNameParam || '',
@@ -130,15 +149,42 @@ export function applyGovernedJobHandoff(input: {
       source: 'nav_params',
     };
   }
-  return {
-    wells: snap.wellsJson,
-    wellName: snap.wellName,
-    jobActivityName: snap.jobType || '',
-    source: 'governed_snapshot',
-    requestId: snap.requestId,
-    ...(snap.jobRef ? { jobRef: snap.jobRef } : {}),
-    intent: snap.intent,
-  };
+  if (input.populate.kind === 'none' && input.populate.reason === 'completed') {
+    return { wells: '[]', wellName: '', jobActivityName: '', source: 'completed' };
+  }
+  if (input.populate.kind === 'none' && input.populate.reason === 'acknowledge_only') {
+    return { wells: '[]', wellName: '', jobActivityName: '', source: 'acknowledge_only' };
+  }
+  return { wells: '[]', wellName: '', jobActivityName: '', source: 'blocked' };
+}
+
+export type GovernedJobScreen =
+  | 'steps'
+  | 'standalone'
+  | 'completed'
+  | 'acknowledge'
+  | 'fail';
+
+export function decideGovernedJobScreen(pop: GovernedJobPopulate): GovernedJobScreen {
+  if (pop.kind === 'populate') return 'steps';
+  if (pop.kind === 'fail_closed') return 'fail';
+  if (pop.reason === 'no_launch') return 'standalone';
+  if (pop.reason === 'completed') return 'completed';
+  if (pop.reason === 'acknowledge_only') return 'acknowledge';
+  return 'fail';
+}
+
+export function jobWorkflowMayAdvance(input: {
+  resolution: 'pending' | 'ready' | 'failed';
+  handoff: GovernedJobHandoff | null;
+}): boolean {
+  if (input.resolution !== 'ready' || !input.handoff) return false;
+  return input.handoff.source === 'governed_snapshot'
+    || input.handoff.source === 'nav_params';
+}
+
+export function pendingGovernedReadMaySave(handoff: GovernedJobHandoff): boolean {
+  return handoff.source === 'governed_snapshot';
 }
 
 export function freezeGovernedJobForSave(input: {
@@ -158,8 +204,10 @@ export function freezeGovernedJobForSave(input: {
     wellNameParam: input.wellName,
     jobActivityParam: input.jobActivityName,
   });
-  let wells: unknown[] = input.wells;
-  if (handoff.source !== 'nav_params') {
+  let wells: unknown[] = [];
+  if (handoff.source === 'nav_params') {
+    wells = Array.isArray(input.wells) ? input.wells : [];
+  } else if (handoff.source === 'governed_snapshot') {
     try {
       const parsed = JSON.parse(handoff.wells);
       wells = Array.isArray(parsed) ? parsed : [];

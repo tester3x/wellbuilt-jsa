@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { JsaSummaryCard, buildLocationActivityRows } from "../components/jsa";
+import GovernedIsolationSurface from "../components/GovernedIsolationSurface";
 import { colors } from "../constants/colors";
 import { PPE_ITEMS, type PpeItem } from "../constants/jsaTemplate";
 import { STORAGE_KEYS } from "../constants/storageKeys";
@@ -64,30 +65,53 @@ export default function PpeScreen() {
   const [otherInput, setOtherInput] = useState(""); // Current text input for adding new items
   const isLoadedRef = useRef(false);
   const scrollViewRef = useRef<ScrollView>(null);
-  const [jobWells, setJobWells] = useState(wells);
-  const [jobWellName, setJobWellName] = useState(wellName);
-  const [jobActivity, setJobActivity] = useState(jobActivityName);
+  const [jobWells, setJobWells] = useState('[]');
+  const [jobWellName, setJobWellName] = useState('');
+  const [jobActivity, setJobActivity] = useState('');
+  const [jobGate, setJobGate] = useState<'pending' | 'ready' | 'failed'>('pending');
+  const [jobSource, setJobSource] = useState<'governed_snapshot' | 'nav_params' | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const { resolveGovernedJobHandoff } = await import('../services/sso/jsaGovernedJobLive');
+        const { decideGovernedJobScreen, jobWorkflowMayAdvance } = await import('../services/sso/jsaGovernedJobFields');
         const { populate, handoff } = await resolveGovernedJobHandoff({
           wellsParam: typeof wells === 'string' ? wells : '[]',
           wellNameParam: typeof wellName === 'string' ? wellName : '',
           jobActivityParam: typeof jobActivityName === 'string' ? jobActivityName : '',
         });
         if (cancelled) return;
-        if (populate.kind === 'fail_closed') {
+        const dest = decideGovernedJobScreen(populate);
+        if (dest === 'fail') {
+          setJobGate('failed');
+          router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
+          return;
+        }
+        if (dest === 'completed') {
+          setJobGate('failed');
+          router.replace({ pathname: '/governed-status', params: { mode: 'completed' } } as any);
+          return;
+        }
+        if (dest === 'acknowledge') {
+          setJobGate('failed');
+          router.replace('/acknowledge' as any);
+          return;
+        }
+        if (!jobWorkflowMayAdvance({ resolution: 'ready', handoff })) {
+          setJobGate('failed');
           router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
           return;
         }
         setJobWells(handoff.wells);
         setJobWellName(handoff.wellName);
-        setJobActivity(handoff.jobActivityName || (typeof jobActivityName === 'string' ? jobActivityName : ''));
+        setJobActivity(handoff.jobActivityName);
+        setJobSource(handoff.source === 'governed_snapshot' || handoff.source === 'nav_params' ? handoff.source : null);
+        setJobGate('ready');
       } catch {
         if (!cancelled) {
+          setJobGate('failed');
           router.replace('/(tabs)' as any);
         }
       }
@@ -184,9 +208,13 @@ export default function PpeScreen() {
     buildLocationActivityRows(
       wellsList,
       locationsList,
-      { jobActivityName: jobActivity || jobActivityName, task, jsaType },
+      {
+        jobActivityName: jobActivity,
+        task: jobSource === 'nav_params' ? (jobActivity || task) : jobActivity,
+        jsaType: jobSource === 'nav_params' ? jsaType : '',
+      },
     )
-  ), [wellsList, locationsList, jobActivity, jobActivityName, task, jsaType]);
+  ), [wellsList, locationsList, jobActivity, jobSource, task, jsaType]);
 
   const toggleItem = (item: PpeItem) => {
     setSelected((prev) => ({
@@ -198,25 +226,34 @@ export default function PpeScreen() {
   const isChecked = (id: string) => !!selected[id];
 
   const handleNext = () => {
+    if (jobGate !== 'ready' || !jobSource) return;
     router.push({
       pathname: "/signoff",
       params: {
         driverName,
         truckNumber,
-        jobActivityName: jobActivity || jobActivityName,
+        jobActivityName: jobActivity,
         pusher,
-        wellName: jobWellName || wellName,
+        wellName: jobWellName,
         wells: JSON.stringify(wellsList),
         otherInfo,
         location: locationsList[0] || location || "",
         locations: JSON.stringify(locationsList),
         locationAcks,
-        task: jobActivityName || task || "",
+        task: jobActivity,
         date,
         ppeSelected: JSON.stringify({ selected, otherItems }),
       },
     });
   };
+
+  if (jobGate !== 'ready') {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+        <GovernedIsolationSurface kind="connecting" variant="overlay" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>

@@ -16,7 +16,10 @@ import {
 import {
   applyGovernedJobHandoff,
   decideGovernedJobPopulate,
+  decideGovernedJobScreen,
   freezeGovernedJobForSave,
+  jobWorkflowMayAdvance,
+  pendingGovernedReadMaySave,
   shouldApplyLegacyJobHydration,
   snapshotFromPopulate,
 } from '../services/sso/jsaGovernedJobFields.ts';
@@ -288,6 +291,121 @@ check('5A standalone legacy hydration remains available without a launch',
     wellNameParam: 'Stamp Well',
     jobActivityParam: 'water',
   }).source === 'nav_params');
+
+{
+  const completedPop = decideGovernedJobPopulate({
+    launchRequestId: RID,
+    context: { requestId: RID, state: 'completed', intent: 'read', wellName: 'Gab 1', jobType: 'pw' },
+    explicitFailure: false,
+  });
+  const completedHand = applyGovernedJobHandoff({
+    populate: completedPop,
+    wellsParam: JSON.stringify([{ name: 'Other Well' }]),
+    wellNameParam: 'Other Well',
+    jobActivityParam: 'oil',
+  });
+  check('5A-1 only none/no_launch returns nav_params',
+    applyGovernedJobHandoff({
+      populate: { kind: 'none', reason: 'no_launch' },
+      wellsParam: '[]', wellNameParam: 'X', jobActivityParam: 'oil',
+    }).source === 'nav_params'
+    && completedHand.source !== 'nav_params'
+    && applyGovernedJobHandoff({
+      populate: { kind: 'none', reason: 'acknowledge_only' },
+      wellsParam: '[]', wellNameParam: 'X', jobActivityParam: 'oil',
+    }).source !== 'nav_params');
+  check('5A-1 completed never returns navigation fields',
+    completedPop.kind === 'none' && completedPop.reason === 'completed'
+    && completedHand.source === 'completed'
+    && completedHand.wellName === ''
+    && completedHand.jobActivityName === ''
+    && completedHand.wells === '[]'
+    && decideGovernedJobScreen(completedPop) === 'completed');
+  const ackPop = decideGovernedJobPopulate({
+    launchRequestId: RID,
+    context: { requestId: RID, state: 'pending', intent: 'acknowledge', wellName: 'Gab 1' },
+    explicitFailure: false,
+  });
+  check('5A-1 acknowledge_only never enters steps/PPE/signoff',
+    ackPop.reason === 'acknowledge_only'
+    && decideGovernedJobScreen(ackPop) === 'acknowledge'
+    && applyGovernedJobHandoff({
+      populate: ackPop, wellsParam: '[]', wellNameParam: 'X', jobActivityParam: 'oil',
+    }).source === 'acknowledge_only');
+  const stale = decideGovernedJobPopulate({
+    launchRequestId: RID,
+    context: { requestId: RID, state: 'expired', intent: 'read', wellName: 'Gab 1' },
+    explicitFailure: false,
+  });
+  const staleHand = applyGovernedJobHandoff({
+    populate: stale, wellsParam: JSON.stringify([{ name: 'Legacy' }]), wellNameParam: 'Legacy', jobActivityParam: 'oil',
+  });
+  const staleFreeze = freezeGovernedJobForSave({
+    populate: stale, wells: [{ name: 'Legacy' }], wellName: 'Legacy', jobActivityName: 'oil',
+  });
+  check('5A-1 not_pending cannot create a local save or reach legacy cloud persistence',
+    stale.kind === 'fail_closed' && stale.reason === 'not_pending'
+    && decideGovernedJobScreen(stale) === 'fail'
+    && staleHand.source === 'blocked'
+    && staleFreeze.wells.length === 0
+    && pendingGovernedReadMaySave(staleHand) === false);
+  const unknown = decideGovernedJobPopulate({
+    launchRequestId: RID,
+    context: { requestId: RID, state: 'pending', intent: 'something_else', wellName: 'Gab 1' },
+    explicitFailure: false,
+  });
+  check('5A-1 unknown governed states fail closed',
+    unknown.kind === 'fail_closed'
+    && decideGovernedJobScreen(unknown) === 'fail'
+    && applyGovernedJobHandoff({
+      populate: unknown, wellsParam: '[]', wellNameParam: 'X', jobActivityParam: 'oil',
+    }).source === 'blocked');
+  const noType = decideGovernedJobPopulate({
+    launchRequestId: RID,
+    context: { requestId: RID, state: 'pending', intent: 'read', jobRef: JOB, wellName: 'Gab 1' },
+    explicitFailure: false,
+  });
+  const noTypeHand = applyGovernedJobHandoff({
+    populate: noType,
+    wellsParam: JSON.stringify([{ name: 'Gab 1', jobType: 'oil' }]),
+    wellNameParam: 'Gab 1',
+    jobActivityParam: 'oil',
+  });
+  const noTypeFreeze = freezeGovernedJobForSave({
+    populate: noType,
+    wells: [{ name: 'Gab 1', jobType: 'oil' }],
+    wellName: 'Gab 1',
+    jobActivityName: 'oil',
+  });
+  check('5A-1 missing jobType defeats a hostile route jobActivity',
+    noType.kind === 'populate' && !noType.jobType
+    && noTypeHand.jobActivityName === ''
+    && noTypeHand.wellName === 'Gab 1'
+    && !/oil/.test(noTypeHand.wells));
+  check('5A-1 missing governed jobType stays absent on frozen well and form fields',
+    noTypeFreeze.jobActivityName === ''
+    && noTypeFreeze.wells[0].name === 'Gab 1'
+    && !noTypeFreeze.wells[0].jobType);
+  check('5A-1 PPE/signoff cannot advance while governed resolution is pending',
+    jobWorkflowMayAdvance({ resolution: 'pending', handoff: noTypeHand }) === false
+    && jobWorkflowMayAdvance({ resolution: 'failed', handoff: noTypeHand }) === false
+    && jobWorkflowMayAdvance({ resolution: 'ready', handoff: noTypeHand }) === true
+    && jobWorkflowMayAdvance({ resolution: 'ready', handoff: completedHand }) === false);
+}
+
+const ppeAdvance = ppeSrc.includes("jobGate !== 'ready'")
+  && /const handleNext = \(\) => \{[\s\S]{0,80}jobGate !== 'ready'/.test(ppeSrc);
+const signoffHold = signoffSrc.includes("jobGate !== 'ready' || !jobSource")
+  && /const handleSubmit = \(\) => \{[\s\S]{0,80}jobGate !== 'ready'/.test(signoffSrc)
+  && /const saveAndGo = async \(\) => \{[\s\S]{0,80}jobGate !== 'ready'/.test(signoffSrc);
+check('5A-1 PPE cannot advance while governed resolution is pending', ppeAdvance);
+check('5A-1 signoff cannot submit while governed resolution is pending', signoffHold);
+check('5A-1 failed/terminal resolution produces no save or legacy cloud write',
+  stepsSrc.includes("'/acknowledge'")
+  && stepsSrc.includes("mode: 'completed'")
+  && signoffSrc.includes("pendingGovernedReadMaySave")
+  && signoffSrc.includes("frozenJob.source !== 'governed_snapshot'")
+  && !/jsaRegisterReadRequest|runCloudPersist/.test(liveSrc));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
