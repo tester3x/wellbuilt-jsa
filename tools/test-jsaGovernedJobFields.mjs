@@ -13,7 +13,13 @@ import {
   ignoreLaunchHints,
   pendingDisplayFields,
 } from '../services/sso/jsaRequestLifecycle.ts';
-import { decideGovernedJobPopulate } from '../services/sso/jsaGovernedJobFields.ts';
+import {
+  applyGovernedJobHandoff,
+  decideGovernedJobPopulate,
+  freezeGovernedJobForSave,
+  shouldApplyLegacyJobHydration,
+  snapshotFromPopulate,
+} from '../services/sso/jsaGovernedJobFields.ts';
 import { decideJobDetailsIsolation } from '../services/sso/jsaJobDetailsIsolation.ts';
 import { decideAutoNavigation } from '../services/jsaAutoNav.ts';
 
@@ -77,12 +83,17 @@ check('server Gab 1 wins over URL hint Other',
   && hinted.discarded.wellName === 'Other Well'
   && hinted.discarded.ignored === true);
 
-check('request/context mismatch does not populate',
+check('request/context mismatch fails closed',
   decideGovernedJobPopulate({
     launchRequestId: RID,
     context: { ...view, requestId: 'S'.repeat(43) },
     explicitFailure: false,
-  }).kind === 'none');
+  }).kind === 'fail_closed'
+  && decideGovernedJobPopulate({
+    launchRequestId: RID,
+    context: { ...view, requestId: 'S'.repeat(43) },
+    explicitFailure: false,
+  }).reason === 'mismatch');
 
 check('completed/terminal context does not populate',
   decideGovernedJobPopulate({
@@ -130,14 +141,153 @@ check('index populates wells from decideGovernedJobPopulate only',
   idx.includes('decideGovernedJobPopulate')
   && idx.includes("job.kind === 'populate'"));
 check('index skips jsa_autofill wells when a governed launch is present',
-  /loadLaunchContext[\s\S]{0,180}jsa_autofill/.test(idx)
-  && idx.includes('if (await loadLaunchContext())'));
+  idx.includes('shouldApplyLegacyJobHydration')
+  && idx.includes('jsa_autofill')
+  && idx.includes('loadLaunchContext'));
 check('index does not read passcodeHash or wellbuilt-current-shift-id for job identity',
   !/decideGovernedJobPopulate[\s\S]{0,400}passcodeHash/.test(idx)
   && !/decideGovernedJobPopulate[\s\S]{0,400}wellbuilt-current-shift-id/.test(idx));
 
 check('get payload rejects identity-bearing extras',
   parseGetContextView({ ...getPayload, driverId: 'x' }).ok === false);
+
+{
+  const snap = snapshotFromPopulate(pop);
+  check('5A snapshot is get well/job only',
+    !!snap
+    && snap.wellName === 'Gab 1'
+    && snap.jobType === 'pw'
+    && !('driverId' in snap)
+    && !('companyId' in snap)
+    && !('shiftId' in snap)
+    && JSON.parse(snap.wellsJson)[0].name === 'Gab 1');
+  check('5A empty SSO CTA params still hand off Gab 1',
+    applyGovernedJobHandoff({
+      populate: pop,
+      wellsParam: '[]',
+      wellNameParam: '',
+      jobActivityParam: '',
+    }).source === 'governed_snapshot'
+    && applyGovernedJobHandoff({
+      populate: pop,
+      wellsParam: '[]',
+      wellNameParam: '',
+      jobActivityParam: '',
+    }).wellName === 'Gab 1'
+    && applyGovernedJobHandoff({
+      populate: pop,
+      wellsParam: '[]',
+      wellNameParam: '',
+      jobActivityParam: '',
+    }).jobActivityName === 'pw');
+  check('5A URL/Other Well params lose to the get snapshot',
+    applyGovernedJobHandoff({
+      populate: pop,
+      wellsParam: JSON.stringify([{ name: 'Other Well', jobType: 'oil' }]),
+      wellNameParam: 'Other Well',
+      jobActivityParam: 'oil',
+    }).wellName === 'Gab 1'
+    && applyGovernedJobHandoff({
+      populate: pop,
+      wellsParam: JSON.stringify([{ name: 'Other Well', jobType: 'oil' }]),
+      wellNameParam: 'Other Well',
+      jobActivityParam: 'oil',
+    }).jobActivityName === 'pw');
+  check('5A standalone/no-populate keeps nav params',
+    applyGovernedJobHandoff({
+      populate: { kind: 'none', reason: 'no_launch' },
+      wellsParam: JSON.stringify([{ name: 'Local Well' }]),
+      wellNameParam: 'Local Well',
+      jobActivityParam: 'water',
+    }).source === 'nav_params'
+    && applyGovernedJobHandoff({
+      populate: { kind: 'none', reason: 'no_launch' },
+      wellsParam: JSON.stringify([{ name: 'Local Well' }]),
+      wellNameParam: 'Local Well',
+      jobActivityParam: 'water',
+    }).wellName === 'Local Well');
+  check('5A completed/ack populate does not invent a snapshot',
+    snapshotFromPopulate({
+      kind: 'none',
+      reason: 'completed',
+    }) === null
+    && snapshotFromPopulate({
+      kind: 'none',
+      reason: 'acknowledge_only',
+    }) === null);
+  const frozen = freezeGovernedJobForSave({
+    populate: pop,
+    wells: [{ name: 'Other Well', jobType: 'oil' }],
+    wellName: 'Other Well',
+    jobActivityName: 'oil',
+  });
+  check('5A frozen save snapshot matches displayed get well/job',
+    frozen.source === 'governed_snapshot'
+    && frozen.wellName === 'Gab 1'
+    && frozen.jobActivityName === 'pw'
+    && frozen.wells[0].name === 'Gab 1'
+    && frozen.wells[0].jobType === 'pw');
+  check('5A fail-closed never falls back to resume/autofill/day-status params',
+    applyGovernedJobHandoff({
+      populate: { kind: 'fail_closed', reason: 'mismatch' },
+      wellsParam: JSON.stringify([{ name: 'Resume Well' }]),
+      wellNameParam: 'Resume Well',
+      jobActivityParam: 'oil',
+    }).source === 'blocked'
+    && applyGovernedJobHandoff({
+      populate: { kind: 'fail_closed', reason: 'mismatch' },
+      wellsParam: JSON.stringify([{ name: 'Resume Well' }]),
+      wellNameParam: 'Resume Well',
+      jobActivityParam: 'oil',
+    }).wellName === ''
+    && decideGovernedJobPopulate({
+      launchRequestId: RID,
+      context: null,
+      explicitFailure: false,
+    }).kind === 'fail_closed');
+  check('5A missing well fails closed and does not hydrate',
+    decideGovernedJobPopulate({
+      launchRequestId: RID,
+      context: { requestId: RID, state: 'pending', intent: 'read', jobRef: JOB },
+      explicitFailure: false,
+    }).reason === 'missing_well'
+    && shouldApplyLegacyJobHydration(true) === false
+    && shouldApplyLegacyJobHydration(false) === true);
+}
+
+const stepsSrc = readFileSync(join(root, 'app/steps.tsx'), 'utf8');
+const ppeSrc = readFileSync(join(root, 'app/ppe.tsx'), 'utf8');
+const signoffSrc = readFileSync(join(root, 'app/signoff.tsx'), 'utf8');
+const liveSrc = readFileSync(join(root, 'services/sso/jsaGovernedJobLive.ts'), 'utf8');
+check('5A steps applies the same handoff before forwarding PPE params',
+  stepsSrc.includes('applyGovernedJobHandoff')
+  && stepsSrc.includes('decideGovernedJobPopulate')
+  && stepsSrc.indexOf('applyGovernedJobHandoff') < stepsSrc.indexOf('pathname: "/ppe"'));
+check('5A index Next and SSO CTA both apply the handoff',
+  idx.includes('applyGovernedJobHandoff')
+  && (idx.split('applyGovernedJobHandoff').length - 1) >= 2
+  && idx.includes("pathname: '/steps'"));
+check('5A resume/autofill/day-status cannot override governed wells',
+  idx.includes("AsyncStorage.getItem('jsa_resume')")
+  && idx.includes("AsyncStorage.getItem('jsa_autofill')")
+  && (idx.split('shouldApplyLegacyJobHydration').length - 1) >= 3);
+check('5A PPE and signoff re-resolve from request context',
+  ppeSrc.includes('resolveGovernedJobHandoff')
+  && signoffSrc.includes('resolveGovernedJobHandoff')
+  && signoffSrc.includes('freezeGovernedJobForSave'));
+check('5A failure path does not remint, complete, persist, or write jsas',
+  !/jsaRegisterReadRequest|jsaCompleteReadRequest|jsaPersistGovernedArtifact/.test(liveSrc)
+  && !/['"]jsas['"]|\/jsas\//.test(liveSrc)
+  && stepsSrc.includes("pathname: '/governed-status'")
+  && ppeSrc.includes("pathname: '/governed-status'"));
+check('5A standalone legacy hydration remains available without a launch',
+  shouldApplyLegacyJobHydration(false) === true
+  && applyGovernedJobHandoff({
+    populate: { kind: 'none', reason: 'no_launch' },
+    wellsParam: JSON.stringify([{ name: 'Stamp Well' }]),
+    wellNameParam: 'Stamp Well',
+    jobActivityParam: 'water',
+  }).source === 'nav_params');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -105,15 +105,44 @@ export default function SignoffScreen() {
 
   // Parse wells and locations passed from previous screen
   // Parse wells — supports both old (string[]) and new (WellEntry[]) formats
+  const [jobWellsJson, setJobWellsJson] = useState((params.wells as string) || '[]');
+  const [jobWellName, setJobWellName] = useState((params.wellName as string) || '');
+  const [jobActivityResolved, setJobActivityResolved] = useState((params.jobActivityName as string) || '');
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { resolveGovernedJobHandoff } = await import('../services/sso/jsaGovernedJobLive');
+        const { populate, handoff } = await resolveGovernedJobHandoff({
+          wellsParam: (params.wells as string) || '[]',
+          wellNameParam: (params.wellName as string) || '',
+          jobActivityParam: (params.jobActivityName as string) || '',
+        });
+        if (cancelled) return;
+        if (populate.kind === 'fail_closed') {
+          router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
+          return;
+        }
+        setJobWellsJson(handoff.wells);
+        setJobWellName(handoff.wellName);
+        setJobActivityResolved(handoff.jobActivityName || (params.jobActivityName as string) || '');
+      } catch {
+        if (!cancelled) router.replace('/(tabs)' as any);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [params.wells, params.wellName, params.jobActivityName, router]);
+
   const wellsList = useMemo(() => {
     try {
-      const parsed = params.wells ? JSON.parse(params.wells) : [];
+      const parsed = JSON.parse(jobWellsJson);
       if (Array.isArray(parsed)) return parsed;
     } catch {
       // ignore
     }
     return [];
-  }, [params.wells]);
+  }, [jobWellsJson]);
 
   // Well names for display
   const wellNames = useMemo(() => {
@@ -147,11 +176,11 @@ export default function SignoffScreen() {
       wellsList,
       locations,
       {
-        jobActivityName: params.jobActivityName as string | undefined,
+        jobActivityName: jobActivityResolved || (params.jobActivityName as string | undefined),
         task: params.task as string | undefined,
       },
     )
-  ), [wellsList, locations, params.jobActivityName, params.task]);
+  ), [wellsList, locations, jobActivityResolved, params.jobActivityName, params.task]);
 
   const togglePrepared = (id: string) => {
     setPrepared((prev) => ({
@@ -250,13 +279,36 @@ export default function SignoffScreen() {
           totalWells: wellsList.length,
         });
       }
-      const wellsForSave = wellsList.map((w: any) => {
+      const wellsForSaveRaw = wellsList.map((w: any) => {
         if (typeof w === 'string') {
           return { name: w, operator: '', county: '', jobType: canonicalActivity };
         }
         const existing = (typeof w.jobType === 'string' ? w.jobType : '').trim();
         return { ...w, jobType: existing || canonicalActivity };
       });
+      const { freezeGovernedJobForSave } = await import('../services/sso/jsaGovernedJobFields');
+      const { resolveGovernedJobHandoff } = await import('../services/sso/jsaGovernedJobLive');
+      const resolved = await resolveGovernedJobHandoff({
+        wellsParam: JSON.stringify(wellsForSaveRaw),
+        wellNameParam: jobWellName || (params.wellName as string) || '',
+        jobActivityParam: jobActivityResolved || canonicalActivity,
+      });
+      if (resolved.populate.kind === 'fail_closed') {
+        Alert.alert(
+          t('Cannot complete') || 'Cannot complete',
+          'This JSA request is not valid. Return to WellBuilt Tickets and launch again.',
+        );
+        return;
+      }
+      const frozenJob = freezeGovernedJobForSave({
+        populate: resolved.populate,
+        wells: wellsForSaveRaw,
+        wellName: jobWellName || (params.wellName as string) || '',
+        jobActivityName: jobActivityResolved || canonicalActivity,
+      });
+      const wellsForSave = frozenJob.wells;
+      const wellNameForSave = frozenJob.wellName;
+      const activityForSave = frozenJob.jobActivityName || canonicalActivity;
 
       // Resolve session up front so linkage fields land in BOTH the local
       // AsyncStorage save (replayed by syncToCloud) AND the direct Firestore
@@ -292,7 +344,7 @@ export default function SignoffScreen() {
       // first well's operator field → params.operator (if WB T sent one) →
       // empty string (= shift-default scope, single-operator shift).
       const operatorForPayload = (() => {
-        const fromWell = wellsForSave.find((w: any) => typeof w?.operator === 'string' && w.operator.trim())?.operator;
+        const fromWell = (wellsForSave as any[]).find((w: any) => typeof w?.operator === 'string' && w.operator.trim())?.operator;
         if (fromWell) return String(fromWell).trim();
         const fromParam = typeof (params as any).operator === 'string' ? (params as any).operator.trim() : '';
         return fromParam;
@@ -349,13 +401,13 @@ export default function SignoffScreen() {
         scope: scopeForPayload,
         createdAt: new Date().toISOString(),
         truckNumber: params.truckNumber ?? "",
-        jobActivityName: paramsJobActivityName || canonicalActivity,
+        jobActivityName: activityForSave,
         pusher: params.pusher ?? "",
-        wellName: params.wellName ?? "",
+        wellName: wellNameForSave,
         wells: wellsForSave,
         otherInfo: params.otherInfo ?? "",
         location: params.location ?? "",
-        task: paramsTask || canonicalActivity,
+        task: activityForSave || paramsTask || canonicalActivity,
         date: params.date ?? "",
         ppeSelected: ppeObj,
         ppeOtherItems,

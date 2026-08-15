@@ -23,6 +23,11 @@ import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 import GovernedIsolationSurface from "../components/GovernedIsolationSurface";
 import type { IsolationReason } from "../services/sso/jsaJobDetailsIsolation";
+import {
+  applyGovernedJobHandoff,
+  decideGovernedJobPopulate,
+  type GovernedJobPopulate,
+} from "../services/sso/jsaGovernedJobFields";
 
 // BYOJSA: Use company template if available, fall back to hardcoded default
 
@@ -36,6 +41,10 @@ export default function StepsScreen() {
   const router = useRouter();
   const [stepsGuard, setStepsGuard] = useState<'unresolved' | 'allowed' | 'denied'>('unresolved');
   const [guardReason, setGuardReason] = useState<IsolationReason>('unresolved');
+  const [jobPopulate, setJobPopulate] = useState<GovernedJobPopulate>({
+    kind: 'none',
+    reason: 'unset',
+  });
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -71,7 +80,18 @@ export default function StepsScreen() {
           authPending: !!launch && !usable && !failed,
         });
         if (cancelled) return;
+        const pop = decideGovernedJobPopulate({
+          launchRequestId: launch?.requestId,
+          context: ctx,
+          explicitFailure: failed,
+        });
+        setJobPopulate(pop);
         setGuardReason(isolation.reason);
+        if (pop.kind === 'fail_closed') {
+          setStepsGuard('denied');
+          router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
+          return;
+        }
         if (!stepsRouteAllowed(isolation.blocked)) {
           setStepsGuard('denied');
           router.replace(
@@ -106,10 +126,14 @@ export default function StepsScreen() {
     );
   }
 
-  return <StepsWorkflow />;
+  return <StepsWorkflow jobPopulate={jobPopulate} />;
 }
 
-export function StepsWorkflow() {
+export function StepsWorkflow({
+  jobPopulate = { kind: 'none', reason: 'unset' },
+}: {
+  jobPopulate?: GovernedJobPopulate;
+}) {
   const router = useRouter();
   const params = useLocalSearchParams<{
   driverName?: string;
@@ -127,17 +151,24 @@ export function StepsWorkflow() {
   jsaSessionId?: string;
 }>();
 
+  const jobHandoff = applyGovernedJobHandoff({
+    populate: jobPopulate,
+    wellsParam: (params.wells as string) || '[]',
+    wellNameParam: (params.wellName as string) || '',
+    jobActivityParam: (params.jobActivityName as string) || '',
+  });
+
 const driverName = (params.driverName as string) || "";
 const truckNumber = (params.truckNumber as string) || "";
 const location = (params.location as string) || "";
 const locations = (params.locations as string) || "[]";
-const wells = (params.wells as string) || "[]";
+const wells = jobHandoff.wells;
 const locationAcks = (params.locationAcks as string) || "";
 const task = (params.task as string) || "";
 const date = (params.date as string) || "";
-const jobActivityName = (params.jobActivityName as string) || "";
+const jobActivityName = jobHandoff.jobActivityName;
 const pusher = (params.pusher as string) || "";
-const wellName = (params.wellName as string) || "";
+const wellName = jobHandoff.wellName;
 const otherInfo = (params.otherInfo as string) || "";
 const jsaSessionId = (params.jsaSessionId as string) || "";
 

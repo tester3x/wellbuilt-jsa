@@ -64,16 +64,46 @@ export default function PpeScreen() {
   const [otherInput, setOtherInput] = useState(""); // Current text input for adding new items
   const isLoadedRef = useRef(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const [jobWells, setJobWells] = useState(wells);
+  const [jobWellName, setJobWellName] = useState(wellName);
+  const [jobActivity, setJobActivity] = useState(jobActivityName);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { resolveGovernedJobHandoff } = await import('../services/sso/jsaGovernedJobLive');
+        const { populate, handoff } = await resolveGovernedJobHandoff({
+          wellsParam: typeof wells === 'string' ? wells : '[]',
+          wellNameParam: typeof wellName === 'string' ? wellName : '',
+          jobActivityParam: typeof jobActivityName === 'string' ? jobActivityName : '',
+        });
+        if (cancelled) return;
+        if (populate.kind === 'fail_closed') {
+          router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
+          return;
+        }
+        setJobWells(handoff.wells);
+        setJobWellName(handoff.wellName);
+        setJobActivity(handoff.jobActivityName || (typeof jobActivityName === 'string' ? jobActivityName : ''));
+      } catch {
+        if (!cancelled) {
+          router.replace('/(tabs)' as any);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [wells, wellName, jobActivityName, router]);
 
   const wellsList = useMemo(() => {
     try {
-      const parsed = JSON.parse(wells);
+      const parsed = JSON.parse(jobWells);
       if (Array.isArray(parsed)) return parsed;
     } catch {
       // ignore
     }
     return [];
-  }, [wells]);
+  }, [jobWells]);
 
   const locationsList = useMemo(() => {
     try {
@@ -154,9 +184,9 @@ export default function PpeScreen() {
     buildLocationActivityRows(
       wellsList,
       locationsList,
-      { jobActivityName, task, jsaType },
+      { jobActivityName: jobActivity || jobActivityName, task, jsaType },
     )
-  ), [wellsList, locationsList, jobActivityName, task, jsaType]);
+  ), [wellsList, locationsList, jobActivity, jobActivityName, task, jsaType]);
 
   const toggleItem = (item: PpeItem) => {
     setSelected((prev) => ({
@@ -173,9 +203,9 @@ export default function PpeScreen() {
       params: {
         driverName,
         truckNumber,
-        jobActivityName,
+        jobActivityName: jobActivity || jobActivityName,
         pusher,
-        wellName,
+        wellName: jobWellName || wellName,
         wells: JSON.stringify(wellsList),
         otherInfo,
         location: locationsList[0] || location || "",

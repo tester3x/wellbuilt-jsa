@@ -63,7 +63,12 @@ import {
   unresolvedJobDetailsIsolation,
   type JobDetailsIsolation,
 } from "../../services/sso/jsaJobDetailsIsolation";
-import { decideGovernedJobPopulate } from "../../services/sso/jsaGovernedJobFields";
+import {
+  applyGovernedJobHandoff,
+  decideGovernedJobPopulate,
+  shouldApplyLegacyJobHydration,
+  type GovernedJobPopulate,
+} from "../../services/sso/jsaGovernedJobFields";
 import { terminalFailureMatches } from "../../services/sso/jsaGovernedAuth";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -168,6 +173,10 @@ export default function JsaHomeScreen() {
   // Surfaced in the debug panel so field test can prove where rehydrated data
   // is coming from.
   const [hydrationSource, setHydrationSource] = useState<string>('none');
+  const [governedJobPopulate, setGovernedJobPopulate] = useState<GovernedJobPopulate>({
+    kind: 'none',
+    reason: 'unset',
+  });
   // Once-per-session NO_ACTIVITY warning — avoid log spam.
   const noActivityLoggedRef = useRef(false);
 
@@ -183,12 +192,15 @@ export default function JsaHomeScreen() {
 
     // Resume-unfinished-JSA bridge: if the modal stashed a target date+wells,
     // pre-fill the new form for that date. Takes priority over regular autofill.
-    AsyncStorage.getItem('jsa_resume').then(raw => {
+    AsyncStorage.getItem('jsa_resume').then(async raw => {
       if (!raw) return;
       try {
+        const { loadLaunchContext } = await import('../../services/sso/jsaRuntime');
+        const { shouldApplyLegacyJobHydration } = await import('../../services/sso/jsaGovernedJobFields');
         const { date, wellNames } = JSON.parse(raw);
         if (date) setDate(date);
-        if (Array.isArray(wellNames) && wellNames.length > 0) {
+        if (shouldApplyLegacyJobHydration(!!(await loadLaunchContext()))
+          && Array.isArray(wellNames) && wellNames.length > 0) {
           setAddedWells(wellNames.map((name: string) => ({ name, operator: '', county: '' })));
           setHydrationSource('resume');
         }
@@ -225,7 +237,8 @@ export default function JsaHomeScreen() {
         // Governed launches never take well/job identity from jsa_autofill
         // or URL hints. The matching protected-get context is the only source.
         const { loadLaunchContext } = await import('../../services/sso/jsaRuntime');
-        if (await loadLaunchContext()) {
+        const { shouldApplyLegacyJobHydration } = await import('../../services/sso/jsaGovernedJobFields');
+        if (!shouldApplyLegacyJobHydration(!!(await loadLaunchContext()))) {
           AsyncStorage.removeItem('jsa_autofill').catch(() => {});
           return;
         }
@@ -399,11 +412,13 @@ export default function JsaHomeScreen() {
             context: ctx,
             explicitFailure: failed,
           });
-          const missingWell = job.kind === 'fail_closed' && job.reason === 'missing_well';
+          setGovernedJobPopulate(job);
+          const jobFailed = job.kind === 'fail_closed'
+            && (job.reason !== 'no_context' || !!usable);
           setWorkflowIsolation(decideJobDetailsIsolation({
             resolved: true,
             authoritySurface: decision.surface,
-            explicitGovernedFailure: failed || missingWell,
+            explicitGovernedFailure: failed || jobFailed,
             hasGovernedLaunch: !!launch,
             hasUsableGovernedSession: !!usable,
             hasMatchingAuthoritativeContext: match,
@@ -420,6 +435,7 @@ export default function JsaHomeScreen() {
           }
         } catch {
           setWorkflowIsolation(unresolvedJobDetailsIsolation());
+          setGovernedJobPopulate({ kind: 'none', reason: 'unset' });
         }
         setShiftVerdict(decision.mayLabelActive ? shiftVerdictKind : (decision.kind === 'stale_cached' ? 'verified_closed' : decision.kind === 'origin_day_unverified' || decision.kind === 'authority_unavailable' ? 'unverified' : 'none'));
         setVerifiedShiftId(decision.mayLabelActive ? decision.activeShiftId : null);
@@ -831,6 +847,9 @@ export default function JsaHomeScreen() {
           // Load from saved JSAs
           (async () => {
             try {
+              const { loadLaunchContext } = await import('../../services/sso/jsaRuntime');
+              const { shouldApplyLegacyJobHydration } = await import('../../services/sso/jsaGovernedJobFields');
+              if (!shouldApplyLegacyJobHydration(!!(await loadLaunchContext()))) return;
               const stored = await AsyncStorage.getItem(STORAGE_KEYS.saves);
               if (!stored) return;
               const list = JSON.parse(stored);
@@ -898,7 +917,10 @@ export default function JsaHomeScreen() {
       // deleted wells back into the form is exactly the regression that sent
       // us here. Stamped wells still get merged into an existing active JSA
       // (paper-doc display), just not into the fresh form.
-      if (allStamped.size > 0) {
+      const { loadLaunchContext } = await import('../../services/sso/jsaRuntime');
+      const { shouldApplyLegacyJobHydration } = await import('../../services/sso/jsaGovernedJobFields');
+      const mayHydrateLegacy = shouldApplyLegacyJobHydration(!!(await loadLaunchContext()));
+      if (allStamped.size > 0 && mayHydrateLegacy) {
         if (activeJsas.length > 0) {
           // Add to the most recent active JSA
           setActiveJsas(prev => {
@@ -1800,6 +1822,12 @@ export default function JsaHomeScreen() {
         return;
       }
       try {
+        const { loadLaunchContext } = await import('../../services/sso/jsaRuntime');
+        const { shouldApplyLegacyJobHydration } = await import('../../services/sso/jsaGovernedJobFields');
+        if (!shouldApplyLegacyJobHydration(!!(await loadLaunchContext()))) {
+          setContinueJsa(null);
+          return;
+        }
         // A save is "resumable" only if:
         //   1. driver/truck/today match
         //   2. its id is NOT in @jsa/dismissedIds (signoff writes there on submit)
@@ -1882,22 +1910,30 @@ export default function JsaHomeScreen() {
         { name: bufferedText, operator: '', county: '', jobType: jobActivityName.trim() },
       ];
     })();
+    const wellsJson = JSON.stringify(wellsForSubmit.map(w => ({
+      name: w.name,
+      operator: w.operator || '',
+      county: w.county || '',
+      jobType: w.jobType || jobActivityName,
+      source: 'ndic',
+    })));
+    const jobHandoff = applyGovernedJobHandoff({
+      populate: governedJobPopulate,
+      wellsParam: wellsJson,
+      wellNameParam: wellsForSubmit[0]?.name || wellName,
+      jobActivityParam: jobActivityName,
+    });
+    if (jobHandoff.source === 'blocked') return;
 
     router.push({
       pathname: "/steps",
       params: {
         driverName,
         truckNumber,
-        jobActivityName,
+        jobActivityName: jobHandoff.jobActivityName,
         pusher,
-        wellName: wellsForSubmit[0]?.name || wellName,
-        wells: JSON.stringify(wellsForSubmit.map(w => ({
-          name: w.name,
-          operator: w.operator || '',
-          county: w.county || '',
-          jobType: w.jobType || jobActivityName,
-          source: 'ndic',
-        }))),
+        wellName: jobHandoff.wellName,
+        wells: jobHandoff.wells,
         otherInfo,
         location: addedLocations[0] || locationInput.trim(),
         locations: JSON.stringify(addedLocations),
@@ -2298,12 +2334,22 @@ export default function JsaHomeScreen() {
             <TouchableOpacity
               style={[styles.button, { backgroundColor: accent, marginTop: 16 }]}
               onPress={() => {
+                const jobHandoff = applyGovernedJobHandoff({
+                  populate: governedJobPopulate,
+                  wellsParam: '[]',
+                  wellNameParam: '',
+                  jobActivityParam: jobActivityName,
+                });
+                if (jobHandoff.source === 'blocked') return;
                 router.push({
                   pathname: '/steps',
                   params: {
                     driverName: driverName || (session?.legalName || session?.displayName || ''),
                     truckNumber: truckNumber || '',
                     date,
+                    jobActivityName: jobHandoff.jobActivityName,
+                    wellName: jobHandoff.wellName,
+                    wells: jobHandoff.wells,
                     jsaSessionId: Date.now().toString(),
                   },
                 });
