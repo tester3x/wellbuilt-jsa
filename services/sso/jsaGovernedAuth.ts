@@ -51,7 +51,32 @@ export interface ExchangePayloadView {
   driverId: string;
   companyId: string;
   displayName?: string;
+  /** Optional. Server-resolved JSA-only acknowledgment identity. */
+  legalName?: string;
   jsaBinding?: GovernedAuthBinding;
+}
+
+/** Matches backend CANONICAL_LEGAL_NAME_MAX / registration NAME_MAX_LEN. */
+export const GOVERNED_LEGAL_NAME_MAX = 64;
+
+/**
+ * Authenticated exchange legalName. String, trim nonempty, ≤64, and not
+ * the same as displayName (case-insensitive after normalization). Fail
+ * any check → null. Never substitutes displayName.
+ */
+export function resolveGovernedLegalName(
+  raw: unknown,
+  displayName?: string | null,
+): string | null {
+  if (typeof raw !== 'string') return null;
+  if (/[\u0000-\u001F\u007F]/.test(raw)) return null;
+  const collapsed = raw.replace(/\s+/g, ' ').trim();
+  if (!collapsed || collapsed.length > GOVERNED_LEGAL_NAME_MAX) return null;
+  const display = typeof displayName === 'string'
+    ? displayName.replace(/\s+/g, ' ').trim()
+    : '';
+  if (display && collapsed.toLowerCase() === display.toLowerCase()) return null;
+  return collapsed;
 }
 
 export const SESSION_FORBIDDEN_PERSIST_KEYS = Object.freeze([
@@ -146,7 +171,10 @@ export function sessionViewFromExchange(
     driverId: payload.driverId,
     companyId: payload.companyId,
     displayName: payload.displayName ?? null,
-    legalName: legalName && legalName.trim() ? legalName.trim() : null,
+    legalName: resolveGovernedLegalName(
+      legalName ?? payload.legalName,
+      payload.displayName ?? null,
+    ),
     binding: payload.jsaBinding as GovernedAuthBinding,
     generation,
   };

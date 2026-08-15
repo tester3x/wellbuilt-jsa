@@ -4,11 +4,16 @@
  */
 import { isJsaBinding, type JsaBinding } from './jsaBinding';
 import {
+  resolveGovernedLegalName,
   sanitizeSessionForPersist,
   validatePersistedGovernedSession,
 } from './jsaGovernedAuth';
 
-export { sanitizeSessionForPersist, validatePersistedGovernedSession };
+export {
+  resolveGovernedLegalName,
+  sanitizeSessionForPersist,
+  validatePersistedGovernedSession,
+};
 
 export interface JsaGovernedSession {
   uid: string;
@@ -28,6 +33,8 @@ export interface ExchangePayload {
   driverId: string;
   companyId: string;
   displayName?: string;
+  /** Optional. Authenticated exchange legalName, already resolved. */
+  legalName?: string;
   jsaBinding?: JsaBinding;
 }
 
@@ -40,13 +47,16 @@ export function validateExchangePayload(raw: unknown): ExchangePayload | null {
   if (typeof o.driverId !== 'string' || !o.driverId) return null;
   if (typeof o.companyId !== 'string' || !o.companyId) return null;
   if (!isJsaBinding(o.jsaBinding)) return null;
+  const displayName = typeof o.displayName === 'string' ? o.displayName : undefined;
+  const legalName = resolveGovernedLegalName(o.legalName, displayName);
   return {
     protocolVersion: 1,
     customToken: o.customToken,
     uid: o.uid,
     driverId: o.driverId,
     companyId: o.companyId,
-    displayName: typeof o.displayName === 'string' ? o.displayName : undefined,
+    displayName,
+    ...(legalName ? { legalName } : {}),
     jsaBinding: o.jsaBinding,
   };
 }
@@ -61,7 +71,10 @@ export function sessionFromExchange(
     driverId: payload.driverId,
     companyId: payload.companyId,
     displayName: payload.displayName ?? null,
-    legalName: legalName && legalName.trim() ? legalName.trim() : null,
+    legalName: resolveGovernedLegalName(
+      legalName ?? payload.legalName,
+      payload.displayName,
+    ),
     binding: payload.jsaBinding!,
     generation,
   };

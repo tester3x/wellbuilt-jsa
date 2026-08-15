@@ -128,7 +128,7 @@ export async function persistAfterExchange(payload: ExchangePayload): Promise<vo
   const generation = newSessionGeneration(Date.now(), await generationEntropyHex());
   const result = await installGovernedAuthSession({
     payload,
-    legalName: null,
+    legalName: payload.legalName ?? null,
     generation,
     signInWithCustomToken: async (customToken) => {
       const cred = await signInWithCustomToken(getGovernedAuth(), customToken);

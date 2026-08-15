@@ -9,6 +9,7 @@ import {
   validatePersistedGovernedSession,
   sanitizeSessionForPersist,
   sessionViewFromExchange,
+  resolveGovernedLegalName,
   SESSION_FORBIDDEN_PERSIST_KEYS,
   decideStoredSessionBranch,
   isUsableGovernedSession,
@@ -240,6 +241,68 @@ check('sessionFromExchange never copies customToken onto the application session
 check('sanitize drops any extra token field if a caller stuffed one',
   !('customToken' in sanitizeSessionForPersist(validSession()))
   && SESSION_FORBIDDEN_PERSIST_KEYS.includes('customToken'));
+
+// ── authenticated exchange legalName: accept / persist / reload / use ──────
+{
+  const sessionSrc = readFileSync(join(root, 'services/sso/jsaSession.ts'), 'utf8');
+  const livePersist = readFileSync(join(root, 'services/sso/jsaGovernedAuthLive.ts'), 'utf8');
+  check('validateExchangePayload resolves optional exchange legalName',
+    sessionSrc.includes('legalName?: string')
+    && sessionSrc.includes('resolveGovernedLegalName(o.legalName, displayName)'));
+  check('live persistAfterExchange uses payload.legalName, never hardcodes null',
+    /legalName:\s*payload\.legalName\s*\?\?\s*null/.test(livePersist)
+    && !/legalName:\s*null/.test(livePersist));
+
+  check('distinct legalName is accepted after trim',
+    resolveGovernedLegalName('  Michael S Burger  ', 'Mikezfold') === 'Michael S Burger');
+  check('displayName-identical legalName is omitted, never substituted',
+    resolveGovernedLegalName('Mikezfold', 'Mikezfold') === null
+    && resolveGovernedLegalName('mikezfold', 'Mikezfold') === null
+    && resolveGovernedLegalName(null, 'Mikezfold') === null);
+  check('unusable legalName is omitted',
+    resolveGovernedLegalName('', 'Mikezfold') === null
+    && resolveGovernedLegalName(42, 'Mikezfold') === null
+    && resolveGovernedLegalName('x'.repeat(65), 'Mikezfold') === null
+    && resolveGovernedLegalName(`Michael${String.fromCharCode(0)}`, 'Mikezfold') === null);
+
+  const persisted = [];
+  const installed = await installGovernedAuthSession({
+    payload: validPayload({ displayName: 'Mikezfold', legalName: '  Michael S Burger  ' }),
+    legalName: '  Michael S Burger  ',
+    generation: '3000:cccc',
+    signInWithCustomToken: async () => ({ uid: 'uid-a' }),
+    persist: async (session) => { persisted.push(session); },
+  });
+  const reloaded = validatePersistedGovernedSession(persisted[0]);
+  check('authenticated legalName is persisted on the sanitized session',
+    installed.ok === true
+    && persisted[0].legalName === 'Michael S Burger'
+    && persisted[0].displayName === 'Mikezfold'
+    && !('customToken' in persisted[0]));
+  check('reloaded session still carries the authenticated legalName',
+    reloaded?.legalName === 'Michael S Burger'
+    && reloaded?.displayName === 'Mikezfold'
+    && reloaded?.legalName !== reloaded?.displayName);
+
+  const missingPersisted = [];
+  await installGovernedAuthSession({
+    payload: validPayload({ displayName: 'Mikezfold' }),
+    legalName: null,
+    generation: '3000:dddd',
+    signInWithCustomToken: async () => ({ uid: 'uid-a' }),
+    persist: async (session) => { missingPersisted.push(session); },
+  });
+  const missingReloaded = validatePersistedGovernedSession(missingPersisted[0]);
+  check('missing legalName persists as null and is not substituted from displayName',
+    missingReloaded?.legalName === null
+    && missingReloaded?.displayName === 'Mikezfold');
+  check('identical-to-displayName legalName is not persisted',
+    sessionViewFromExchange(
+      validPayload({ displayName: 'Mikezfold', legalName: 'Mikezfold' }),
+      'Mikezfold',
+      'g-same',
+    ).legalName === null);
+}
 
 // ── exact unauthenticated classification ──────────────────────────────────
 check('lifecycle and auth modules share the exact callable code',
