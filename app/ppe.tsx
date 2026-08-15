@@ -98,7 +98,8 @@ export default function PpeScreen() {
         }
         if (dest === 'completed') {
           setJobGate('failed');
-          router.replace({ pathname: '/governed-status', params: { mode: 'completed' } } as any);
+          const { resolveCompletedTerminalHref } = await import('../services/sso/jsaGovernedRoute');
+          router.replace((await resolveCompletedTerminalHref()) as any);
           return;
         }
         if (dest === 'acknowledge') {

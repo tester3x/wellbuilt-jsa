@@ -7,13 +7,17 @@ import { useEffect, useState } from 'react';
 import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors } from '../constants/colors';
 import { decideGovernedReturn } from '../services/sso/jsaReturn';
-import { loadLaunchContext } from '../services/sso/jsaRuntime';
+import { consumeGovernedLaunchAfterStay, loadLaunchContext } from '../services/sso/jsaRuntime';
 import {
   failClosedCopy,
-  returnStatusForAction,
   type JsaCompletionAction,
   type JsaRefusal,
 } from '../services/sso/jsaRequestLifecycle';
+import {
+  governedCombinedTerminalCopy,
+  replayHeading,
+  submittedHeading,
+} from '../services/sso/jsaGovernedTerminal';
 
 type Params = {
   mode?: string;
@@ -25,17 +29,25 @@ type Params = {
 export default function GovernedStatusScreen() {
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
-  const mode = params.mode === 'completed' ? 'completed' : 'fail';
+  const mode = params.mode === 'submitted'
+    ? 'submitted'
+    : params.mode === 'completed' ? 'completed' : 'fail';
   const refusal = (params.refusal || 'malformed') as JsaRefusal;
   const action = params.action as JsaCompletionAction | undefined;
   const stayAndRetry = refusal === 'complete_failed' || refusal === 'local_save_failed';
   const [copy, setCopy] = useState(
-    mode === 'completed'
-      ? 'This JSA request is already completed. Return to WellBuilt Tickets.'
-      : failClosedCopy(refusal),
+    mode === 'submitted'
+      ? 'Your JSA has been submitted and saved.'
+      : mode === 'completed'
+        ? 'This JSA request is already completed. Return to WellBuilt Tickets.'
+        : failClosedCopy(refusal),
   );
 
   useEffect(() => {
+    if (mode === 'submitted') {
+      setCopy('Your JSA has been submitted and saved.');
+      return;
+    }
     if (mode === 'completed') {
       setCopy(
         params.reused === '1'
@@ -54,12 +66,17 @@ export default function GovernedStatusScreen() {
     router.replace(href as any);
   };
 
+  const onStayOnJsa = async () => {
+    await consumeGovernedLaunchAfterStay();
+    router.replace('/(tabs)');
+  };
+
   const onReturn = async () => {
     if (mode === 'fail' && stayAndRetry) {
       await onRetry();
       return;
     }
-    if (mode === 'completed' && action) {
+    if ((mode === 'completed' || mode === 'submitted') && action) {
       const launch = await loadLaunchContext();
       const decided = decideGovernedReturn({
         launch,
@@ -80,13 +97,25 @@ export default function GovernedStatusScreen() {
     <View style={styles.wrap}>
       <View style={styles.card}>
         <Text style={styles.title}>
-          {mode === 'completed' ? 'Already completed' : 'Cannot continue'}
+          {mode === 'submitted' ? submittedHeading()
+            : mode === 'completed' ? replayHeading()
+              : 'Cannot continue'}
         </Text>
         <Text style={styles.copy}>{copy}</Text>
+        {mode === 'submitted' && action ? (
+          <Text style={styles.meta}>{governedCombinedTerminalCopy(action)}</Text>
+        ) : null}
         {mode === 'completed' && action ? (
-          <Text style={styles.meta}>
-            Recorded as {returnStatusForAction(action).replace('_', ' ')}
-          </Text>
+          <Text style={styles.meta}>{governedCombinedTerminalCopy(action)}</Text>
+        ) : null}
+        {mode === 'submitted' ? (
+          <TouchableOpacity
+            style={[styles.btn, styles.secondaryBtn]}
+            onPress={onStayOnJsa}
+            accessibilityLabel="Stay on JSA"
+          >
+            <Text style={styles.secondaryBtnText}>Stay on JSA</Text>
+          </TouchableOpacity>
         ) : null}
         <TouchableOpacity
           style={styles.btn}
@@ -143,9 +172,20 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
+    marginTop: 8,
+  },
+  secondaryBtn: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   btnText: {
     color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  secondaryBtnText: {
+    color: colors.textDark,
     fontWeight: '700',
     fontSize: 16,
   },

@@ -854,7 +854,7 @@ check('signoff maps signatureImage not signature as the PNG',
     && !statusSrc.includes('jsaPersistGovernedArtifact'));
   check('4C-12 completed home shortcut is unchanged and not the persist owner',
     /governedCtx\?\.state === 'completed'/.test(indexSrc)
-    && indexSrc.includes("pathname: '/governed-status'")
+    && indexSrc.includes('resolveCompletedTerminalHref')
     && !indexSrc.includes('settleGovernedArtifactQueueIfAuthenticated'));
   check('4C-13 helper adds no remint/register/get/navigation/timer',
     !/jsaRegisterReadRequest|jsaGetReadRequest|mintAttempt/.test(helper)

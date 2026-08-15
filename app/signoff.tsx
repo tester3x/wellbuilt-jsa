@@ -143,7 +143,8 @@ export default function SignoffScreen() {
         }
         if (dest === 'completed') {
           setJobGate('failed');
-          router.replace({ pathname: '/governed-status', params: { mode: 'completed' } } as any);
+          const { resolveCompletedTerminalHref } = await import('../services/sso/jsaGovernedRoute');
+          router.replace((await resolveCompletedTerminalHref()) as any);
           return;
         }
         if (dest === 'acknowledge') {
@@ -278,6 +279,7 @@ export default function SignoffScreen() {
       return;
     }
 
+    let skipForcedSubmitted = false;
     const saveAndGo = async () => {
       if (jobGate !== 'ready' || !jobSource) return;
       // Parse PPE into structured format for JSARecord
@@ -350,7 +352,8 @@ export default function SignoffScreen() {
         await import('../services/sso/jsaGovernedJobFields');
       const dest = decideGovernedJobScreen(resolved.populate);
       if (dest === 'completed') {
-        router.replace({ pathname: '/governed-status', params: { mode: 'completed' } } as any);
+        const { resolveCompletedTerminalHref } = await import('../services/sso/jsaGovernedRoute');
+        router.replace((await resolveCompletedTerminalHref()) as any);
         return;
       }
       if (dest === 'acknowledge') {
@@ -471,21 +474,10 @@ export default function SignoffScreen() {
       const { failClosedCopy } = await import('../services/sso/jsaRequestLifecycle');
       const governedCtx = await loadRequestContext();
       const pendingComplete = await loadPendingComplete();
+      skipForcedSubmitted = !!governedCtx;
       if (governedCtx?.state === 'completed' && governedCtx.action) {
-        const launch = await (await import('../services/sso/jsaRuntime')).loadLaunchContext();
-        const { decideGovernedReturn } = await import('../services/sso/jsaReturn');
-        const ret = decideGovernedReturn({
-          launch,
-          completion: {
-            requestId: governedCtx.requestId,
-            action: governedCtx.action,
-            reused: true,
-          },
-        });
-        setCompleteCloudPending(false);
-        setCompleteReturnScheme('open' in ret ? ret.open : null);
-        setCompleteOrigin('wbt');
-        setShowCompleteModal(true);
+        const { resolveCompletedTerminalHref } = await import('../services/sso/jsaGovernedRoute');
+        router.replace((await resolveCompletedTerminalHref(true)) as any);
         return;
       }
       const governedActive = !!governedCtx && governedCtx.state === 'pending';
@@ -638,14 +630,6 @@ export default function SignoffScreen() {
           );
           return;
         }
-        const ret = decideGovernedReturn({
-          launch,
-          completion: {
-            requestId: governedCtx.requestId,
-            action: done.action,
-            reused: done.reused,
-          },
-        });
         try { await AsyncStorage.setItem('@jsa/clearFormOnNextFocus', '1'); } catch {}
         try { await AsyncStorage.removeItem('jsa_resume'); } catch {}
         if (attestScope) {
@@ -654,10 +638,10 @@ export default function SignoffScreen() {
             await applyAttestationCompletion(AsyncStorage, attestScope, 'succeeded');
           } catch {}
         }
-        setCompleteCloudPending(false);
-        setCompleteReturnScheme('open' in ret ? ret.open : null);
-        setCompleteOrigin('wbt');
-        setShowCompleteModal(true);
+        const { recordFreshGovernedSubmitted } = await import('../services/sso/jsaRuntime');
+        await recordFreshGovernedSubmitted(governedCtx.requestId, done.action);
+        const { resolveCompletedTerminalHref } = await import('../services/sso/jsaGovernedRoute');
+        router.replace((await resolveCompletedTerminalHref(done.reused)) as any);
         return;
       }
 
@@ -1457,6 +1441,7 @@ export default function SignoffScreen() {
     submitLockRef.current = true;
     saveAndGo().catch((err) => {
       console.error('[JSA-Signoff] saveAndGo failed — forcing HONEST modal:', err);
+      if (skipForcedSubmitted) return;
       // 8/6 — the forced modal no longer claims success: cloudPending copy
       // renders (the local save is the first step and is best-effort
       // durable); no return link, no receipt, WB-T stays gated.

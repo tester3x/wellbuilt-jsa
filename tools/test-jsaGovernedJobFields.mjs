@@ -404,7 +404,7 @@ check('5A-1 PPE cannot advance while governed resolution is pending', ppeAdvance
 check('5A-1 signoff cannot submit while governed resolution is pending', signoffHold);
 check('5A-1 failed/terminal resolution produces no save or legacy cloud write',
   stepsSrc.includes("'/acknowledge'")
-  && stepsSrc.includes("mode: 'completed'")
+  && stepsSrc.includes('resolveCompletedTerminalHref')
   && signoffSrc.includes("pendingGovernedReadMaySave")
   && signoffSrc.includes("frozenJob.source !== 'governed_snapshot'")
   && !/jsaRegisterReadRequest|runCloudPersist/.test(liveSrc));

@@ -20,6 +20,11 @@ import {
   type JsaGovernedSessionView,
 } from './jsaGovernedAuth';
 import { JSA_LAUNCH_CONTEXT_KEY } from './jsaLaunch';
+import {
+  FRESH_GOVERNED_SUBMITTED_KEY,
+  parseFreshSubmittedMarker,
+  type FreshSubmittedMarker,
+} from './jsaGovernedTerminal';
 import type { JsaLaunchOwnership } from './jsaRouteOwnership';
 import {
   GOVERNED_LAUNCH_OWNERSHIP_KEY,
@@ -65,6 +70,33 @@ export async function loadLaunchContext(): Promise<JsaLaunchRequest | null> {
     const raw = await AsyncStorage.getItem(JSA_LAUNCH_CONTEXT_KEY);
     return raw ? JSON.parse(raw) as JsaLaunchRequest : null;
   } catch { return null; }
+}
+
+export async function clearLaunchContext(): Promise<void> {
+  await AsyncStorage.removeItem(JSA_LAUNCH_CONTEXT_KEY);
+}
+
+export async function saveFreshSubmittedMarker(marker: FreshSubmittedMarker): Promise<void> {
+  await AsyncStorage.setItem(FRESH_GOVERNED_SUBMITTED_KEY, JSON.stringify(marker));
+}
+
+export async function loadFreshSubmittedMarker(): Promise<FreshSubmittedMarker | null> {
+  try {
+    const raw = await AsyncStorage.getItem(FRESH_GOVERNED_SUBMITTED_KEY);
+    return raw ? parseFreshSubmittedMarker(JSON.parse(raw)) : null;
+  } catch { return null; }
+}
+
+export async function clearFreshSubmittedMarker(): Promise<void> {
+  await AsyncStorage.removeItem(FRESH_GOVERNED_SUBMITTED_KEY);
+}
+
+export async function recordFreshGovernedSubmitted(
+  requestId: string,
+  action: string,
+  nowMs = Date.now(),
+): Promise<void> {
+  await saveFreshSubmittedMarker({ requestId, action, submittedAtMs: nowMs });
 }
 
 export async function saveAttempt(attempt: JsaPkceAttempt): Promise<void> {
@@ -252,4 +284,12 @@ export async function loadGovernedUiStage(): Promise<string | null> {
 
 export async function clearGovernedUiStage(): Promise<void> {
   await AsyncStorage.removeItem(GOVERNED_UI_STAGE_KEY);
+}
+
+/** Stay on JSA: drop only transient launch/nav so home is not the replay surface. */
+export async function consumeGovernedLaunchAfterStay(): Promise<void> {
+  await clearFreshSubmittedMarker();
+  await clearLaunchContext();
+  await AsyncStorage.removeItem(GOVERNED_LAUNCH_OWNERSHIP_KEY);
+  await clearGovernedUiStage();
 }

@@ -1351,10 +1351,9 @@ export default function JsaHomeScreen() {
         const governedCtx = await loadRequestContext();
         const governedPending = !!governedCtx && governedCtx.state === 'pending';
         if (governedCtx?.state === 'completed') {
-          router.replace({
-            pathname: '/governed-status',
-            params: { mode: 'completed', action: governedCtx.action || 'read_and_acknowledged' },
-          } as any);
+          const { resolveCompletedTerminalHref } = await import('../../services/sso/jsaGovernedRoute');
+          const href = await resolveCompletedTerminalHref();
+          if (href !== '/(tabs)') router.replace(href as any);
           return;
         }
         if (governedPending && governedCtx.intent === 'acknowledge') {
@@ -1927,7 +1926,9 @@ export default function JsaHomeScreen() {
     if (jobHandoff.source === 'blocked') return;
     const nextDest = decideGovernedJobScreen(governedJobPopulate);
     if (nextDest === 'completed') {
-      router.replace({ pathname: '/governed-status', params: { mode: 'completed' } } as any);
+      void import('../../services/sso/jsaGovernedRoute').then(async ({ resolveCompletedTerminalHref }) => {
+        router.replace((await resolveCompletedTerminalHref()) as any);
+      });
       return;
     }
     if (nextDest === 'acknowledge') {
@@ -2354,7 +2355,9 @@ export default function JsaHomeScreen() {
                 if (jobHandoff.source === 'blocked') return;
                 const dest = decideGovernedJobScreen(governedJobPopulate);
                 if (dest === 'completed') {
-                  router.replace({ pathname: '/governed-status', params: { mode: 'completed' } } as any);
+                  void import('../../services/sso/jsaGovernedRoute').then(async ({ resolveCompletedTerminalHref }) => {
+                    router.replace((await resolveCompletedTerminalHref()) as any);
+                  });
                   return;
                 }
                 if (dest === 'acknowledge') {

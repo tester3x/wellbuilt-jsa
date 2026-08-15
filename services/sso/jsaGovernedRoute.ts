@@ -4,7 +4,30 @@
 import type { EntryDecision } from './jsaGovernedEntry';
 import { completeAfterLocalSave } from './jsaGovernedEntry';
 import type { GovernedEntryDeps } from './jsaGovernedEntry';
-import { saveGovernedUiStage } from './jsaRuntime';
+import {
+  loadFreshSubmittedMarker,
+  loadLaunchContext,
+  loadRequestContext,
+  recordFreshGovernedSubmitted,
+  saveGovernedUiStage,
+} from './jsaRuntime';
+import {
+  decideCompletedTerminalSurface,
+  hrefForCompletedTerminal,
+} from './jsaGovernedTerminal';
+
+export async function resolveCompletedTerminalHref(reused?: boolean): Promise<any> {
+  const ctx = await loadRequestContext();
+  const launch = await loadLaunchContext();
+  const marker = await loadFreshSubmittedMarker();
+  const surface = decideCompletedTerminalSurface({
+    contextState: ctx?.state ?? null,
+    contextRequestId: ctx?.requestId ?? null,
+    launchRequestId: launch?.requestId ?? null,
+    marker,
+  });
+  return hrefForCompletedTerminal(surface, ctx?.action, reused);
+}
 
 export async function resolveEntryRoute(
   decision: EntryDecision,
@@ -18,10 +41,7 @@ export async function resolveEntryRoute(
     };
   }
   if (decision.next === 'return_completed') {
-    return {
-      pathname: '/governed-status',
-      params: { mode: 'completed', action: decision.action },
-    };
+    return resolveCompletedTerminalHref();
   }
   if (decision.next === 'retry_complete') {
     const pending = await deps.loadPending();
@@ -38,14 +58,10 @@ export async function resolveEntryRoute(
       void import('./jsaArtifactLive').then((m) => m.settleGovernedArtifactQueue()).catch(() => {
         console.log(JSON.stringify({ tag: '[jsa-artifact-queue]', outcome: 'settle_failed' }));
       });
-      return {
-        pathname: '/governed-status',
-        params: {
-          mode: 'completed',
-          action: done.action,
-          reused: done.reused ? '1' : '0',
-        },
-      };
+      if (!done.reused) {
+        await recordFreshGovernedSubmitted(pending.requestId, done.action);
+      }
+      return resolveCompletedTerminalHref(done.reused);
     }
     return { pathname: '/governed-status', params: { mode: 'fail', refusal: done.refusal } };
   }

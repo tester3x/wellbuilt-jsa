@@ -125,10 +125,12 @@ export default function AcknowledgeScreen() {
       try { await Linking.openURL(ret.open); } catch {}
       return;
     }
-    router.replace({
-      pathname: '/governed-status',
-      params: { mode: 'completed', action: done.action, reused: done.reused ? '1' : '0' },
-    } as any);
+    const { recordFreshGovernedSubmitted } = await import('../services/sso/jsaRuntime');
+    if (!done.reused) {
+      await recordFreshGovernedSubmitted(ctx.requestId, done.action);
+    }
+    const { resolveCompletedTerminalHref } = await import('../services/sso/jsaGovernedRoute');
+    router.replace((await resolveCompletedTerminalHref(done.reused)) as any);
   };
 
   const onSubmit = () => {
