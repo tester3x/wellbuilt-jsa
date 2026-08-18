@@ -27,7 +27,7 @@ const VALID_PASSCODE_REGEX = /^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]+
 
 const validatePasscode = (code: string): { valid: boolean; error?: string } => {
   if (!code.trim()) return { valid: false, error: "Please create a passcode" };
-  if (code.length < 4) return { valid: false, error: "Passcode must be at least 4 characters" };
+  if (code.length < 6) return { valid: false, error: "Passcode must be at least 6 characters" };
   if (code.length > 12) return { valid: false, error: "Passcode must be 12 characters or less" };
   if (!VALID_PASSCODE_REGEX.test(code)) return { valid: false, error: "Passcode contains invalid characters" };
   return { valid: true };
@@ -319,7 +319,7 @@ export default function LoginScreen() {
                 />
               </TouchableOpacity>
             </View>
-            {isRegister && <Text style={styles.hint}>4-12 characters</Text>}
+            {isRegister && <Text style={styles.hint}>6-12 characters</Text>}
             {passcodeError ? <Text style={styles.errorText}>{passcodeError}</Text> : null}
 
             {/* Error message */}

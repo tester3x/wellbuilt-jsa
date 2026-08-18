@@ -11,11 +11,8 @@ import {
   saveDriverSession,
   submitRegistration,
   registerStandalone as registerStandaloneService,
-  isPasscodeAvailable,
   getPendingRegistration,
-  getSecurePendingId,
   checkRegistrationStatus,
-  completeRegistration,
   clearPendingRegistration,
   revalidateDriverSession,
 } from "../../services/driverAuth";
@@ -48,9 +45,9 @@ interface AuthContextValue {
   login: (displayName: string, passcode: string) => Promise<boolean>;
   /** Register a new driver (company flow — pending approval) */
   register: (displayName: string, passcode: string, companyName?: string, legalName?: string) => Promise<boolean>;
-  /** Register as standalone/free-tier driver — auto-approved */
+  /** Register as independent driver — pending-only, never auto-approved */
   registerStandalone: (displayName: string, passcode: string, legalName?: string) => Promise<boolean>;
-  /** Complete registration after admin approval */
+  /** After approval, return the driver to normal login. Never mints a session. */
   completeReg: () => Promise<boolean>;
   /** Cancel pending registration */
   cancelRegistration: () => Promise<void>;
@@ -92,21 +89,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const status = await checkRegistrationStatus();
           if (status === "approved") {
             if (pollRef.current) clearInterval(pollRef.current);
-            const securePending = await getSecurePendingId();
-            if (securePending) {
-              // Approved pending request still requires a normal login.
-              setMode("login");
-              setError("Registration approved. Please sign in.");
-            } else {
-              const result = await completeRegistration();
-              if (result.success) {
-                const driverSession = await getDriverSession();
-                setSession(driverSession);
-                setMode("authenticated");
-              } else {
-                setMode("approved");
-              }
-            }
+            // Governed pending approval never mints a local session.
+            setMode("login");
+            setError("Registration approved. Please sign in.");
           } else if (status === "rejected") {
             if (pollRef.current) clearInterval(pollRef.current);
             setMode("rejected");
@@ -147,7 +132,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setPendingName(pending.displayName);
         const status = await checkRegistrationStatus();
         if (status === "approved") {
-          setMode("approved");
+          setMode("login");
+          setError("Registration approved. Please sign in.");
         } else if (status === "rejected") {
           setMode("rejected");
         } else {
@@ -204,13 +190,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError("");
 
     try {
-      const available = await isPasscodeAvailable(passcode.trim(), displayName.trim());
-      if (!available.available) {
-        setMode("register");
-        setError(available.reason || "This passcode is not available");
-        return false;
-      }
-
       const result = await submitRegistration({
         passcode: passcode.trim(),
         displayName: displayName.trim(),
@@ -265,26 +244,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const completeReg = useCallback(async (): Promise<boolean> => {
-    setMode("verifying");
-
-    try {
-      const result = await completeRegistration();
-      if (result.success) {
-        const driverSession = await getDriverSession();
-        setSession(driverSession);
-        setMode("authenticated");
-        return true;
-      } else {
-        setMode("error");
-        setError(result.error || "Could not complete registration");
-        return false;
-      }
-    } catch (err) {
-      console.error("[AuthContext-JSA] Complete registration error:", err);
-      setMode("error");
-      setError("Connection error. Please try again.");
-      return false;
-    }
+    setMode("login");
+    setError("Registration approved. Please sign in.");
+    return false;
   }, []);
 
   const cancelRegistration = useCallback(async () => {

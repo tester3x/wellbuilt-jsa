@@ -7,11 +7,11 @@
 // 1. Driver enters name + passcode
 // 2. App SHA-256 hashes (name.toLowerCase() + passcode) client-side
 // 3. Login: Find driver by hash, verify name matches
-// 4. Registration: Post to drivers/pending/, admin approves to drivers/approved/
+// 4. Registration: requestDriverRegistration (pending-only). Never POST drivers/pending.
 //
 // Structure:
 // - drivers/approved/{passcodeHash}/ = { displayName, active, approvedAt, isAdmin? }
-// - drivers/pending/{key}/ = { displayName, passcodeHash, requestedAt }
+// - pending_credentials/{pendingId} + drivers/pending_secure/{pendingId} (server)
 
 import * as SecureStore from "expo-secure-store";
 import * as Crypto from "expo-crypto";
@@ -100,22 +100,6 @@ export const firebaseGet = async (path: string): Promise<any> => {
   }
 
   return response.json();
-};
-
-const firebasePost = async (path: string, data: any): Promise<string> => {
-  const url = buildFirebaseUrl(path);
-  const response = await fetchWithTimeout(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Firebase POST failed (${response.status})`);
-  }
-
-  const result = await response.json();
-  return result.name; // Firebase returns {"name": "generated-key"}
 };
 
 const firebasePatch = async (path: string, data: any): Promise<void> => {
@@ -589,28 +573,48 @@ async function callHttpsFunction<T>(name: string, data: Record<string, unknown>)
   return (body.result || body.data) as T;
 }
 
+/** Server contract: passcode 6–128. JSA UI also caps at 12. */
+export const JSA_PASSCODE_MIN_LEN = 6;
+export const JSA_PASSCODE_MAX_LEN = 12;
+
+function classifyRegistrationError(error: unknown): string {
+  const msg = typeof (error as { message?: unknown })?.message === 'string'
+    ? String((error as { message: string }).message)
+    : '';
+  if (!msg) return 'Connection error';
+  if (/too many/i.test(msg)) return msg;
+  if (/already registered|already-exists|already exists/i.test(msg)) return msg;
+  if (/invalid|required|characters|passcode must|display name/i.test(msg)) return msg;
+  if (/resource-exhausted|failed-precondition|permission-denied/i.test(msg)) return msg;
+  if (/failed \(\d+\)/i.test(msg)) return msg;
+  return msg;
+}
+
 /**
- * Request a pending standalone/free-tier registration.
- * Uses requestDriverRegistration (pending-only). Never calls the retired
- * registerStandaloneDriver endpoint. Does not create Auth/credential/profile.
+ * Governed pending registration for both company and independent JSA flows.
+ * Calls requestDriverRegistration only. Never POSTs drivers/pending, never
+ * stores a passcode hash, never mints Auth or an approved session.
  */
-export const registerStandalone = async (params: {
+async function requestPendingRegistration(params: {
   passcode: string;
   displayName: string;
   legalName?: string;
-}): Promise<{ success: boolean; pending?: boolean; pendingId?: string; error?: string }> => {
-  console.log("[DriverAuth-JSA] Pending registration for:", params.displayName);
+  companyName?: string;
+}): Promise<{ success: boolean; pending?: boolean; pendingId?: string; error?: string }> {
+  if (params.passcode.length < JSA_PASSCODE_MIN_LEN || params.passcode.length > 128) {
+    return { success: false, error: 'Passcode must be 6–128 characters' };
+  }
 
   try {
-    const result = await callHttpsFunction<{
-      pendingId?: string;
-      status?: string;
-    }>('requestDriverRegistration', {
+    const data: Record<string, unknown> = {
       displayName: params.displayName,
       passcode: params.passcode,
-      legalName: params.legalName,
       source: 'wbjsa',
-    });
+    };
+    if (params.legalName) data.legalName = params.legalName;
+    if (params.companyName) data.companyName = params.companyName;
+
+    const result = await callHttpsFunction<{ pendingId?: string }>('requestDriverRegistration', data);
     const pendingId = typeof result?.pendingId === 'string' ? result.pendingId : '';
     if (!pendingId) {
       return { success: false, error: 'Registration did not return a pending request' };
@@ -621,59 +625,49 @@ export const registerStandalone = async (params: {
     if (params.legalName) {
       await SecureStore.setItemAsync('jsa_pendingLegalName', params.legalName);
     }
-    console.log('[DriverAuth-JSA] Pending registration submitted');
+    if (params.companyName) {
+      await SecureStore.setItemAsync('jsa_pendingCompanyName', params.companyName);
+    }
     return { success: true, pending: true, pendingId };
-  } catch (error: any) {
-    console.error('[DriverAuth-JSA] Pending registration error:', error);
-    const msg = typeof error?.message === 'string' ? error.message : 'Connection error';
-    return { success: false, error: msg };
+  } catch (error: unknown) {
+    console.error('[DriverAuth-JSA] Pending registration error:', classifyRegistrationError(error));
+    return { success: false, error: classifyRegistrationError(error) };
   }
+}
+
+/**
+ * Request a pending standalone/free-tier registration.
+ * Uses requestDriverRegistration (pending-only). Never calls the retired
+ * registerStandaloneDriver endpoint. Does not create Auth/credential/profile.
+ */
+export const registerStandalone = async (params: {
+  passcode: string;
+  displayName: string;
+  legalName?: string;
+}): Promise<{ success: boolean; pending?: boolean; pendingId?: string; error?: string }> => {
+  return requestPendingRegistration({
+    passcode: params.passcode,
+    displayName: params.displayName,
+    legalName: params.legalName,
+  });
 };
 
 /**
- * Submit a registration request
- * Creates entry in Firebase drivers/pending/
+ * Request a pending company registration through requestDriverRegistration.
+ * Does not write drivers/pending from the client and does not store a hash.
  */
 export const submitRegistration = async (params: {
   passcode: string;
   displayName: string;
   companyName?: string;
   legalName?: string;
-}): Promise<{ success: boolean; error?: string }> => {
-  console.log("[DriverAuth-JSA] Submitting registration for:", params.displayName, "company:", params.companyName);
-
-  try {
-    const hash = await hashPasscode(params.passcode, params.displayName);
-
-    const registrationData: Record<string, string> = {
-      displayName: params.displayName,
-      passcodeHash: hash,
-      requestedAt: new Date().toISOString(),
-      source: 'wbjsa',
-    };
-    if (params.companyName) {
-      registrationData.companyName = params.companyName;
-    }
-    if (params.legalName) {
-      registrationData.legalName = params.legalName;
-    }
-
-    await firebasePost(DRIVERS_PENDING, registrationData);
-
-    // Save pending registration locally
-    await SecureStore.setItemAsync("jsa_pendingPasscodeHash", hash);
-    await SecureStore.setItemAsync("jsa_pendingDisplayName", params.displayName);
-    await SecureStore.setItemAsync("jsa_pendingRegistrationTime", Date.now().toString());
-    if (params.companyName) {
-      await SecureStore.setItemAsync("jsa_pendingCompanyName", params.companyName);
-    }
-
-    console.log("[DriverAuth-JSA] Registration submitted successfully");
-    return { success: true };
-  } catch (error) {
-    console.error("[DriverAuth-JSA] Error submitting registration:", error);
-    return { success: false, error: "Connection error" };
-  }
+}): Promise<{ success: boolean; pending?: boolean; pendingId?: string; error?: string }> => {
+  return requestPendingRegistration({
+    passcode: params.passcode,
+    displayName: params.displayName,
+    companyName: params.companyName,
+    legalName: params.legalName,
+  });
 };
 
 /**
@@ -688,14 +682,10 @@ export const getPendingRegistration = async (): Promise<{
   displayName: string;
   companyName?: string;
 } | null> => {
-  const passcodeHash = await SecureStore.getItemAsync("jsa_pendingPasscodeHash");
   const displayName = await SecureStore.getItemAsync("jsa_pendingDisplayName");
   const companyName = await SecureStore.getItemAsync("jsa_pendingCompanyName");
   const secureId = await SecureStore.getItemAsync("jsa_pendingSecureId");
 
-  if (passcodeHash && displayName) {
-    return { passcodeHash, displayName, companyName: companyName || undefined };
-  }
   if (secureId && displayName) {
     return { passcodeHash: '', displayName, companyName: companyName || undefined };
   }
@@ -703,62 +693,33 @@ export const getPendingRegistration = async (): Promise<{
 };
 
 /**
- * Check registration status
+ * Check registration status via the governed pendingId contract only.
  */
 export const checkRegistrationStatus = async (): Promise<
   "pending" | "approved" | "rejected" | "none"
 > => {
   const pendingId = await SecureStore.getItemAsync('jsa_pendingSecureId');
-  if (pendingId) {
-    try {
-      const result = await callHttpsFunction<{ status?: string }>(
-        'checkDriverRegistrationStatus',
-        { pendingId },
-      );
-      const status = result?.status;
-      if (status === 'approved' || status === 'rejected' || status === 'pending' || status === 'none') {
-        return status;
-      }
-      return 'pending';
-    } catch (error) {
-      console.error('[DriverAuth-JSA] Error checking secure pending status:', error);
-      return 'pending';
-    }
+  if (!pendingId) {
+    return 'none';
   }
-
-  const pending = await getPendingRegistration();
-  if (!pending) {
-    return "none";
-  }
-
   try {
-    // Check if approved
-    const driver = await firebaseGet(`${DRIVERS_APPROVED}/${pending.passcodeHash}`);
-    if (driver) {
-      return "approved";
+    const result = await callHttpsFunction<{ status?: string }>(
+      'checkDriverRegistrationStatus',
+      { pendingId },
+    );
+    const status = result?.status;
+    if (status === 'approved' || status === 'rejected' || status === 'pending' || status === 'none') {
+      return status;
     }
-
-    // Check if still in pending
-    const pendingDrivers = await firebaseGet(DRIVERS_PENDING);
-    if (pendingDrivers) {
-      for (const key of Object.keys(pendingDrivers)) {
-        const registration = pendingDrivers[key];
-        if (registration.passcodeHash === pending.passcodeHash) {
-          return "pending";
-        }
-      }
-    }
-
-    // Not in approved, not in pending = rejected
-    return "rejected";
+    return 'pending';
   } catch (error) {
-    console.error("[DriverAuth-JSA] Error checking registration status:", error);
-    return "pending";
+    console.error('[DriverAuth-JSA] Error checking secure pending status:', error);
+    return 'pending';
   }
 };
 
 /**
- * Complete registration after approval
+ * Approval never mints a local hash session. The driver must sign in normally.
  */
 export const completeRegistration = async (): Promise<{
   success: boolean;
@@ -766,34 +727,10 @@ export const completeRegistration = async (): Promise<{
   displayName?: string;
   error?: string;
 }> => {
-  const pending = await getPendingRegistration();
-  if (!pending) {
-    return { success: false, error: "No pending registration" };
-  }
-
-  try {
-    const driverData = await firebaseGet(`${DRIVERS_APPROVED}/${pending.passcodeHash}`);
-
-    if (!driverData) {
-      return { success: false, error: "Driver not found in approved list" };
-    }
-
-    const displayName = driverData.displayName || pending.displayName;
-    const isAdmin = driverData.isAdmin === true;
-    const isViewer = driverData.isViewer === true;
-    const companyId = driverData.companyId || undefined;
-    const companyName = driverData.companyName || undefined;
-
-    await saveDriverSession(pending.passcodeHash, displayName, pending.passcodeHash, isAdmin, isViewer, companyId, companyName);
-    return {
-      success: true,
-      driverId: pending.passcodeHash,
-      displayName,
-    };
-  } catch (error) {
-    console.error("[DriverAuth-JSA] Error completing registration:", error);
-    return { success: false, error: "Connection error" };
-  }
+  return {
+    success: false,
+    error: 'Registration approved. Please sign in.',
+  };
 };
 
 /**
