@@ -13,6 +13,7 @@ import {
   registerStandalone as registerStandaloneService,
   isPasscodeAvailable,
   getPendingRegistration,
+  getSecurePendingId,
   checkRegistrationStatus,
   completeRegistration,
   clearPendingRegistration,
@@ -91,13 +92,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const status = await checkRegistrationStatus();
           if (status === "approved") {
             if (pollRef.current) clearInterval(pollRef.current);
-            const result = await completeRegistration();
-            if (result.success) {
-              const driverSession = await getDriverSession();
-              setSession(driverSession);
-              setMode("authenticated");
+            const securePending = await getSecurePendingId();
+            if (securePending) {
+              // Approved pending request still requires a normal login.
+              setMode("login");
+              setError("Registration approved. Please sign in.");
             } else {
-              setMode("approved");
+              const result = await completeRegistration();
+              if (result.success) {
+                const driverSession = await getDriverSession();
+                setSession(driverSession);
+                setMode("authenticated");
+              } else {
+                setMode("approved");
+              }
             }
           } else if (status === "rejected") {
             if (pollRef.current) clearInterval(pollRef.current);
@@ -239,17 +247,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (result.success) {
-        // Auto-approved — reload session
-        const sess = await getDriverSession();
-        if (sess) {
-          setSession(sess);
-          setMode("authenticated");
-          return true;
-        }
-        // If session load failed, try reloading
-        setMode("login");
-        setError("Registration succeeded but session failed to load. Please sign in.");
-        return false;
+        // Pending-only. Never mint a local approved session from this path.
+        setPendingName(displayName.trim());
+        setMode("pending");
+        return true;
       } else {
         setMode("register");
         setError(result.error || "Could not complete registration");

@@ -564,55 +564,69 @@ export const isPasscodeAvailable = async (
   }
 };
 
+function functionsCallableBase(): string {
+  const fromEnv = (process.env as { EXPO_PUBLIC_FUNCTIONS_BASE?: string }).EXPO_PUBLIC_FUNCTIONS_BASE;
+  if (fromEnv && fromEnv.trim()) return fromEnv.replace(/\/$/, '');
+  const emu = (process.env as { EXPO_PUBLIC_FIREBASE_EMULATOR_HOST?: string }).EXPO_PUBLIC_FIREBASE_EMULATOR_HOST;
+  const project = (process.env as { EXPO_PUBLIC_GCLOUD_PROJECT?: string }).EXPO_PUBLIC_GCLOUD_PROJECT
+    || 'demo-wellbuilt-fn-auth-recert';
+  if (emu && emu.trim()) {
+    return `http://${emu.replace(/\/$/, '')}/${project}/us-central1`;
+  }
+  return 'https://us-central1-wellbuilt-sync.cloudfunctions.net';
+}
+
+async function callHttpsFunction<T>(name: string, data: Record<string, unknown>): Promise<T> {
+  const resp = await fetch(`${functionsCallableBase()}/${name}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data }),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok || body.error) {
+    throw new Error(body?.error?.message || `Callable ${name} failed (${resp.status})`);
+  }
+  return (body.result || body.data) as T;
+}
+
 /**
- * Register as a standalone/free-tier driver.
- * SECURITY: never client-write drivers/approved. Server callable mints
- * credentials + profile via Admin SDK (registerStandaloneDriver).
+ * Request a pending standalone/free-tier registration.
+ * Uses requestDriverRegistration (pending-only). Never calls the retired
+ * registerStandaloneDriver endpoint. Does not create Auth/credential/profile.
  */
 export const registerStandalone = async (params: {
   passcode: string;
   displayName: string;
   legalName?: string;
-}): Promise<{ success: boolean; error?: string }> => {
-  console.log("[DriverAuth-JSA] Standalone registration for:", params.displayName);
+}): Promise<{ success: boolean; pending?: boolean; pendingId?: string; error?: string }> => {
+  console.log("[DriverAuth-JSA] Pending registration for:", params.displayName);
 
   try {
-    const CALLABLE =
-      'https://us-central1-wellbuilt-sync.cloudfunctions.net/registerStandaloneDriver';
-    const resp = await fetch(CALLABLE, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        data: {
-          displayName: params.displayName,
-          passcode: params.passcode,
-          legalName: params.legalName,
-        },
-      }),
+    const result = await callHttpsFunction<{
+      pendingId?: string;
+      status?: string;
+    }>('requestDriverRegistration', {
+      displayName: params.displayName,
+      passcode: params.passcode,
+      legalName: params.legalName,
+      source: 'wbjsa',
     });
-    const body = await resp.json().catch(() => ({}));
-    if (!resp.ok || body.error) {
-      const msg = body?.error?.message || `Registration failed (${resp.status})`;
-      // During dual-run, if function not deployed yet, fail closed (no self-approve).
-      return { success: false, error: msg };
+    const pendingId = typeof result?.pendingId === 'string' ? result.pendingId : '';
+    if (!pendingId) {
+      return { success: false, error: 'Registration did not return a pending request' };
     }
-    const result = body.result || {};
-    const driverId = result.driverId || result.displayName;
-    await SecureStore.setItemAsync('jsa_passcodeHash', driverId);
-    await SecureStore.setItemAsync('jsa_driverName', result.displayName || params.displayName);
-    await SecureStore.setItemAsync('jsa_driverVerifiedAt', Date.now().toString());
-    await SecureStore.setItemAsync('jsa_authMethod', 'manual');
+    await SecureStore.setItemAsync('jsa_pendingSecureId', pendingId);
+    await SecureStore.setItemAsync('jsa_pendingDisplayName', params.displayName);
+    await SecureStore.setItemAsync('jsa_pendingRegistrationTime', Date.now().toString());
     if (params.legalName) {
-      await SecureStore.setItemAsync('jsa_legalName', params.legalName);
+      await SecureStore.setItemAsync('jsa_pendingLegalName', params.legalName);
     }
-    if (result.driverId) {
-      await SecureStore.setItemAsync('jsa_secureDriverId', result.driverId);
-    }
-    console.log('[DriverAuth-JSA] Standalone registration complete via server');
-    return { success: true };
+    console.log('[DriverAuth-JSA] Pending registration submitted');
+    return { success: true, pending: true, pendingId };
   } catch (error: any) {
-    console.error('[DriverAuth-JSA] Standalone registration error:', error);
-    return { success: false, error: 'Connection error' };
+    console.error('[DriverAuth-JSA] Pending registration error:', error);
+    const msg = typeof error?.message === 'string' ? error.message : 'Connection error';
+    return { success: false, error: msg };
   }
 };
 
@@ -665,6 +679,10 @@ export const submitRegistration = async (params: {
 /**
  * Get pending registration info
  */
+export const getSecurePendingId = async (): Promise<string | null> => {
+  return SecureStore.getItemAsync('jsa_pendingSecureId');
+};
+
 export const getPendingRegistration = async (): Promise<{
   passcodeHash: string;
   displayName: string;
@@ -673,9 +691,13 @@ export const getPendingRegistration = async (): Promise<{
   const passcodeHash = await SecureStore.getItemAsync("jsa_pendingPasscodeHash");
   const displayName = await SecureStore.getItemAsync("jsa_pendingDisplayName");
   const companyName = await SecureStore.getItemAsync("jsa_pendingCompanyName");
+  const secureId = await SecureStore.getItemAsync("jsa_pendingSecureId");
 
   if (passcodeHash && displayName) {
     return { passcodeHash, displayName, companyName: companyName || undefined };
+  }
+  if (secureId && displayName) {
+    return { passcodeHash: '', displayName, companyName: companyName || undefined };
   }
   return null;
 };
@@ -686,6 +708,24 @@ export const getPendingRegistration = async (): Promise<{
 export const checkRegistrationStatus = async (): Promise<
   "pending" | "approved" | "rejected" | "none"
 > => {
+  const pendingId = await SecureStore.getItemAsync('jsa_pendingSecureId');
+  if (pendingId) {
+    try {
+      const result = await callHttpsFunction<{ status?: string }>(
+        'checkDriverRegistrationStatus',
+        { pendingId },
+      );
+      const status = result?.status;
+      if (status === 'approved' || status === 'rejected' || status === 'pending' || status === 'none') {
+        return status;
+      }
+      return 'pending';
+    } catch (error) {
+      console.error('[DriverAuth-JSA] Error checking secure pending status:', error);
+      return 'pending';
+    }
+  }
+
   const pending = await getPendingRegistration();
   if (!pending) {
     return "none";
@@ -764,4 +804,6 @@ export const clearPendingRegistration = async (): Promise<void> => {
   await SecureStore.deleteItemAsync("jsa_pendingDisplayName");
   await SecureStore.deleteItemAsync("jsa_pendingRegistrationTime");
   await SecureStore.deleteItemAsync("jsa_pendingCompanyName");
+  await SecureStore.deleteItemAsync("jsa_pendingSecureId");
+  await SecureStore.deleteItemAsync("jsa_pendingLegalName");
 };
