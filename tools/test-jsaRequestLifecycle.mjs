@@ -460,8 +460,9 @@ check('receipt write is server complete, not client-invented',
 
   // Callable wiring pins (module imports RN firebase — source-pinned).
   const callablesSrc = readFileSync(join(root, 'services/sso/jsaRequestCallables.ts'), 'utf8');
-  check('get callable uses the tolerant bound',
-    callablesSrc.includes('timeout: JSA_GET_TIMEOUT_MS'));
+  check('get callable is compile-safe UPDATE_REQUIRED (not in Dashboard export graph)',
+    callablesSrc.includes("refusal: 'update_required'")
+    && !/httpsCallable\s*\(/.test(callablesSrc));
   check('get is single-flight per requestId',
     callablesSrc.includes('getInFlight.get(requestId)') && callablesSrc.includes('getInFlight.set(requestId'));
   check('get has NO automatic second attempt',
@@ -469,8 +470,8 @@ check('receipt write is server complete, not client-invented',
   check('get outcome logging is category-only',
     callablesSrc.includes("tag: '[jsa-get]'")
     && !/JSON\.stringify\([^)]*\b(view|token|code|verifier|body|url)\b/.test(callablesSrc));
-  check('complete callable keeps its own bound',
-    callablesSrc.includes('timeout: TIMEOUT_MS'));
+  check('complete callable is compile-safe UPDATE_REQUIRED (not in Dashboard export graph)',
+    callablesSrc.includes("refusal: 'update_required'"));
 
   // Generation-conditional persistence: the sync stillOwned guard is
   // consulted immediately before EVERY durable side effect.

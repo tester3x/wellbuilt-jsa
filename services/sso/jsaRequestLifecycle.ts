@@ -265,7 +265,8 @@ export type JsaRefusal =
   | 'malformed'
   | 'network'
   | 'local_save_failed'
-  | 'complete_failed';
+  | 'complete_failed'
+  | 'update_required';
 
 export const FAIL_CLOSED_COPY: Record<JsaRefusal, string> = Object.freeze({
   unauthenticated:
@@ -300,6 +301,8 @@ export const FAIL_CLOSED_COPY: Record<JsaRefusal, string> = Object.freeze({
     'Your JSA could not be saved on this device. Stay here and try again. Do not return to Tickets yet.',
   complete_failed:
     'Your JSA is saved on this device, but WellBuilt could not record completion. Stay here and tap Retry. Do not return to Tickets yet.',
+  update_required:
+    'This action is unavailable in this version. Update WellBuilt JSA to continue.',
 });
 
 export function failClosedCopy(refusal: JsaRefusal): string {

@@ -436,7 +436,8 @@ export type ArtifactStatusCode =
   | 'authority_unverifiable'
   | 'not_found'
   | 'permission'
-  | 'blocked';
+  | 'blocked'
+  | 'update_required';
 
 export type ArtifactClass = 'retryable' | 'success' | 'blocked';
 

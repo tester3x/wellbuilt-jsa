@@ -2,11 +2,8 @@
  * Authenticated jsaPersistGovernedArtifact client.
  * Same Firebase session + httpsCallable transport as get/complete.
  */
-import { getApp } from 'firebase/app';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   persistRequestBody,
-  parsePersistResult,
   classifyPersistError,
   type JsaAuthoredSnapshot,
   type ArtifactStatusCode,
@@ -32,19 +29,8 @@ export async function jsaPersistGovernedArtifact(
     return { ok: false, status: 'malformed', refusal: body.refusal };
   }
   try {
-    const callable = httpsCallable(
-      getFunctions(getApp()),
-      'jsaPersistGovernedArtifact',
-      { timeout: TIMEOUT_MS },
-    );
-    const result = await callable(body.value);
-    const parsed = parsePersistResult(result.data);
-    if (!parsed.ok) {
-      logPersist('malformed');
-      return { ok: false, status: 'malformed', refusal: 'malformed' };
-    }
-    logPersist(parsed.value.reused ? 'reused' : 'created');
-    return { ok: true, result: parsed.value };
+    logPersist('update_required');
+    return { ok: false, status: 'update_required', refusal: 'update_required' };
   } catch (err) {
     const status = classifyPersistError(err);
     logPersist(status);
