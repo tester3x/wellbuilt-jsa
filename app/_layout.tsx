@@ -2,7 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@rea
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -185,6 +185,8 @@ function AppContent() {
   const [authWorkflowIsolation, setAuthWorkflowIsolation] = useState(unresolvedJobDetailsIsolation);
   const [logoutFailed, setLogoutFailed] = useState(false);
   const [governedSessionRevision, setGovernedSessionRevision] = useState(0);
+  const [identityInspectionPending, setIdentityInspectionPending] = useState(true);
+  const identityInspectionGeneration = useRef(0);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
@@ -290,22 +292,26 @@ function AppContent() {
   };
 
   const resolveUnauthSurface = async () => {
+    const inspection = ++identityInspectionGeneration.current;
+    setIdentityInspectionPending(true);
     try {
       const target = await readGovernedReturnTarget();
       const pending = await AsyncStorage.getItem(WBT_READ_REQUEST_KEY);
       const returnTo = await AsyncStorage.getItem('jsa_returnTo');
       const { loadLaunchContext, loadGovernedTerminalFailure, loadRequestContext } = await import('../services/sso/jsaRuntime');
-      const { loadUsableGovernedSession } = await import('../services/sso/jsaGovernedAuthLive');
       const { hasPendingLogoutFailure } = await import('../services/logoutJsaCompletely');
       const { inspectGovernedIdentityStartup } = await import('../services/sso/jsaIdentityStartupLive');
+      const { strictStartupPresentation } = await import('../services/sso/jsaIdentityStartupContract');
       const governedLaunch = await loadLaunchContext();
-      setHasActiveGovernedLaunch(!!governedLaunch);
-      const usable = await loadUsableGovernedSession();
       const identityState = await inspectGovernedIdentityStartup();
-      setLogoutFailed(await hasPendingLogoutFailure() || !['standalone', 'usable'].includes(identityState));
+      const presentation = strictStartupPresentation(identityState);
+      const markerRequiresRetry = await hasPendingLogoutFailure();
       const marker = await loadGovernedTerminalFailure();
       const ctx = await loadRequestContext();
-      setGovernedSessionReady(!!usable);
+      if (inspection !== identityInspectionGeneration.current) return;
+      setHasActiveGovernedLaunch(!!governedLaunch);
+      setLogoutFailed(markerRequiresRetry || presentation.retrySignOutVisible);
+      setGovernedSessionReady(presentation.governedReady);
       const surface = decideUnauthenticatedOverlay({
         governedReturnRequired: !!target,
         hasPendingRequest: !!pending || !!governedLaunch,
@@ -318,20 +324,26 @@ function AppContent() {
         contextRequestId: ctx?.requestId,
       });
       const failed = terminalFailureMatches(marker, governedLaunch?.requestId ?? null);
-      const isolation = decideJobDetailsIsolation({
-        resolved: true,
-        authoritySurface: surface === 'unverified_gate' ? 'unverified_gate' : null,
-        explicitGovernedFailure: failed,
-        hasGovernedLaunch: !!governedLaunch,
-        hasUsableGovernedSession: !!usable,
-        hasMatchingAuthoritativeContext: match,
-        authPending: !!governedLaunch && !usable && !failed,
-      });
+      const isolation = presentation.protectedContentBlocked
+        ? unresolvedJobDetailsIsolation()
+        : decideJobDetailsIsolation({
+          resolved: true,
+          authoritySurface: surface === 'unverified_gate' ? 'unverified_gate' : null,
+          explicitGovernedFailure: failed,
+          hasGovernedLaunch: !!governedLaunch,
+          hasUsableGovernedSession: presentation.governedReady,
+          hasMatchingAuthoritativeContext: match,
+          authPending: !!governedLaunch && identityState === 'standalone' && !failed,
+        });
       setAuthWorkflowIsolation(isolation);
     } catch {
+      if (inspection !== identityInspectionGeneration.current) return;
       setLogoutFailed(true);
+      setGovernedSessionReady(false);
       setUnauthSurface('legacy_login');
       setAuthWorkflowIsolation(unresolvedJobDetailsIsolation());
+    } finally {
+      if (inspection === identityInspectionGeneration.current) setIdentityInspectionPending(false);
     }
   };
 
@@ -475,7 +487,7 @@ function AppContent() {
         await completeVerifiedLogout(() => router.replace('/login'));
       } finally { checking = false; }
     };
-    void import('../services/sso/jsaLogoutWatcherLive').then(async (watcher) => {
+    if (governedSessionReady) void import('../services/sso/jsaLogoutWatcherLive').then(async (watcher) => {
       stopMountedWatcher = () => watcher.governedWatcherCoordinator.dispose();
       const binding = await watcher.currentGovernedWatcherBinding();
       if (!binding || disposed) return;
@@ -831,7 +843,7 @@ function AppContent() {
           )}
 
           {/* Splash overlay while checking auth */}
-          {mode === 'checking' && (
+          {(mode === 'checking' || identityInspectionPending) && (
             <View style={[styles.splash, styles.overlay]}>
               <ActivityIndicator size="large" color={colors.primary} />
             </View>

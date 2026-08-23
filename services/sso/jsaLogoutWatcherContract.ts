@@ -40,6 +40,16 @@ export function serializeBoundLogoutBaseline(baseline: BoundLogoutBaseline): str
   return JSON.stringify(baseline);
 }
 
+export function decideLogoutSignal(baseline: number | null, signal: unknown):
+  | { kind: 'none' }
+  | { kind: 'initialize'; value: number }
+  | { kind: 'logout_required' } {
+  if (typeof signal !== 'number' || !Number.isFinite(signal)) return { kind: 'none' };
+  if (baseline === null) return { kind: 'initialize', value: signal };
+  if (signal > baseline) return { kind: 'logout_required' };
+  return { kind: 'none' };
+}
+
 export function createLatestValueDrain<T>(process: (value: T) => Promise<void>) {
   let stopped = false;
   let running = false;

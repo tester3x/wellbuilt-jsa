@@ -27,3 +27,17 @@ export function classifyGovernedStartup(input: GovernedStartupInput): GovernedSt
   if (input.baselineBound === false) return 'baseline_missing_or_mismatched';
   return 'usable';
 }
+
+export function strictStartupPresentation(state: GovernedStartupState | null) {
+  const inspectionPending = state === null;
+  const governedReady = state === 'usable';
+  const mismatch = !inspectionPending && state !== 'usable' && state !== 'standalone';
+  return {
+    inspectionPending,
+    governedReady,
+    watcherAllowed: governedReady,
+    protectedContentBlocked: inspectionPending || mismatch,
+    standaloneAvailable: !inspectionPending && state === 'standalone',
+    retrySignOutVisible: mismatch,
+  };
+}

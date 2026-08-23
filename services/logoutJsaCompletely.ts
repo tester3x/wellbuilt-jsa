@@ -13,14 +13,27 @@ export const LOGOUT_VERIFICATION_FAILED_KEY = 'jsa_logoutVerificationFailed';
 
 export function logoutJsaCompletely(resetAuthContext?: () => void | Promise<void>): Promise<CompleteLogoutResult> {
   if (inFlight) return inFlight;
+  let firebaseCleared = false;
+  let localCleared = false;
+  let governedCleared = false;
   inFlight = runCompleteJsaLogout({
-    clearFirebaseAuth: signOutGovernedAuth,
-    clearLegacyDriverSession: clearLocalIdentityStrictly,
+    clearFirebaseAuth: async () => {
+      firebaseCleared = await signOutGovernedAuth();
+      return firebaseCleared;
+    },
+    clearLegacyDriverSession: async () => {
+      await clearLocalIdentityStrictly();
+      localCleared = true;
+    },
     clearGovernedState: async () => {
       stopGovernedLogoutWatcher();
       await clearGovernedStateStrictly();
+      governedCleared = true;
     },
-    clearCanonicalIdentityState: clearCanonicalBaselineStrictly,
+    clearCanonicalIdentityState: async () => {
+      if (!firebaseCleared || !localCleared || !governedCleared) throw new Error('logout_incomplete_baseline_retained');
+      await clearCanonicalBaselineStrictly();
+    },
     resetAuthContext: async () => { await resetAuthContext?.(); },
   }).then(async (result) => {
     try {

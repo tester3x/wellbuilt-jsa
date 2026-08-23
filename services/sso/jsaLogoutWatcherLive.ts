@@ -4,12 +4,12 @@ import { get, getDatabase, onValue, ref, type Unsubscribe } from 'firebase/datab
 import { awaitGovernedAuthReady, getGovernedAuth } from './jsaGovernedAuthLive';
 import { loadGovernedSession } from './jsaRuntime';
 import {
-  logoutSignalAdvanced,
   parseBoundLogoutBaseline,
   serializeBoundLogoutBaseline,
   safeLogoutSignalRead,
   createLatestValueDrain,
   createWatcherMountCoordinator,
+  decideLogoutSignal,
   watcherBindingMatches,
   type LogoutWatcherBinding,
 } from './jsaLogoutWatcherContract';
@@ -41,14 +41,14 @@ async function consume(bound: LogoutWatcherBinding, value: unknown): Promise<boo
   const raw = await SecureStore.getItemAsync(BASELINE_KEY);
   const stored = parseBoundLogoutBaseline(raw, bound);
   if (!stored) throw new Error('governed_logout_baseline_unbound');
-  if (stored.value === null) {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      await SecureStore.setItemAsync(BASELINE_KEY, serializeBoundLogoutBaseline({ ...bound, value }));
-    }
+  const decision = decideLogoutSignal(stored.value, value);
+  if (decision.kind === 'initialize') {
+    await SecureStore.setItemAsync(BASELINE_KEY, serializeBoundLogoutBaseline({ ...bound, value: decision.value }));
     return false;
   }
-  if (!logoutSignalAdvanced(stored.value, value)) return false;
-  await SecureStore.setItemAsync(BASELINE_KEY, serializeBoundLogoutBaseline({ ...bound, value: value as number }));
+  if (decision.kind !== 'logout_required') return false;
+  // Advanced signals remain pending. Verified logout deletes the baseline;
+  // inactive or failed logout must not consume the Suite event.
   return true;
 }
 

@@ -5,6 +5,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { View, Text, Modal, TouchableOpacity, StyleSheet } from 'react-native';
 import SignaturePad, { type SignaturePadRef } from './SignaturePad';
+import { claimModalSaveFlight } from '../services/sso/jsaSignatureSaveContract';
 
 interface SignatureModalProps {
   visible: boolean;
@@ -18,11 +19,13 @@ interface SignatureModalProps {
 export default function SignatureModal({ visible, onClose, onSave, saving = false, accent, title = 'Driver Signature' }: SignatureModalProps) {
   const [hasDrawn, setHasDrawn] = useState(false);
   const sigRef = useRef<SignaturePadRef>(null);
+  const modalSaveRef = useRef<Promise<void | boolean> | null>(null);
 
   const handleSave = useCallback(async (base64: string) => {
     if (base64 && base64.length > 10) {
-      const saved = await onSave(base64);
-      if (saved !== false) {
+      const flight = claimModalSaveFlight(modalSaveRef, () => Promise.resolve(onSave(base64)));
+      const saved = await flight.promise;
+      if (flight.owner && saved !== false) {
         onClose();
         setHasDrawn(false);
       }

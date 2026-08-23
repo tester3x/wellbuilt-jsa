@@ -36,12 +36,12 @@ import {
   type JsaRequestContextView,
   type PendingCompleteRecord,
 } from './jsaRequestLifecycle';
+import { createRevisionSignal } from './jsaRevisionSignal';
 
 const ATTEMPT_META_KEY = '@jsa/pkceAttemptMeta';
 const VERIFIER_KEY = 'jsa_pkce_verifier';
 const SESSION_KEY = 'jsa_governed_session';
-let governedSessionRevision = 0;
-const governedSessionListeners = new Set<(revision: number) => void>();
+const governedSessionSignal = createRevisionSignal();
 export const AUTH_RECOVERY_LATCH_KEY = '@jsa/authRecoveryLatch';
 export const GOVERNED_TERMINAL_FAILURE_KEY = '@jsa/governedTerminalFailure';
 
@@ -293,13 +293,11 @@ export async function hasRawGovernedSession(): Promise<boolean> {
 }
 
 export function publishGovernedSessionReady(): void {
-  governedSessionRevision++;
-  for (const listener of governedSessionListeners) listener(governedSessionRevision);
+  governedSessionSignal.publish();
 }
 
 export function subscribeGovernedSessionRevision(listener: (revision: number) => void): () => void {
-  governedSessionListeners.add(listener);
-  return () => governedSessionListeners.delete(listener);
+  return governedSessionSignal.subscribe(listener);
 }
 
 /**

@@ -32,3 +32,18 @@ export function runSignatureSaveSingleFlight(
   holder.current = shared;
   return shared;
 }
+
+export function claimModalSaveFlight(
+  holder: { current: Promise<void | boolean> | null },
+  run: () => Promise<void | boolean>,
+  settled?: () => void,
+): { owner: boolean; promise: Promise<void | boolean> } {
+  if (holder.current) return { owner: false, promise: holder.current };
+  const operation = run();
+  const shared = operation.finally(() => {
+    if (holder.current === shared) holder.current = null;
+    settled?.();
+  });
+  holder.current = shared;
+  return { owner: true, promise: shared };
+}
