@@ -184,6 +184,15 @@ function AppContent() {
   const [hasActiveGovernedLaunch, setHasActiveGovernedLaunch] = useState(false);
   const [authWorkflowIsolation, setAuthWorkflowIsolation] = useState(unresolvedJobDetailsIsolation);
   const [logoutFailed, setLogoutFailed] = useState(false);
+  const [governedSessionRevision, setGovernedSessionRevision] = useState(0);
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+    void import('../services/sso/jsaRuntime').then(({ subscribeGovernedSessionRevision }) => {
+      unsubscribe = subscribeGovernedSessionRevision(setGovernedSessionRevision);
+    });
+    return () => unsubscribe?.();
+  }, []);
 
   const completeVerifiedLogout = async (onVerified?: () => void | Promise<void>) => {
     const result = await logout();
@@ -286,12 +295,14 @@ function AppContent() {
       const pending = await AsyncStorage.getItem(WBT_READ_REQUEST_KEY);
       const returnTo = await AsyncStorage.getItem('jsa_returnTo');
       const { loadLaunchContext, loadGovernedTerminalFailure, loadRequestContext } = await import('../services/sso/jsaRuntime');
-      const { loadUsableGovernedSession, currentGovernedAuthUid } = await import('../services/sso/jsaGovernedAuthLive');
+      const { loadUsableGovernedSession } = await import('../services/sso/jsaGovernedAuthLive');
       const { hasPendingLogoutFailure } = await import('../services/logoutJsaCompletely');
+      const { inspectGovernedIdentityStartup } = await import('../services/sso/jsaIdentityStartupLive');
       const governedLaunch = await loadLaunchContext();
       setHasActiveGovernedLaunch(!!governedLaunch);
       const usable = await loadUsableGovernedSession();
-      if (await hasPendingLogoutFailure() || (!!currentGovernedAuthUid() && !usable)) setLogoutFailed(true);
+      const identityState = await inspectGovernedIdentityStartup();
+      setLogoutFailed(await hasPendingLogoutFailure() || !['standalone', 'usable'].includes(identityState));
       const marker = await loadGovernedTerminalFailure();
       const ctx = await loadRequestContext();
       setGovernedSessionReady(!!usable);
@@ -318,6 +329,7 @@ function AppContent() {
       });
       setAuthWorkflowIsolation(isolation);
     } catch {
+      setLogoutFailed(true);
       setUnauthSurface('legacy_login');
       setAuthWorkflowIsolation(unresolvedJobDetailsIsolation());
     }
@@ -454,7 +466,8 @@ function AppContent() {
     // immediate bound read; network/auth errors are explicitly ignored.
     let active = AppState.currentState === 'active';
     let checking = false;
-    let stopWatcher: (() => void) | null = null;
+    let disposed = false;
+    let stopMountedWatcher: (() => void) | null = null;
     const handleSignal = async () => {
       if (!active || checking) return;
       checking = true;
@@ -463,7 +476,12 @@ function AppContent() {
       } finally { checking = false; }
     };
     void import('../services/sso/jsaLogoutWatcherLive').then(async (watcher) => {
-      stopWatcher = await watcher.startGovernedLogoutWatcher(handleSignal, () => {});
+      stopMountedWatcher = () => watcher.governedWatcherCoordinator.dispose();
+      const binding = await watcher.currentGovernedWatcherBinding();
+      if (!binding || disposed) return;
+      if (!(await watcher.governedBaselineReady(binding))) { setLogoutFailed(true); return; }
+      await watcher.governedWatcherCoordinator.activate(binding,
+        (expected) => watcher.startGovernedLogoutWatcher(handleSignal, () => {}, expected));
     }).catch(() => {});
     const appStateSub = AppState.addEventListener('change', (state) => {
       active = state === 'active';
@@ -483,8 +501,12 @@ function AppContent() {
         }
       }
     });
-    return () => { stopWatcher?.(); appStateSub.remove(); };
-  }, [isAuthenticated, logout, router]);
+    return () => {
+      disposed = true;
+      stopMountedWatcher?.();
+      appStateSub.remove();
+    };
+  }, [isAuthenticated, governedSessionReady, governedSessionRevision, logout, router]);
 
   // Handle SSO deep links while app is running (warm start).
   // Cold-start deep links are handled by the /login route directly.

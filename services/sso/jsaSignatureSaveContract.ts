@@ -17,3 +17,18 @@ export async function saveGovernedSignatureAfterConfirmation(
     return false;
   }
 }
+
+export function runSignatureSaveSingleFlight(
+  holder: { current: Promise<boolean> | null },
+  run: () => Promise<boolean>,
+  settled?: () => void,
+): Promise<boolean> {
+  if (holder.current) return holder.current;
+  const operation = run();
+  const shared = operation.finally(() => {
+    if (holder.current === shared) holder.current = null;
+    settled?.();
+  });
+  holder.current = shared;
+  return shared;
+}

@@ -47,6 +47,7 @@ import {
   mintAttempt,
   saveAuthRecoveryLatch,
   saveGovernedSession,
+  publishGovernedSessionReady,
 } from './jsaRuntime';
 
 type RnAuthModule = {
@@ -161,6 +162,7 @@ export async function persistAfterExchange(payload: ExchangePayload): Promise<vo
       await saveGovernedSession(session);
       const { seedCanonicalLogoutBaseline } = await import('./jsaCanonicalProfile');
       await seedCanonicalLogoutBaseline();
+      publishGovernedSessionReady();
     },
     reconcileAuth: () => reconcileGovernedAuth(),
     clearIfGeneration: (gen) => clearGovernedSessionIfGeneration(gen).then(() => undefined),

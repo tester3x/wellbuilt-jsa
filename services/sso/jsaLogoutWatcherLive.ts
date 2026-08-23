@@ -5,20 +5,23 @@ import { awaitGovernedAuthReady, getGovernedAuth } from './jsaGovernedAuthLive';
 import { loadGovernedSession } from './jsaRuntime';
 import {
   logoutSignalAdvanced,
+  parseBoundLogoutBaseline,
+  serializeBoundLogoutBaseline,
   safeLogoutSignalRead,
+  createLatestValueDrain,
+  createWatcherMountCoordinator,
   watcherBindingMatches,
   type LogoutWatcherBinding,
 } from './jsaLogoutWatcherContract';
 
 const BASELINE_KEY = 'jsa_lastCanonicalLogoutAt';
-let activeStop: (() => void) | null = null;
+export const governedWatcherCoordinator = createWatcherMountCoordinator<LogoutWatcherBinding>();
 
 export function stopGovernedLogoutWatcher(): void {
-  activeStop?.();
-  activeStop = null;
+  governedWatcherCoordinator.dispose();
 }
 
-async function currentBinding(): Promise<LogoutWatcherBinding | null> {
+export async function currentGovernedWatcherBinding(): Promise<LogoutWatcherBinding | null> {
   await awaitGovernedAuthReady();
   const auth = getGovernedAuth();
   const session = await loadGovernedSession();
@@ -28,24 +31,30 @@ async function currentBinding(): Promise<LogoutWatcherBinding | null> {
   return { uid: session.uid, driverId: session.driverId, companyId: session.companyId };
 }
 
+export async function governedBaselineReady(bound: LogoutWatcherBinding): Promise<boolean> {
+  try { return parseBoundLogoutBaseline(await SecureStore.getItemAsync(BASELINE_KEY), bound) !== null; }
+  catch { return false; }
+}
+
 async function consume(bound: LogoutWatcherBinding, value: unknown): Promise<boolean> {
-  if (!watcherBindingMatches(bound, await currentBinding())) return false;
+  if (!watcherBindingMatches(bound, await currentGovernedWatcherBinding())) return false;
   const raw = await SecureStore.getItemAsync(BASELINE_KEY);
-  const baseline = raw === null ? null : Number(raw);
-  if (baseline === null || !Number.isFinite(baseline)) {
+  const stored = parseBoundLogoutBaseline(raw, bound);
+  if (!stored) throw new Error('governed_logout_baseline_unbound');
+  if (stored.value === null) {
     if (typeof value === 'number' && Number.isFinite(value)) {
-      await SecureStore.setItemAsync(BASELINE_KEY, String(value));
+      await SecureStore.setItemAsync(BASELINE_KEY, serializeBoundLogoutBaseline({ ...bound, value }));
     }
     return false;
   }
-  if (!logoutSignalAdvanced(baseline, value)) return false;
-  await SecureStore.setItemAsync(BASELINE_KEY, String(value));
+  if (!logoutSignalAdvanced(stored.value, value)) return false;
+  await SecureStore.setItemAsync(BASELINE_KEY, serializeBoundLogoutBaseline({ ...bound, value: value as number }));
   return true;
 }
 
 export async function checkGovernedLogoutSignalOnce(): Promise<boolean> {
   return safeLogoutSignalRead(async () => {
-    const bound = await currentBinding();
+    const bound = await currentGovernedWatcherBinding();
     if (!bound) return false;
     const snapshot = await get(ref(getDatabase(getApp()), `drivers/profiles/${bound.driverId}/logoutAt`));
     return consume(bound, snapshot.val());
@@ -55,22 +64,24 @@ export async function checkGovernedLogoutSignalOnce(): Promise<boolean> {
 export async function startGovernedLogoutWatcher(
   onLogoutSignal: () => void | Promise<void>,
   onError?: () => void,
+  expectedBinding?: LogoutWatcherBinding,
 ): Promise<() => void> {
-  stopGovernedLogoutWatcher();
-  const bound = await currentBinding();
+  const current = await currentGovernedWatcherBinding();
+  const bound = expectedBinding ?? current;
+  if (expectedBinding && !watcherBindingMatches(expectedBinding, current)) return () => {};
   if (!bound) return () => {};
+  if (!(await governedBaselineReady(bound))) throw new Error('governed_logout_baseline_unbound');
   let stopped = false;
-  let handling = false;
   const target = ref(getDatabase(getApp()), `drivers/profiles/${bound.driverId}/logoutAt`);
+  const drain = createLatestValueDrain<unknown>(async (value) => {
+    try {
+      const signaled = await consume(bound, value);
+      if (!stopped && signaled) await onLogoutSignal();
+    } catch { if (!stopped) onError?.(); }
+  });
   const unsubscribe: Unsubscribe = onValue(target, (snapshot) => {
-    if (stopped || handling) return;
-    handling = true;
-    void consume(bound, snapshot.val())
-      .then(async (signaled) => { if (!stopped && signaled) await onLogoutSignal(); })
-      .catch(() => { if (!stopped) onError?.(); })
-      .finally(() => { handling = false; });
+    if (!stopped) drain.push(snapshot.val());
   }, () => { if (!stopped) onError?.(); });
-  const stop = () => { stopped = true; unsubscribe(); if (activeStop === stop) activeStop = null; };
-  activeStop = stop;
+  const stop = () => { stopped = true; drain.stop(); unsubscribe(); };
   return stop;
 }

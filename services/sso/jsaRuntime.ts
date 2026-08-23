@@ -40,6 +40,8 @@ import {
 const ATTEMPT_META_KEY = '@jsa/pkceAttemptMeta';
 const VERIFIER_KEY = 'jsa_pkce_verifier';
 const SESSION_KEY = 'jsa_governed_session';
+let governedSessionRevision = 0;
+const governedSessionListeners = new Set<(revision: number) => void>();
 export const AUTH_RECOVERY_LATCH_KEY = '@jsa/authRecoveryLatch';
 export const GOVERNED_TERMINAL_FAILURE_KEY = '@jsa/governedTerminalFailure';
 
@@ -284,6 +286,20 @@ export async function loadGovernedUiStage(): Promise<string | null> {
 
 export async function clearGovernedUiStage(): Promise<void> {
   await AsyncStorage.removeItem(GOVERNED_UI_STAGE_KEY);
+}
+
+export async function hasRawGovernedSession(): Promise<boolean> {
+  return (await SecureStore.getItemAsync(SESSION_KEY)) !== null;
+}
+
+export function publishGovernedSessionReady(): void {
+  governedSessionRevision++;
+  for (const listener of governedSessionListeners) listener(governedSessionRevision);
+}
+
+export function subscribeGovernedSessionRevision(listener: (revision: number) => void): () => void {
+  governedSessionListeners.add(listener);
+  return () => governedSessionListeners.delete(listener);
 }
 
 /**

@@ -1,4 +1,5 @@
 export interface LogoutWatcherBinding { uid: string; driverId: string; companyId: string; }
+export interface BoundLogoutBaseline extends LogoutWatcherBinding { value: number | null; }
 
 export function watcherBindingMatches(
   bound: LogoutWatcherBinding,
@@ -23,4 +24,58 @@ export function boundLogoutSignalAdvanced(
 
 export async function safeLogoutSignalRead(read: () => Promise<boolean>): Promise<boolean> {
   try { return await read(); } catch { return false; }
+}
+
+export function parseBoundLogoutBaseline(raw: string | null, bound: LogoutWatcherBinding): BoundLogoutBaseline | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<BoundLogoutBaseline>;
+    if (!watcherBindingMatches(bound, value as LogoutWatcherBinding)) return null;
+    if (value.value !== null && (typeof value.value !== 'number' || !Number.isFinite(value.value))) return null;
+    return { ...bound, value: value.value ?? null };
+  } catch { return null; }
+}
+
+export function serializeBoundLogoutBaseline(baseline: BoundLogoutBaseline): string {
+  return JSON.stringify(baseline);
+}
+
+export function createLatestValueDrain<T>(process: (value: T) => Promise<void>) {
+  let stopped = false;
+  let running = false;
+  let pending = false;
+  let latest!: T;
+  const drain = async () => {
+    if (running || stopped) return;
+    running = true;
+    try {
+      while (!stopped && pending) {
+        const value = latest;
+        pending = false;
+        await process(value);
+      }
+    } finally { running = false; }
+  };
+  return {
+    push(value: T) { if (stopped) return; latest = value; pending = true; void drain(); },
+    stop() { stopped = true; pending = false; },
+  };
+}
+
+export function createWatcherMountCoordinator<TBinding>() {
+  let generation = 0;
+  let activeStop: (() => void) | null = null;
+  let activeBinding: TBinding | null = null;
+  return {
+    async activate(binding: TBinding, start: (binding: TBinding) => Promise<() => void>): Promise<boolean> {
+      const mine = ++generation;
+      activeStop?.(); activeStop = null; activeBinding = null;
+      const stop = await start(binding);
+      if (mine !== generation) { stop(); return false; }
+      activeStop = stop; activeBinding = binding;
+      return true;
+    },
+    dispose() { generation++; activeStop?.(); activeStop = null; activeBinding = null; },
+    binding() { return activeBinding; },
+  };
 }

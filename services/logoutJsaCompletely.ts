@@ -1,9 +1,11 @@
 import * as SecureStore from 'expo-secure-store';
-import { clearDriverSession } from './driverAuth';
-import { clearCanonicalIdentityState } from './sso/jsaCanonicalProfile';
 import { signOutGovernedAuth } from './sso/jsaGovernedAuthLive';
-import { clearLocalGovernedLaunchState } from './sso/jsaRuntime';
 import { stopGovernedLogoutWatcher } from './sso/jsaLogoutWatcherLive';
+import {
+  clearCanonicalBaselineStrictly,
+  clearGovernedStateStrictly,
+  clearLocalIdentityStrictly,
+} from './sso/jsaStrictLogoutStorageLive';
 import { runCompleteJsaLogout, type CompleteLogoutResult } from './sso/jsaLogoutContract';
 
 let inFlight: Promise<CompleteLogoutResult> | null = null;
@@ -13,21 +15,33 @@ export function logoutJsaCompletely(resetAuthContext?: () => void | Promise<void
   if (inFlight) return inFlight;
   inFlight = runCompleteJsaLogout({
     clearFirebaseAuth: signOutGovernedAuth,
-    clearLegacyDriverSession: clearDriverSession,
+    clearLegacyDriverSession: clearLocalIdentityStrictly,
     clearGovernedState: async () => {
       stopGovernedLogoutWatcher();
-      await clearLocalGovernedLaunchState();
+      await clearGovernedStateStrictly();
     },
-    clearCanonicalIdentityState,
+    clearCanonicalIdentityState: clearCanonicalBaselineStrictly,
     resetAuthContext: async () => { await resetAuthContext?.(); },
   }).then(async (result) => {
-    if (result.verified) await SecureStore.deleteItemAsync(LOGOUT_VERIFICATION_FAILED_KEY).catch(() => {});
-    else await SecureStore.setItemAsync(LOGOUT_VERIFICATION_FAILED_KEY, '1').catch(() => {});
+    try {
+      if (result.verified) {
+        await SecureStore.deleteItemAsync(LOGOUT_VERIFICATION_FAILED_KEY);
+        if (await SecureStore.getItemAsync(LOGOUT_VERIFICATION_FAILED_KEY) !== null) throw new Error('failure_marker_remaining');
+      } else {
+        await SecureStore.setItemAsync(LOGOUT_VERIFICATION_FAILED_KEY, '1');
+        if (await SecureStore.getItemAsync(LOGOUT_VERIFICATION_FAILED_KEY) !== '1') throw new Error('failure_marker_missing');
+      }
+    } catch (error) {
+      result.localIdentityCleared = false;
+      result.verified = false;
+      result.failures.push({ operation: 'localIdentity', message: error instanceof Error ? error.message : 'failure_marker_storage_failed' });
+    }
     return result;
   }).finally(() => { inFlight = null; });
   return inFlight;
 }
 
 export async function hasPendingLogoutFailure(): Promise<boolean> {
-  return (await SecureStore.getItemAsync(LOGOUT_VERIFICATION_FAILED_KEY).catch(() => '1')) === '1';
+  try { return await SecureStore.getItemAsync(LOGOUT_VERIFICATION_FAILED_KEY) === '1'; }
+  catch { return true; }
 }

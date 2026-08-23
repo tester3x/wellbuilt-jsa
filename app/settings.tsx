@@ -16,6 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import SignatureModal from "../components/SignatureModal";
 import { colors } from "../constants/colors";
 import { fetchDriverProfile } from "../services/driverAuth";
+import { runSignatureSaveSingleFlight } from "../services/sso/jsaSignatureSaveContract";
 import { useAuth } from "./contexts/AuthContext";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
@@ -40,6 +41,7 @@ export default function SettingsScreen() {
   const [governedProfile, setGovernedProfile] = useState(false);
   const [showSigModal, setShowSigModal] = useState(false);
   const [signatureSaving, setSignatureSaving] = useState(false);
+  const signatureSaveRef = React.useRef<Promise<boolean> | null>(null);
 
   // Standalone contacts (only editable when no companyId)
   const isStandalone = !session?.companyId;
@@ -112,28 +114,29 @@ export default function SettingsScreen() {
     }
   };
 
-  const saveSignature = async (base64: string) => {
-    if (signatureSaving) return false;
+  const saveSignature = (base64: string): Promise<boolean> => {
+    if (signatureSaveRef.current) return signatureSaveRef.current;
     const fullUri = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
     if (!governedProfile) {
       setSignatureImage(fullUri);
-      return true;
+      return Promise.resolve(true);
     }
     setSignatureSaving(true);
-    try {
-      const { updateCanonicalGovernedProfile } = await import('../services/sso/jsaCanonicalProfile');
-      const { saveGovernedSignatureAfterConfirmation } = await import('../services/sso/jsaSignatureSaveContract');
-      return await saveGovernedSignatureAfterConfirmation(fullUri, {
-        persist: (signature) => updateCanonicalGovernedProfile({ signature }),
-        commit: setSignatureImage,
-        reportFailure: () => Alert.alert(t('Error'), t('Signature was not saved. Please retry.')),
-      });
-    } catch {
-      Alert.alert(t('Error'), t('Signature was not saved. Please retry.'));
-      return false;
-    } finally {
-      setSignatureSaving(false);
-    }
+    const run = async () => {
+      try {
+        const { updateCanonicalGovernedProfile } = await import('../services/sso/jsaCanonicalProfile');
+        const { saveGovernedSignatureAfterConfirmation } = await import('../services/sso/jsaSignatureSaveContract');
+        return await saveGovernedSignatureAfterConfirmation(fullUri, {
+          persist: (signature) => updateCanonicalGovernedProfile({ signature }),
+          commit: setSignatureImage,
+          reportFailure: () => Alert.alert(t('Error'), t('Signature was not saved. Please retry.')),
+        });
+      } catch {
+        Alert.alert(t('Error'), t('Signature was not saved. Please retry.'));
+        return false;
+      }
+    };
+    return runSignatureSaveSingleFlight(signatureSaveRef, run, () => setSignatureSaving(false));
   };
 
   const saveStandaloneContacts = async () => {

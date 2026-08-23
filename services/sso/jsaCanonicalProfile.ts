@@ -3,6 +3,7 @@ import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { awaitGovernedAuthReady, getGovernedAuth } from './jsaGovernedAuthLive';
 import { loadGovernedSession } from './jsaRuntime';
+import { serializeBoundLogoutBaseline } from './jsaLogoutWatcherContract';
 import { parseCanonicalProfile, type JsaCanonicalProfile } from './jsaIdentityContract';
 
 export const CANONICAL_LOGOUT_BASELINE_KEY = 'jsa_lastCanonicalLogoutAt';
@@ -21,7 +22,12 @@ export async function fetchCanonicalGovernedProfile(): Promise<JsaCanonicalProfi
 
 export async function seedCanonicalLogoutBaseline(): Promise<void> {
   const profile = await fetchCanonicalGovernedProfile();
-  await SecureStore.setItemAsync(CANONICAL_LOGOUT_BASELINE_KEY, String(profile?.logoutAt ?? 0));
+  const session = await loadGovernedSession();
+  const uid = getGovernedAuth().currentUser?.uid;
+  if (!profile || !session || !uid || uid !== session.uid) throw new Error('canonical_baseline_binding_failed');
+  await SecureStore.setItemAsync(CANONICAL_LOGOUT_BASELINE_KEY, serializeBoundLogoutBaseline({
+    uid, driverId: session.driverId, companyId: session.companyId, value: profile.logoutAt,
+  }));
 }
 
 export async function updateCanonicalGovernedProfile(profile: Record<string, unknown>): Promise<void> {
