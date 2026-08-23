@@ -15,6 +15,13 @@
         "buildType": "apk"
       }
     },
+    "preview-vc19": {
+      "distribution": "internal",
+      "autoIncrement": false,
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "production": {
       "autoIncrement": true
     }
