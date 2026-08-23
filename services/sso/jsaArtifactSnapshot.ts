@@ -744,14 +744,19 @@ export interface JsaPersistResult {
 export function parsePersistResult(raw: unknown): { ok: true; value: JsaPersistResult } | { ok: false } {
   const o = rec(raw);
   if (!o) return { ok: false };
+  const allowed = ['requestId', 'reused', 'schemaVersion', 'snapshotHash', 'artifactWrittenAtMs', 'signature'];
+  if (Object.keys(o).some((k) => !allowed.includes(k))) return { ok: false };
   if (!isJsaRequestId(o.requestId)) return { ok: false };
   if (typeof o.reused !== 'boolean') return { ok: false };
-  if (typeof o.schemaVersion !== 'number') return { ok: false };
-  if (typeof o.snapshotHash !== 'string' || !o.snapshotHash) return { ok: false };
-  if (typeof o.artifactWrittenAtMs !== 'number') return { ok: false };
+  if (o.schemaVersion !== JSA_ARTIFACT_SNAPSHOT_VERSION) return { ok: false };
+  if (typeof o.snapshotHash !== 'string' || !/^[a-f0-9]{64}$/.test(o.snapshotHash)) return { ok: false };
+  if (typeof o.artifactWrittenAtMs !== 'number' || !Number.isSafeInteger(o.artifactWrittenAtMs) || o.artifactWrittenAtMs <= 0) return { ok: false };
   const sig = rec(o.signature);
-  if (!sig || typeof sig.sha256 !== 'string' || typeof sig.byteSize !== 'number') return { ok: false };
-  if ('dataBase64' in sig || 'data' in sig) return { ok: false };
+  if (!sig || Object.keys(sig).some((k) => !['mimeType', 'encoding', 'byteSize', 'sha256'].includes(k))) return { ok: false };
+  if (sig.mimeType !== JSA_SIGNATURE_MIME || sig.encoding !== 'base64') return { ok: false };
+  if (typeof sig.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(sig.sha256)) return { ok: false };
+  if (typeof sig.byteSize !== 'number' || !Number.isSafeInteger(sig.byteSize)
+    || sig.byteSize <= 0 || sig.byteSize > JSA_SIGNATURE_MAX_BYTES) return { ok: false };
   return {
     ok: true,
     value: {
@@ -761,8 +766,8 @@ export function parsePersistResult(raw: unknown): { ok: true; value: JsaPersistR
       snapshotHash: o.snapshotHash,
       artifactWrittenAtMs: o.artifactWrittenAtMs,
       signature: {
-        mimeType: typeof sig.mimeType === 'string' ? sig.mimeType : 'image/png',
-        encoding: typeof sig.encoding === 'string' ? sig.encoding : 'base64',
+        mimeType: sig.mimeType,
+        encoding: sig.encoding,
         byteSize: sig.byteSize,
         sha256: sig.sha256,
       },
