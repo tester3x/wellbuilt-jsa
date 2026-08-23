@@ -3,10 +3,15 @@
  * Bodies are exact-key only. No identity, names, or authority in the
  * request. Errors classify to fail-closed refusals.
  */
+import { getApp } from 'firebase/app';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   classifyCallableError,
   classifyGetError,
   getOutcomeLogCategory,
+  parseCompleteResult,
+  parseGetContextView,
+  JSA_GET_TIMEOUT_MS,
   type JsaCompleteResult,
   type JsaCompletionAction,
   type JsaRefusal,
@@ -43,9 +48,19 @@ export async function jsaGetReadRequest(requestId: string): Promise<GetContextOu
     // already exceeds the worst captured scale-from-zero readiness (32s,
     // field 8/13), and the connecting surface stays visible throughout.
     try {
-      // No jsa* read callable is exported from Dashboard/functions/src/index.ts.
-      logGetOutcome(requestId, getOutcomeLogCategory('update_required'));
-      return { ok: false, refusal: 'update_required' };
+      const callable = httpsCallable(
+        getFunctions(getApp()),
+        'jsaGetReadRequest',
+        { timeout: JSA_GET_TIMEOUT_MS },
+      );
+      const result = await callable({ requestId });
+      const parsed = parseGetContextView(result.data);
+      if (!parsed.ok) {
+        logGetOutcome(requestId, getOutcomeLogCategory('malformed'));
+        return { ok: false, refusal: 'malformed' };
+      }
+      logGetOutcome(requestId, getOutcomeLogCategory(null));
+      return { ok: true, view: parsed.value };
     } catch (err) {
       const refusal = classifyGetError(err);
       logGetOutcome(requestId, getOutcomeLogCategory(refusal, err));
@@ -63,9 +78,15 @@ export async function jsaCompleteReadRequest(
   action: JsaCompletionAction,
 ): Promise<CompleteOutcome> {
   try {
-    void requestId;
-    void action;
-    return { ok: false, refusal: 'update_required' };
+    const callable = httpsCallable(
+      getFunctions(getApp()),
+      'jsaCompleteReadRequest',
+      { timeout: TIMEOUT_MS },
+    );
+    const result = await callable({ requestId, action });
+    const parsed = parseCompleteResult(result.data);
+    if (!parsed.ok) return { ok: false, refusal: 'malformed' };
+    return { ok: true, result: parsed.value };
   } catch (err) {
     return { ok: false, refusal: classifyCallableError(err) };
   }
