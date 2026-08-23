@@ -42,6 +42,7 @@ import {
   GOVERNED_RESOLVING_COPY,
 } from '../services/sso/jsaJobDetailsIsolation';
 import { terminalFailureMatches } from '../services/sso/jsaGovernedAuth';
+import type { LogoutWatcherBinding } from '../services/sso/jsaLogoutWatcherContract';
 
 const FIREBASE_DB = 'https://wellbuilt-sync-default-rtdb.firebaseio.com';
 
@@ -184,17 +185,9 @@ function AppContent() {
   const [hasActiveGovernedLaunch, setHasActiveGovernedLaunch] = useState(false);
   const [authWorkflowIsolation, setAuthWorkflowIsolation] = useState(unresolvedJobDetailsIsolation);
   const [logoutFailed, setLogoutFailed] = useState(false);
-  const [governedSessionRevision, setGovernedSessionRevision] = useState(0);
   const [identityInspectionPending, setIdentityInspectionPending] = useState(true);
   const identityInspectionGeneration = useRef(0);
-
-  useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
-    void import('../services/sso/jsaRuntime').then(({ subscribeGovernedSessionRevision }) => {
-      unsubscribe = subscribeGovernedSessionRevision(setGovernedSessionRevision);
-    });
-    return () => unsubscribe?.();
-  }, []);
+  const [governedWatcherBinding, setGovernedWatcherBinding] = useState<LogoutWatcherBinding | null>(null);
 
   const completeVerifiedLogout = async (onVerified?: () => void | Promise<void>) => {
     const result = await logout();
@@ -300,10 +293,11 @@ function AppContent() {
       const returnTo = await AsyncStorage.getItem('jsa_returnTo');
       const { loadLaunchContext, loadGovernedTerminalFailure, loadRequestContext } = await import('../services/sso/jsaRuntime');
       const { hasPendingLogoutFailure } = await import('../services/logoutJsaCompletely');
-      const { inspectGovernedIdentityStartup } = await import('../services/sso/jsaIdentityStartupLive');
+      const { inspectGovernedIdentityStartupDetailed } = await import('../services/sso/jsaIdentityStartupLive');
       const { strictStartupPresentation } = await import('../services/sso/jsaIdentityStartupContract');
       const governedLaunch = await loadLaunchContext();
-      const identityState = await inspectGovernedIdentityStartup();
+      const identityInspection = await inspectGovernedIdentityStartupDetailed();
+      const identityState = identityInspection.state;
       const presentation = strictStartupPresentation(identityState);
       const markerRequiresRetry = await hasPendingLogoutFailure();
       const marker = await loadGovernedTerminalFailure();
@@ -312,6 +306,12 @@ function AppContent() {
       setHasActiveGovernedLaunch(!!governedLaunch);
       setLogoutFailed(markerRequiresRetry || presentation.retrySignOutVisible);
       setGovernedSessionReady(presentation.governedReady);
+      setGovernedWatcherBinding((previous) => {
+        const next = identityInspection.binding;
+        if (!previous || !next) return next;
+        return previous.uid === next.uid && previous.driverId === next.driverId && previous.companyId === next.companyId
+          ? previous : next;
+      });
       const surface = decideUnauthenticatedOverlay({
         governedReturnRequired: !!target,
         hasPendingRequest: !!pending || !!governedLaunch,
@@ -340,6 +340,7 @@ function AppContent() {
       if (inspection !== identityInspectionGeneration.current) return;
       setLogoutFailed(true);
       setGovernedSessionReady(false);
+      setGovernedWatcherBinding(null);
       setUnauthSurface('legacy_login');
       setAuthWorkflowIsolation(unresolvedJobDetailsIsolation());
     } finally {
@@ -347,10 +348,23 @@ function AppContent() {
     }
   };
 
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+    let disposed = false;
+    void import('../services/sso/jsaRuntime').then(({ subscribeGovernedSessionRevision }) => {
+      if (disposed) return;
+      unsubscribe = subscribeGovernedSessionRevision(() => {
+        void resolveUnauthSurface();
+      });
+    }).catch(() => { if (!disposed) setLogoutFailed(true); });
+    return () => { disposed = true; unsubscribe?.(); };
+  }, []);
+
   const leaveGovernedForStandalone = async () => {
     await completeVerifiedLogout(() => {
       setHasActiveGovernedLaunch(false);
       setGovernedSessionReady(false);
+      setGovernedWatcherBinding(null);
       setUnauthSurface('legacy_login');
       setAuthWorkflowIsolation(decideJobDetailsIsolation({
         resolved: true, authoritySurface: null, explicitGovernedFailure: false,
@@ -487,12 +501,10 @@ function AppContent() {
         await completeVerifiedLogout(() => router.replace('/login'));
       } finally { checking = false; }
     };
-    if (governedSessionReady) void import('../services/sso/jsaLogoutWatcherLive').then(async (watcher) => {
+    if (governedSessionReady && governedWatcherBinding) void import('../services/sso/jsaLogoutWatcherLive').then(async (watcher) => {
       stopMountedWatcher = () => watcher.governedWatcherCoordinator.dispose();
-      const binding = await watcher.currentGovernedWatcherBinding();
-      if (!binding || disposed) return;
-      if (!(await watcher.governedBaselineReady(binding))) { setLogoutFailed(true); return; }
-      await watcher.governedWatcherCoordinator.activate(binding,
+      if (disposed) return;
+      await watcher.governedWatcherCoordinator.activate(governedWatcherBinding,
         (expected) => watcher.startGovernedLogoutWatcher(handleSignal, () => {}, expected));
     }).catch(() => {});
     const appStateSub = AppState.addEventListener('change', (state) => {
@@ -518,7 +530,7 @@ function AppContent() {
       stopMountedWatcher?.();
       appStateSub.remove();
     };
-  }, [isAuthenticated, governedSessionReady, governedSessionRevision, logout, router]);
+  }, [isAuthenticated, governedSessionReady, governedWatcherBinding, logout, router]);
 
   // Handle SSO deep links while app is running (warm start).
   // Cold-start deep links are handled by the /login route directly.

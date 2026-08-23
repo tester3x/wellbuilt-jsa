@@ -34,7 +34,7 @@ check('1 verified Firebase sign-out returns structured success after all cleanup
 order = []; state = { local: true, governed: true, canonical: true, context: true };
 result = await runCompleteJsaLogout(ops(async () => { throw new Error('signout_rejected'); }, order, state));
 check('2 Firebase reject still attempts every cleanup and forbids transition', !result.verified
-  && order.join(',') === 'firebase,local,governed,canonical,context' && !logoutTransitionAuthorized(result));
+  && order.join(',') === 'firebase,local,governed,context,canonical' && !logoutTransitionAuthorized(result));
 
 order = []; state = { local: true, governed: true, canonical: true, context: true };
 result = await runCompleteJsaLogout(ops(async () => false, order, state));
@@ -53,7 +53,7 @@ check('5 concurrent callers share one operation and result', a === b && ar === b
 order = []; state = { local: true, governed: true, canonical: true, context: true };
 result = await runCompleteJsaLogout({ ...ops(async () => true, order, state), clearLegacyDriverSession: async () => { order.push('local'); throw new Error('corrupt_key'); } });
 check('6 corrupt local key preserves verified Firebase sign-out and remaining attempts', result.firebaseAuthCleared
-  && !result.verified && order.join(',') === 'firebase,local,governed,canonical,context');
+  && !result.verified && order.join(',') === 'firebase,local,governed,context,canonical');
 
 const durable = { saves: ['history'], artifacts: ['recovery'], vehicle: 'A', contact: 'A' };
 await runCompleteJsaLogout({

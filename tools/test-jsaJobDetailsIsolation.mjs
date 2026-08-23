@@ -289,7 +289,7 @@ check('layout isolation uses usable Auth session, not raw SecureStore or return 
   && layoutSrc.includes('unresolvedJobDetailsIsolation')
   && /await resolveUnauthSurface\(\)/.test(layoutSrc));
 check('layout loader rejection remains fail-closed',
-  /catch \{[\s\S]{0,240}unresolvedJobDetailsIsolation/.test(layoutSrc));
+  /catch \{[\s\S]{0,400}unresolvedJobDetailsIsolation/.test(layoutSrc));
 check('authenticated reopen after governed failure still isolates (tabs) form',
   layoutSrc.includes('GovernedIsolationSurface')
   && !/authWorkflowIsolation[\s\S]{0,250}LoginScreen/.test(layoutSrc));

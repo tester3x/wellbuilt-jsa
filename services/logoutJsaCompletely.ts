@@ -6,36 +6,23 @@ import {
   clearGovernedStateStrictly,
   clearLocalIdentityStrictly,
 } from './sso/jsaStrictLogoutStorageLive';
-import { runCompleteJsaLogout, type CompleteLogoutResult } from './sso/jsaLogoutContract';
+import { createGuardedCompleteLogoutOps, runCompleteJsaLogout, type CompleteLogoutResult } from './sso/jsaLogoutContract';
 
 let inFlight: Promise<CompleteLogoutResult> | null = null;
 export const LOGOUT_VERIFICATION_FAILED_KEY = 'jsa_logoutVerificationFailed';
 
 export function logoutJsaCompletely(resetAuthContext?: () => void | Promise<void>): Promise<CompleteLogoutResult> {
   if (inFlight) return inFlight;
-  let firebaseCleared = false;
-  let localCleared = false;
-  let governedCleared = false;
-  inFlight = runCompleteJsaLogout({
-    clearFirebaseAuth: async () => {
-      firebaseCleared = await signOutGovernedAuth();
-      return firebaseCleared;
-    },
-    clearLegacyDriverSession: async () => {
-      await clearLocalIdentityStrictly();
-      localCleared = true;
-    },
+  inFlight = runCompleteJsaLogout(createGuardedCompleteLogoutOps({
+    clearFirebaseAuth: signOutGovernedAuth,
+    clearLegacyDriverSession: clearLocalIdentityStrictly,
     clearGovernedState: async () => {
       stopGovernedLogoutWatcher();
       await clearGovernedStateStrictly();
-      governedCleared = true;
     },
-    clearCanonicalIdentityState: async () => {
-      if (!firebaseCleared || !localCleared || !governedCleared) throw new Error('logout_incomplete_baseline_retained');
-      await clearCanonicalBaselineStrictly();
-    },
+    clearCanonicalIdentityState: clearCanonicalBaselineStrictly,
     resetAuthContext: async () => { await resetAuthContext?.(); },
-  }).then(async (result) => {
+  })).then(async (result) => {
     try {
       if (result.verified) {
         await SecureStore.deleteItemAsync(LOGOUT_VERIFICATION_FAILED_KEY);

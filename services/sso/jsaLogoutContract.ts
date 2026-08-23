@@ -28,6 +28,28 @@ export interface CompleteLogoutOps {
   resetAuthContext(): void | Promise<void>;
 }
 
+export function createGuardedCompleteLogoutOps(ops: CompleteLogoutOps): CompleteLogoutOps {
+  let firebaseCleared = false;
+  let localCleared = false;
+  let governedCleared = false;
+  let reactContextCleared = false;
+  return {
+    clearFirebaseAuth: async () => {
+      firebaseCleared = await ops.clearFirebaseAuth();
+      return firebaseCleared;
+    },
+    clearLegacyDriverSession: async () => { await ops.clearLegacyDriverSession(); localCleared = true; },
+    clearGovernedState: async () => { await ops.clearGovernedState(); governedCleared = true; },
+    resetAuthContext: async () => { await ops.resetAuthContext(); reactContextCleared = true; },
+    clearCanonicalIdentityState: async () => {
+      if (!firebaseCleared || !localCleared || !governedCleared || !reactContextCleared) {
+        throw new Error('logout_incomplete_baseline_retained');
+      }
+      await ops.clearCanonicalIdentityState();
+    },
+  };
+}
+
 function messageOf(error: unknown): string {
   return error instanceof Error && error.message ? error.message : 'operation_failed';
 }
@@ -74,8 +96,10 @@ export async function runCompleteJsaLogout(ops: CompleteLogoutOps): Promise<Comp
   await attempt('firebaseAuth', ops.clearFirebaseAuth, (ok) => { result.firebaseAuthCleared = ok; });
   await attempt('localIdentity', ops.clearLegacyDriverSession, (ok) => { result.localIdentityCleared = ok; });
   await attempt('governedState', ops.clearGovernedState, (ok) => { result.governedStateCleared = ok; });
-  await attempt('canonicalBaseline', ops.clearCanonicalIdentityState, (ok) => { result.canonicalBaselineCleared = ok; });
   await attempt('reactContext', ops.resetAuthContext, (ok) => { result.reactContextReset = ok; });
+  // Baseline is deliberately final: any earlier section failure leaves the
+  // Suite logout signal pending for retry/resume.
+  await attempt('canonicalBaseline', ops.clearCanonicalIdentityState, (ok) => { result.canonicalBaselineCleared = ok; });
   result.verified = result.firebaseAuthCleared && result.localIdentityCleared
     && result.governedStateCleared && result.canonicalBaselineCleared && result.reactContextReset;
   return result;

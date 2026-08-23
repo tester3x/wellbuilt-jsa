@@ -36,7 +36,7 @@ const complete = await runCompleteJsaLogout({
   resetAuthContext: async () => { order.push('context'); state.authContext = false; },
 });
 check('5 Settings logout awaits Firebase, legacy, governed, and AuthContext cleanup',
-  complete.verified && order.join(',') === 'firebase,legacy,governed,canonical,context'
+  complete.verified && order.join(',') === 'firebase,legacy,governed,context,canonical'
   && !state.firebaseUser && !state.legacy && !state.ownership && !state.request && !state.terminal && !state.ui && !state.authContext);
 check('6 killed/reopened state remains logged out', !state.firebaseUser && !state.legacy && !state.authContext);
 check('7 historical JSAs and artifact recovery queue survive logout',
@@ -51,7 +51,7 @@ await runCompleteJsaLogout({
   resetAuthContext: async () => { resilientOrder.push('context'); },
 });
 check('logout exhausts every identity cleanup when one store fails',
-  resilientOrder.join(',') === 'firebase,legacy,governed,canonical,context');
+  resilientOrder.join(',') === 'firebase,legacy,governed,context,canonical');
 
 const settings = readFileSync(join(root, 'app/settings.tsx'), 'utf8');
 const auth = readFileSync(join(root, 'app/contexts/AuthContext.tsx'), 'utf8');
