@@ -7,24 +7,32 @@
 
 import { useRouter } from 'expo-router';
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from './contexts/AuthContext';
 
 export default function LogoutRoute() {
   const router = useRouter();
   const { logout } = useAuth();
+  const [failed, setFailed] = React.useState(false);
+
+  const attempt = async () => {
+    setFailed(false);
+    const result = await logout();
+    if (result.verified) router.replace('/login');
+    else setFailed(true);
+  };
 
   useEffect(() => {
     (async () => {
       console.log('[JSA] Logout route — clearing session');
-      await logout();
-      router.replace('/');
+      await attempt();
     })();
   }, []);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Signing out...</Text>
+      <Text style={styles.text}>{failed ? 'Sign out could not be verified.' : 'Signing out...'}</Text>
+      {failed && <TouchableOpacity style={styles.retry} onPress={() => { void attempt(); }}><Text style={styles.retryText}>Retry sign out</Text></TouchableOpacity>}
     </View>
   );
 }
@@ -41,4 +49,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
   },
+  retry: { marginTop: 18, backgroundColor: '#F5A623', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 20 },
+  retryText: { color: '#000', fontWeight: '700' },
 });

@@ -28,15 +28,15 @@ check('4 resume detects the same canonical logout signal immediately', canonical
 const state = { firebaseUser: true, legacy: true, ownership: true, request: true, terminal: true,
   ui: true, authContext: true, saves: ['historical'], artifactQueue: ['pending'] };
 const order = [];
-await runCompleteJsaLogout({
-  signOutGovernedAuth: async () => { order.push('firebase'); state.firebaseUser = false; },
+const complete = await runCompleteJsaLogout({
+  clearFirebaseAuth: async () => { order.push('firebase'); state.firebaseUser = false; return true; },
   clearLegacyDriverSession: async () => { order.push('legacy'); state.legacy = false; },
   clearGovernedState: async () => { order.push('governed'); state.ownership = state.request = state.terminal = state.ui = false; },
   clearCanonicalIdentityState: async () => { order.push('canonical'); },
   resetAuthContext: async () => { order.push('context'); state.authContext = false; },
 });
 check('5 Settings logout awaits Firebase, legacy, governed, and AuthContext cleanup',
-  order.join(',') === 'firebase,legacy,governed,canonical,context'
+  complete.verified && order.join(',') === 'firebase,legacy,governed,canonical,context'
   && !state.firebaseUser && !state.legacy && !state.ownership && !state.request && !state.terminal && !state.ui && !state.authContext);
 check('6 killed/reopened state remains logged out', !state.firebaseUser && !state.legacy && !state.authContext);
 check('7 historical JSAs and artifact recovery queue survive logout',
@@ -44,7 +44,7 @@ check('7 historical JSAs and artifact recovery queue survive logout',
 
 const resilientOrder = [];
 await runCompleteJsaLogout({
-  signOutGovernedAuth: async () => { resilientOrder.push('firebase'); throw new Error('test failure'); },
+  clearFirebaseAuth: async () => { resilientOrder.push('firebase'); throw new Error('test failure'); },
   clearLegacyDriverSession: async () => { resilientOrder.push('legacy'); },
   clearGovernedState: async () => { resilientOrder.push('governed'); },
   clearCanonicalIdentityState: async () => { resilientOrder.push('canonical'); },
@@ -67,8 +67,9 @@ check('governed profile never falls back to approved hash', fetchProfileBody.inc
 check('client-authoritative approved profile writes removed from Settings',
   !/drivers\/approved|method:\s*['"]PATCH['"]|FIREBASE_DB/.test(settings));
 check('governed profile updates use authenticated callable', canonical.includes("'updateDriverProfile'"));
-check('foreground cascade is bounded and resume polls immediately', layout.includes('3_000')
-  && layout.includes('void pollLogout();') && layout.includes("router.replace('/login')"));
+check('foreground cascade uses listener and immediate resume read without hydration polling',
+  layout.includes('startGovernedLogoutWatcher') && layout.includes('checkGovernedLogoutSignalOnce')
+  && !layout.includes('3_000') && !layout.includes('canonicalLogoutWasSignaled'));
 check('9 standalone remains separate from governed canonical profile',
   settings.includes('if (!governed)') && driver.includes('const session = await getDriverSession()'));
 

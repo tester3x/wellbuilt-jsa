@@ -36,8 +36,10 @@ export default function SettingsScreen() {
   const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
   const [cdl, setCdl] = useState('');
+  const [driverId, setDriverId] = useState('');
   const [governedProfile, setGovernedProfile] = useState(false);
   const [showSigModal, setShowSigModal] = useState(false);
+  const [signatureSaving, setSignatureSaving] = useState(false);
 
   // Standalone contacts (only editable when no companyId)
   const isStandalone = !session?.companyId;
@@ -56,7 +58,7 @@ export default function SettingsScreen() {
         const governed = await loadGovernedSession();
         setGovernedProfile(!!governed);
         setLegalName(''); setSignatureImage(null); setTruckNumber(''); setTrailerNumber('');
-        setCompanyName(''); setPhone(''); setCdl('');
+        setCompanyName(''); setPhone(''); setCdl(''); setDriverId('');
         if (!governed) {
           const [truck, trailer] = await Promise.all([
             AsyncStorage.getItem("@jsa/truckNumber"), AsyncStorage.getItem("@jsa/trailerNumber"),
@@ -74,6 +76,7 @@ export default function SettingsScreen() {
         if (profile?.companyName) setCompanyName(profile.companyName);
         if (profile?.phone) setPhone(profile.phone);
         if (profile?.cdl) setCdl(profile.cdl);
+        if (profile?.driverId) setDriverId(profile.driverId);
 
         // Load standalone contacts
         if (isStandalone) {
@@ -110,11 +113,26 @@ export default function SettingsScreen() {
   };
 
   const saveSignature = async (base64: string) => {
+    if (signatureSaving) return false;
     const fullUri = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
-    setSignatureImage(fullUri);
-    if (governedProfile) {
+    if (!governedProfile) {
+      setSignatureImage(fullUri);
+      return true;
+    }
+    setSignatureSaving(true);
+    try {
       const { updateCanonicalGovernedProfile } = await import('../services/sso/jsaCanonicalProfile');
-      await updateCanonicalGovernedProfile({ signature: fullUri });
+      const { saveGovernedSignatureAfterConfirmation } = await import('../services/sso/jsaSignatureSaveContract');
+      return await saveGovernedSignatureAfterConfirmation(fullUri, {
+        persist: (signature) => updateCanonicalGovernedProfile({ signature }),
+        commit: setSignatureImage,
+        reportFailure: () => Alert.alert(t('Error'), t('Signature was not saved. Please retry.')),
+      });
+    } catch {
+      Alert.alert(t('Error'), t('Signature was not saved. Please retry.'));
+      return false;
+    } finally {
+      setSignatureSaving(false);
     }
   };
 
@@ -154,8 +172,9 @@ export default function SettingsScreen() {
           text: t("Sign Out"),
           style: "destructive",
           onPress: async () => {
-            await logout();
-            router.replace("/login");
+            const result = await logout();
+            if (result.verified) router.replace("/login");
+            else Alert.alert(t('Sign Out Incomplete'), t('Authentication is still active. Check your connection and retry sign out.'));
           },
         },
       ]
@@ -195,6 +214,7 @@ export default function SettingsScreen() {
             <View style={styles.field}><Text style={styles.label}>{t("Company")}</Text><Text style={styles.profileValue}>{companyName || '—'}</Text></View>
             <View style={styles.field}><Text style={styles.label}>{t("Phone")}</Text><Text style={styles.profileValue}>{phone || '—'}</Text></View>
             <View style={styles.field}><Text style={styles.label}>CDL</Text><Text style={styles.profileValue}>{cdl || '—'}</Text></View>
+            <View style={styles.field}><Text style={styles.label}>{t("Driver ID")}</Text><Text style={styles.profileValue}>{driverId || '—'}</Text></View>
           </>}
 
           <View style={styles.field}>
@@ -401,7 +421,8 @@ export default function SettingsScreen() {
       <SignatureModal
         visible={showSigModal}
         onClose={() => setShowSigModal(false)}
-        onSave={(base64: string) => { if (base64?.length > 10) void saveSignature(base64); }}
+        onSave={saveSignature}
+        saving={signatureSaving}
         accent={accent}
         title={t("Update Signature")}
       />

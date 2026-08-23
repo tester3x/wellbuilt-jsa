@@ -83,10 +83,25 @@ export function getGovernedAuth(): Auth {
   return authSingleton;
 }
 
-export async function signOutGovernedAuth(): Promise<void> {
+export async function signOutGovernedAuth(): Promise<boolean> {
   const auth = getGovernedAuth();
   await awaitGovernedAuthReady();
-  await signOut(auth).catch(() => {});
+  let settled = false;
+  let resolveSettled!: () => void;
+  const settlement = new Promise<void>((resolve) => { resolveSettled = resolve; });
+  const unsubscribe = onAuthStateChanged(auth, (user) => {
+    if (user === null) { settled = true; resolveSettled(); }
+  });
+  try {
+    await signOut(auth);
+    await Promise.race([
+      settlement,
+      new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
+    ]);
+    return settled && auth.currentUser === null;
+  } finally {
+    unsubscribe();
+  }
 }
 
 export function awaitGovernedAuthReady(): Promise<void> {

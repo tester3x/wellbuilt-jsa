@@ -15,7 +15,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import LoginScreen from '../components/LoginScreen';
 import AppSwitcher from '../components/AppSwitcher';
-import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getDriverSession } from '../services/driverAuth';
 import { getUnfinishedJsas, discardJsa, type UnfinishedJsa } from '../services/jsaStatus';
@@ -101,14 +101,6 @@ async function checkRtdbLogoutSignal(): Promise<boolean> {
   }
 }
 
-async function checkAnyLogoutSignal(): Promise<boolean> {
-  const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
-  if (await loadGovernedSession()) {
-    const { canonicalLogoutWasSignaled } = await import('../services/sso/jsaCanonicalProfile');
-    return canonicalLogoutWasSignaled();
-  }
-  return checkRtdbLogoutSignal();
-}
 import { colors } from '../constants/colors';
 
 // Module-scoped session flag — once "Remind me later" is tapped, the
@@ -191,6 +183,18 @@ function AppContent() {
   const [governedSessionReady, setGovernedSessionReady] = useState(false);
   const [hasActiveGovernedLaunch, setHasActiveGovernedLaunch] = useState(false);
   const [authWorkflowIsolation, setAuthWorkflowIsolation] = useState(unresolvedJobDetailsIsolation);
+  const [logoutFailed, setLogoutFailed] = useState(false);
+
+  const completeVerifiedLogout = async (onVerified?: () => void | Promise<void>) => {
+    const result = await logout();
+    if (!result.verified) {
+      setLogoutFailed(true);
+      return false;
+    }
+    setLogoutFailed(false);
+    await onVerified?.();
+    return true;
+  };
 
   const checkUnfinishedJsas = async () => {
     try {
@@ -282,10 +286,12 @@ function AppContent() {
       const pending = await AsyncStorage.getItem(WBT_READ_REQUEST_KEY);
       const returnTo = await AsyncStorage.getItem('jsa_returnTo');
       const { loadLaunchContext, loadGovernedTerminalFailure, loadRequestContext } = await import('../services/sso/jsaRuntime');
-      const { loadUsableGovernedSession } = await import('../services/sso/jsaGovernedAuthLive');
+      const { loadUsableGovernedSession, currentGovernedAuthUid } = await import('../services/sso/jsaGovernedAuthLive');
+      const { hasPendingLogoutFailure } = await import('../services/logoutJsaCompletely');
       const governedLaunch = await loadLaunchContext();
       setHasActiveGovernedLaunch(!!governedLaunch);
       const usable = await loadUsableGovernedSession();
+      if (await hasPendingLogoutFailure() || (!!currentGovernedAuthUid() && !usable)) setLogoutFailed(true);
       const marker = await loadGovernedTerminalFailure();
       const ctx = await loadRequestContext();
       setGovernedSessionReady(!!usable);
@@ -318,16 +324,17 @@ function AppContent() {
   };
 
   const leaveGovernedForStandalone = async () => {
-    await logout();
-    setHasActiveGovernedLaunch(false);
-    setGovernedSessionReady(false);
-    setUnauthSurface('legacy_login');
-    setAuthWorkflowIsolation(decideJobDetailsIsolation({
-      resolved: true, authoritySurface: null, explicitGovernedFailure: false,
-      hasGovernedLaunch: false, hasUsableGovernedSession: false,
-      hasMatchingAuthoritativeContext: false, authPending: false,
-    }));
-    router.replace('/login');
+    await completeVerifiedLogout(() => {
+      setHasActiveGovernedLaunch(false);
+      setGovernedSessionReady(false);
+      setUnauthSurface('legacy_login');
+      setAuthWorkflowIsolation(decideJobDetailsIsolation({
+        resolved: true, authoritySurface: null, explicitGovernedFailure: false,
+        hasGovernedLaunch: false, hasUsableGovernedSession: false,
+        hasMatchingAuthoritativeContext: false, authPending: false,
+      }));
+      router.replace('/login');
+    });
   };
 
   // Clear SSO suppression once auth succeeds
@@ -442,34 +449,41 @@ function AppContent() {
       }
     };
     hideNavBar();
-    // Re-hide nav bar when app returns to foreground (deep links from WB S can re-show it)
-    // Also check for RTDB logoutAt signal from WB S (silent cascade logout)
+    // One authenticated canonical logoutAt listener replaces vc20's
+    // three-second full-profile callable polling. Resume performs one
+    // immediate bound read; network/auth errors are explicitly ignored.
     let active = AppState.currentState === 'active';
-    let polling = false;
-    const pollLogout = async () => {
-      if (!active || polling) return;
-      polling = true;
+    let checking = false;
+    let stopWatcher: (() => void) | null = null;
+    const handleSignal = async () => {
+      if (!active || checking) return;
+      checking = true;
       try {
-        if (await checkAnyLogoutSignal()) {
-          await logout();
-          router.replace('/login');
-        }
-      } finally { polling = false; }
+        await completeVerifiedLogout(() => router.replace('/login'));
+      } finally { checking = false; }
     };
-    const timer = setInterval(() => { void pollLogout(); }, 3_000);
+    void import('../services/sso/jsaLogoutWatcherLive').then(async (watcher) => {
+      stopWatcher = await watcher.startGovernedLogoutWatcher(handleSignal, () => {});
+    }).catch(() => {});
     const appStateSub = AppState.addEventListener('change', (state) => {
       active = state === 'active';
       if (state === 'active') {
         hideNavBar();
-        void pollLogout();
+        void import('../services/sso/jsaRuntime').then(async ({ loadGovernedSession }) => {
+          if (await loadGovernedSession()) {
+            const { checkGovernedLogoutSignalOnce } = await import('../services/sso/jsaLogoutWatcherLive');
+            if (await checkGovernedLogoutSignalOnce()) await handleSignal();
+          } else if (await checkRtdbLogoutSignal()) {
+            await handleSignal();
+          }
+        }).catch(() => {});
         if (isAuthenticated) {
           // Re-surface unfinished-JSA nag on foreground
           checkUnfinishedJsas();
         }
       }
     });
-    void pollLogout();
-    return () => { clearInterval(timer); appStateSub.remove(); };
+    return () => { stopWatcher?.(); appStateSub.remove(); };
   }, [isAuthenticated, logout, router]);
 
   // Handle SSO deep links while app is running (warm start).
@@ -486,8 +500,7 @@ function AppContent() {
             return;
           }
           console.log('[JSA] Logout deep link received from WB S — clearing SSO session');
-          await logout();
-          router.replace('/login');
+          await completeVerifiedLogout(() => router.replace('/login'));
           return;
         }
 
@@ -621,8 +634,7 @@ function AppContent() {
         const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
         if (authMethod === 'sso' || await loadGovernedSession()) {
           console.log('[JSA] Cold start logout deep link from WB S');
-          await logout();
-          router.replace('/login');
+          await completeVerifiedLogout(() => router.replace('/login'));
         }
         setSsoInProgress(false);
         return;
@@ -844,6 +856,17 @@ function AppContent() {
               />
             </View>
           )}
+          {logoutFailed && (
+            <View style={[styles.overlay, styles.logoutFailureOverlay]}>
+              <View style={styles.logoutFailureCard}>
+                <Text style={styles.logoutFailureTitle}>Sign out incomplete</Text>
+                <Text style={styles.logoutFailureCopy}>Authentication could not be cleared and verified. Retry before opening standalone or changing drivers.</Text>
+                <TouchableOpacity style={styles.logoutRetry} onPress={() => { void completeVerifiedLogout(() => router.replace('/login')); }}>
+                  <Text style={styles.logoutRetryText}>Retry sign out</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
         <StatusBar style="light" />
       </NavThemeProvider>
@@ -878,4 +901,10 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 10,
   },
+  logoutFailureOverlay: { backgroundColor: colors.background, justifyContent: 'center', padding: 24, zIndex: 30 },
+  logoutFailureCard: { backgroundColor: colors.card, padding: 24, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
+  logoutFailureTitle: { color: colors.textDark, fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  logoutFailureCopy: { color: colors.textMuted, fontSize: 15, lineHeight: 22, textAlign: 'center', marginTop: 12 },
+  logoutRetry: { backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 14, marginTop: 20, alignItems: 'center' },
+  logoutRetryText: { color: '#000', fontSize: 16, fontWeight: '800' },
 });

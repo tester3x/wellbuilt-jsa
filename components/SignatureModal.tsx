@@ -9,24 +9,26 @@ import SignaturePad, { type SignaturePadRef } from './SignaturePad';
 interface SignatureModalProps {
   visible: boolean;
   onClose: () => void;
-  onSave: (base64: string) => void;
+  onSave: (base64: string) => void | boolean | Promise<void | boolean>;
+  saving?: boolean;
   accent: string;
   title?: string;
 }
 
-export default function SignatureModal({ visible, onClose, onSave, accent, title = 'Driver Signature' }: SignatureModalProps) {
+export default function SignatureModal({ visible, onClose, onSave, saving = false, accent, title = 'Driver Signature' }: SignatureModalProps) {
   const [hasDrawn, setHasDrawn] = useState(false);
   const sigRef = useRef<SignaturePadRef>(null);
 
-  const handleSave = useCallback((base64: string) => {
-    console.log('[SigModal] handleSave called, data length:', base64?.length || 0);
+  const handleSave = useCallback(async (base64: string) => {
     if (base64 && base64.length > 10) {
-      onSave(base64);
+      const saved = await onSave(base64);
+      if (saved !== false) {
+        onClose();
+        setHasDrawn(false);
+      }
     } else {
       console.warn('[SigModal] Empty or short signature data, not saving');
     }
-    onClose();
-    setHasDrawn(false);
   }, [onSave, onClose]);
 
   const handleCancel = useCallback(() => {
@@ -56,17 +58,17 @@ export default function SignatureModal({ visible, onClose, onSave, accent, title
             />
           </View>
           <View style={styles.actions}>
-            <TouchableOpacity onPress={handleClear} disabled={!hasDrawn} style={styles.btn}>
+            <TouchableOpacity onPress={handleClear} disabled={!hasDrawn || saving} style={styles.btn}>
               <Text style={[styles.btnText, !hasDrawn && { opacity: 0.3 }]}>Clear</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => sigRef.current?.readSignature()}
-              disabled={!hasDrawn}
+              disabled={!hasDrawn || saving}
               style={[styles.btn, styles.saveBtn, { backgroundColor: accent }]}
             >
-              <Text style={[styles.saveText, !hasDrawn && { opacity: 0.3 }]}>Save</Text>
+              <Text style={[styles.saveText, (!hasDrawn || saving) && { opacity: 0.3 }]}>{saving ? 'Saving…' : 'Save'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleCancel} style={styles.btn}>
+            <TouchableOpacity onPress={handleCancel} disabled={saving} style={styles.btn}>
               <Text style={styles.btnText}>Cancel</Text>
             </TouchableOpacity>
           </View>

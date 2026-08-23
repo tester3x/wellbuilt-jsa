@@ -3,7 +3,7 @@ import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { awaitGovernedAuthReady, getGovernedAuth } from './jsaGovernedAuthLive';
 import { loadGovernedSession } from './jsaRuntime';
-import { canonicalLogoutAdvanced, parseCanonicalProfile, type JsaCanonicalProfile } from './jsaIdentityContract';
+import { parseCanonicalProfile, type JsaCanonicalProfile } from './jsaIdentityContract';
 
 export const CANONICAL_LOGOUT_BASELINE_KEY = 'jsa_lastCanonicalLogoutAt';
 
@@ -24,18 +24,6 @@ export async function seedCanonicalLogoutBaseline(): Promise<void> {
   await SecureStore.setItemAsync(CANONICAL_LOGOUT_BASELINE_KEY, String(profile?.logoutAt ?? 0));
 }
 
-export async function canonicalLogoutWasSignaled(): Promise<boolean> {
-  const profile = await fetchCanonicalGovernedProfile();
-  if (!profile) return false;
-  const raw = await SecureStore.getItemAsync(CANONICAL_LOGOUT_BASELINE_KEY);
-  if (raw === null) {
-    await SecureStore.setItemAsync(CANONICAL_LOGOUT_BASELINE_KEY, String(profile.logoutAt ?? 0));
-    return false;
-  }
-  const baseline = Number(raw);
-  return canonicalLogoutAdvanced(Number.isFinite(baseline) ? baseline : null, profile.logoutAt);
-}
-
 export async function updateCanonicalGovernedProfile(profile: Record<string, unknown>): Promise<void> {
   await awaitGovernedAuthReady();
   const auth = getGovernedAuth();
@@ -46,5 +34,5 @@ export async function updateCanonicalGovernedProfile(profile: Record<string, unk
 }
 
 export async function clearCanonicalIdentityState(): Promise<void> {
-  await SecureStore.deleteItemAsync(CANONICAL_LOGOUT_BASELINE_KEY).catch(() => {});
+  await SecureStore.deleteItemAsync(CANONICAL_LOGOUT_BASELINE_KEY);
 }

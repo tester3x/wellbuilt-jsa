@@ -3,6 +3,7 @@
 // Uses the same Firebase auth as WB S / WB M (name + passcode → SHA-256 → RTDB).
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import type { CompleteLogoutResult } from "../../services/sso/jsaLogoutContract";
 import {
   DriverSession,
   getDriverSession,
@@ -51,7 +52,7 @@ interface AuthContextValue {
   /** Cancel pending registration */
   cancelRegistration: () => Promise<void>;
   /** Sign out */
-  logout: () => Promise<void>;
+  logout: () => Promise<CompleteLogoutResult>;
   /** Switch to register mode */
   switchToRegister: () => void;
   /** Switch to login mode */
@@ -256,7 +257,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     const { logoutJsaCompletely } = await import("../../services/logoutJsaCompletely");
-    await logoutJsaCompletely(() => {
+    return logoutJsaCompletely(() => {
       setSession(null);
       setError("");
       setMode("login");

@@ -484,6 +484,8 @@ export const fetchDriverProfile = async (): Promise<{
   companyName?: string;
   phone?: string;
   cdl?: string;
+  driverId?: string;
+  uid?: string;
 } | null> => {
   const { loadGovernedSession } = await import('./sso/jsaRuntime');
   const governed = await loadGovernedSession();
@@ -497,6 +499,7 @@ export const fetchDriverProfile = async (): Promise<{
       assignedCustomers: canonical.assignedCustomers as AssignedCustomer[],
       companyId: canonical.companyId, companyName: canonical.companyName || undefined,
       phone: canonical.phone || undefined, cdl: canonical.cdl || undefined,
+      driverId: canonical.driverId, uid: governed.uid,
     };
   }
   const session = await getDriverSession();
