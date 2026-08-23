@@ -20,10 +20,16 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || !detail ? '' : ` — ${detail}`}`);
 }
 
-function sha256(rel) {
-  const buf = readFileSync(join(ROOT, rel));
-  return createHash('sha256').update(buf).digest('hex');
+function normalizedSha256Text(text) {
+  return createHash('sha256').update(text.replace(/\r\n|\r/g, '\n'), 'utf8').digest('hex');
 }
+
+function sha256(rel) {
+  return normalizedSha256Text(readFileSync(join(ROOT, rel), 'utf8'));
+}
+
+check('normalized hash treats LF and CRLF text identically',
+  normalizedSha256Text('alpha\nbeta\n') === normalizedSha256Text('alpha\r\nbeta\r\n'));
 
 check(
   'primary submitRegistration uses requestDriverRegistration helper',
@@ -83,11 +89,11 @@ check(
 
 // Pins refreshed against Codex-approved governed source bc961573e12f0de789827b529b38d606d4be7173.
 const frozen = {
-  'services/sso/jsaArtifactCallables.ts': '94ba3b59b156576778b26decd8449a655776a6ba759768ad4b63f89cf7673624',
-  'services/sso/jsaArtifactSnapshot.ts': '72fc4d97fd00016f539e630b004820ceea30ba1e5763bef1cf8d2c584e1a607d',
-  'services/sso/jsaRequestCallables.ts': 'fa0b593b7a4bde78d121686eb269739270e9e0dfdb09ededccd6e1d33e3508ab',
-  'services/sso/jsaRequestLifecycle.ts': '15a4781f7dc72c3198774547ce13e4a6c9ffb59944d485bbc092955b936bcb0b',
-  'tools/test-jsaRequestLifecycle.mjs': '9e3d7ce3121bd67dce48d2d43181a67618ad799c46e912421da206f0e480e081',
+  'services/sso/jsaArtifactCallables.ts': '127f909e5d7b38a5b830152c2d66f0e1919dfa9adc132a92bef05e1cdbbb8a32',
+  'services/sso/jsaArtifactSnapshot.ts': '86132e9d0ce5e5cfee23e3061dc1e1ff6e5fe4338e2769ce3b4c60b1804872f6',
+  'services/sso/jsaRequestCallables.ts': '4dd637a900d74f653272402d8cbd7836d34ebf386bfc2cee1d158a9360fb542c',
+  'services/sso/jsaRequestLifecycle.ts': 'd140338069b96c5e251573604ffec6bd20f06c844300522db4eedb6a7d7473b5',
+  'tools/test-jsaRequestLifecycle.mjs': '324edb75d6ff8c9747183946e3c2e7f46b32dceb19e0eb5f0374da80d6885d27',
 };
 for (const [rel, want] of Object.entries(frozen)) {
   check(`protected ${rel} freeze hash`, sha256(rel) === want, sha256(rel));

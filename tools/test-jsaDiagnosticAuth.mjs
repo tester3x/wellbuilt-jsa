@@ -18,9 +18,16 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || !detail ? '' : ` — ${detail}`}`);
 }
 
-function sha256(rel) {
-  return createHash('sha256').update(readFileSync(join(ROOT, rel))).digest('hex');
+function normalizedSha256Text(text) {
+  return createHash('sha256').update(text.replace(/\r\n|\r/g, '\n'), 'utf8').digest('hex');
 }
+
+function sha256(rel) {
+  return normalizedSha256Text(readFileSync(join(ROOT, rel), 'utf8'));
+}
+
+check('normalized hash treats LF and CRLF text identically',
+  normalizedSha256Text('alpha\nbeta\n') === normalizedSha256Text('alpha\r\nbeta\r\n'));
 
 check('endpoint is writeDiagnosticLog', /writeDiagnosticLog/.test(diag));
 check('uses governed JSA Auth', /getGovernedAuth/.test(diag) && /awaitGovernedAuthReady/.test(diag));
@@ -36,12 +43,12 @@ check('still fire-and-forget', /void submitDiagnostic/.test(diag));
 
 // Pins refreshed against Codex-approved governed source bc961573e12f0de789827b529b38d606d4be7173.
 const frozen = {
-  'services/sso/jsaGovernedAuthLive.ts': 'ccbcf05ac422bc4c91813cbf281daf5069bf09d3efa261efe7bf1691e39f79d1',
-  'services/sso/jsaGovernedAuth.ts': '94923a42ebb4e1bc99d8a5a89a0ac25b30f5f9c3eb890669e7e164e67e40d318',
-  'services/sso/jsaArtifactCallables.ts': '94ba3b59b156576778b26decd8449a655776a6ba759768ad4b63f89cf7673624',
-  'services/sso/jsaRequestCallables.ts': 'fa0b593b7a4bde78d121686eb269739270e9e0dfdb09ededccd6e1d33e3508ab',
-  'services/sso/jsaRequestLifecycle.ts': '15a4781f7dc72c3198774547ce13e4a6c9ffb59944d485bbc092955b936bcb0b',
-  'app/contexts/AuthContext.tsx': 'c352b1da02b58b8496b6da2f1a4a9aed4b608614c0bc6abb2bded1ffdcea32cf',
+  'services/sso/jsaGovernedAuthLive.ts': '36613eaa3f62f8098902d828e7cfbdecdd75c4c8cab0ec64da47cf9740601d82',
+  'services/sso/jsaGovernedAuth.ts': 'ad6ea49666d2137dd88cb3249fe8bd065d5786db376f982e00d7778b5c167ebf',
+  'services/sso/jsaArtifactCallables.ts': '127f909e5d7b38a5b830152c2d66f0e1919dfa9adc132a92bef05e1cdbbb8a32',
+  'services/sso/jsaRequestCallables.ts': '4dd637a900d74f653272402d8cbd7836d34ebf386bfc2cee1d158a9360fb542c',
+  'services/sso/jsaRequestLifecycle.ts': 'd140338069b96c5e251573604ffec6bd20f06c844300522db4eedb6a7d7473b5',
+  'app/contexts/AuthContext.tsx': '8a817c02b571410e83b5f751f23cb5930c94eaa75c9bb3af5c1615ec8e79c90b',
 };
 for (const [rel, want] of Object.entries(frozen)) {
   const got = sha256(rel);
