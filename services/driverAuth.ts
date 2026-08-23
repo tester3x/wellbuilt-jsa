@@ -1,13 +1,8 @@
 // services/driverAuth.ts
-// Driver authentication for WB JSA — same Firebase paths, same auth flow as WB S / WB M.
-// Both apps share the `wellbuilt-sync` Firebase project so a driver approved in WB M
-// is automatically approved here.
-//
-// How it works:
-// 1. Driver enters name + passcode
-// 2. App SHA-256 hashes (name.toLowerCase() + passcode) client-side
-// 3. Login: Find driver by hash, verify name matches
-// 4. Registration: requestDriverRegistration (pending-only). Never POST drivers/pending.
+// Legacy standalone storage plus governed registration/profile helpers.
+// Manual authentication is exclusively services/sso/jsaManualLoginLive.ts:
+// authenticateDriver → Firebase Auth → sanitized governed session.
+// Registration remains requestDriverRegistration (pending-only).
 //
 // Structure:
 // - drivers/approved/{passcodeHash}/ = { displayName, active, approvedAt, isAdmin? }
@@ -19,7 +14,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Firebase configuration (same project as WB M / WB S: wellbuilt-sync)
 const FIREBASE_DATABASE_URL = "https://wellbuilt-sync-default-rtdb.firebaseio.com";
-const FIREBASE_API_KEY = "AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI";
 
 // Firebase paths
 const DRIVERS_PENDING = "drivers/pending";
@@ -53,11 +47,7 @@ export interface DriverSession {
 const FIREBASE_TIMEOUT_MS = 10000;
 
 const buildFirebaseUrl = (path: string): string => {
-  let url = `${FIREBASE_DATABASE_URL}/${path}.json`;
-  if (FIREBASE_API_KEY) {
-    url += `?auth=${FIREBASE_API_KEY}`;
-  }
-  return url;
+  return `${FIREBASE_DATABASE_URL}/${path}.json`;
 };
 
 /**
@@ -129,103 +119,6 @@ export const hashPasscode = async (passcode: string, name?: string): Promise<str
     input
   );
   return hash.toLowerCase();
-};
-
-// --- Authentication ---
-
-/**
- * Verify login with name + passcode
- * Looks up driver by passcode hash, then verifies name matches
- *
- * Structure: drivers/approved/{passcodeHash}/ = { displayName, active, isAdmin? }
- * Also supports legacy structure: drivers/approved/{passcodeHash}/{deviceId}/
- */
-export const verifyLogin = async (
-  displayName: string,
-  passcode: string
-): Promise<{
-  valid: boolean;
-  driverId?: string;
-  displayName?: string;
-  legalName?: string;
-  passcodeHash?: string;
-  isAdmin?: boolean;
-  isViewer?: boolean;
-  companyId?: string;
-  companyName?: string;
-  error?: string;
-}> => {
-  console.log("[DriverAuth-JSA] Verifying login for:", displayName);
-
-  try {
-    const hash = await hashPasscode(passcode, displayName);
-    console.log("[DriverAuth-JSA] Legacy hash lookup");
-
-    // Look up by passcode hash
-    const driverData = await firebaseGet(`${DRIVERS_APPROVED}/${hash}`);
-
-    if (!driverData) {
-      console.log("[DriverAuth-JSA] No driver found with this passcode");
-      return { valid: false, error: "Invalid name or passcode" };
-    }
-
-    // Check if this is the new flat structure (has displayName directly)
-    if (driverData.displayName) {
-      if (driverData.active === false) {
-        return { valid: false, error: "This account has been deactivated" };
-      }
-
-      if (driverData.displayName.toLowerCase() !== displayName.toLowerCase()) {
-        console.log("[DriverAuth-JSA] Name mismatch");
-        return { valid: false, error: "Invalid name or passcode" };
-      }
-
-      console.log("[DriverAuth-JSA] Login verified for:", driverData.displayName);
-
-      return {
-        valid: true,
-        driverId: hash,
-        displayName: driverData.displayName,
-        // legalName can live at the root OR under profile/ (approval forms
-        // write to profile.legalName). Check both so driverName field
-        // doesn't fall back to the login displayName (e.g. "TabletS10").
-        legalName: driverData.profile?.legalName || driverData.legalName || undefined,
-        passcodeHash: hash,
-        isAdmin: driverData.isAdmin === true,
-        isViewer: driverData.isViewer === true,
-        companyId: driverData.companyId || undefined,
-        companyName: driverData.companyName || undefined,
-      };
-    }
-
-    // Legacy structure: drivers/approved/{hash}/{deviceId}/ = { displayName, ... }
-    for (const key of Object.keys(driverData)) {
-      const entry = driverData[key];
-      if (
-        entry.displayName?.toLowerCase() === displayName.toLowerCase() &&
-        entry.active !== false
-      ) {
-        console.log("[DriverAuth-JSA] Login verified (legacy) for:", entry.displayName);
-
-        return {
-          valid: true,
-          driverId: hash,
-          displayName: entry.displayName,
-          passcodeHash: hash,
-          isAdmin: entry.isAdmin === true,
-          isViewer: entry.isViewer === true,
-          companyId: entry.companyId || undefined,
-          companyName: entry.companyName || undefined,
-        };
-      }
-    }
-
-    console.log("[DriverAuth-JSA] Name mismatch in legacy structure");
-    return { valid: false, error: "Invalid name or passcode" };
-  } catch (error) {
-    console.error("[DriverAuth-JSA] Error verifying login:", error);
-    return { valid: false, error: "Connection error" };
-  }
 };
 
 // --- Session Management ---

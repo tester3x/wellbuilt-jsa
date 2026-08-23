@@ -1,6 +1,6 @@
 // app/login.tsx
 // Login / Registration screen for WB JSA
-// Same auth flow as WB S: name + passcode → SHA-256 → Firebase RTDB lookup
+// Manual sign-in uses authenticateDriver → Firebase Auth → governed JSA session.
 // Supports: login, register, pending approval, approved, rejected, error states
 
 import React, { useState, useEffect, useRef } from "react";

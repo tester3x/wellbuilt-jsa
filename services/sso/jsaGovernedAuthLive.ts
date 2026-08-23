@@ -146,7 +146,10 @@ async function generationEntropyHex(): Promise<string> {
   return hex;
 }
 
-export async function persistAfterExchange(payload: ExchangePayload): Promise<void> {
+export async function persistAfterExchange(
+  payload: ExchangePayload,
+  options: { stillCurrent?: () => boolean } = {},
+) {
   const generation = newSessionGeneration(Date.now(), await generationEntropyHex());
   const result = await installGovernedAuthSession({
     payload,
@@ -162,10 +165,12 @@ export async function persistAfterExchange(payload: ExchangePayload): Promise<vo
       await saveGovernedSession(session);
       const { seedCanonicalLogoutBaseline } = await import('./jsaCanonicalProfile');
       await seedCanonicalLogoutBaseline();
+      if (options.stillCurrent && !options.stillCurrent()) throw new Error('superseded');
       publishGovernedSessionReady();
     },
     reconcileAuth: () => reconcileGovernedAuth(),
     clearIfGeneration: (gen) => clearGovernedSessionIfGeneration(gen).then(() => undefined),
+    stillCurrent: options.stillCurrent,
   });
   if (!result.ok) {
     throw new Error(result.reason);
@@ -177,6 +182,7 @@ export async function persistAfterExchange(payload: ExchangePayload): Promise<vo
       generation,
     );
   }
+  return result.session;
 }
 
 export async function liveConsumeRecoveryLatch(session: unknown): Promise<void> {

@@ -528,15 +528,21 @@ export async function installGovernedAuthSession(input: {
   persist(session: JsaGovernedSessionView): Promise<void>;
   reconcileAuth?(): Promise<void>;
   clearIfGeneration?(generation: string): Promise<void>;
+  stillCurrent?(): boolean;
 }): Promise<
   | { ok: true; session: JsaGovernedSessionView }
-  | { ok: false; reason: 'sign_in_failed' | 'uid_mismatch' | 'persist_failed' }
+  | { ok: false; reason: 'sign_in_failed' | 'uid_mismatch' | 'persist_failed' | 'superseded' }
 > {
   let signedIn = false;
   try {
+    if (input.stillCurrent && !input.stillCurrent()) return { ok: false, reason: 'superseded' };
     const cred = await input.signInWithCustomToken(input.payload.customToken);
     if (!cred || !cred.uid) return { ok: false, reason: 'sign_in_failed' };
     signedIn = true;
+    if (input.stillCurrent && !input.stillCurrent()) {
+      await runIndependentCleanup(input.reconcileAuth, () => input.clearIfGeneration?.(input.generation));
+      return { ok: false, reason: 'superseded' };
+    }
     if (installAuthDecision({ signedInUid: cred.uid, expectedUid: input.payload.uid }) !== 'ok') {
       await runIndependentCleanup(input.reconcileAuth, () => input.clearIfGeneration?.(input.generation));
       return { ok: false, reason: 'uid_mismatch' };
@@ -544,6 +550,10 @@ export async function installGovernedAuthSession(input: {
     const session = sanitizeSessionForPersist(
       sessionViewFromExchange(input.payload, input.legalName, input.generation),
     );
+    if (input.stillCurrent && !input.stillCurrent()) {
+      await runIndependentCleanup(input.reconcileAuth, () => input.clearIfGeneration?.(input.generation));
+      return { ok: false, reason: 'superseded' };
+    }
     await input.persist(session);
     return { ok: true, session };
   } catch {

@@ -3,7 +3,8 @@
 // URL: jsaapp://login?hash={passcodeHash}&name={displayName}&shiftId={shiftId}
 //
 // This route exists solely so Expo Router can match the deep link URL.
-// It extracts the SSO params and delegates to AuthContext.ssoLogin(),
+// Legacy hash/name links are refused by AuthContext.ssoLogin(); governed
+// Suite SSO uses the authorization-code callback and governed session install.
 // then redirects to the main app.
 //
 // shiftId capture is CRITICAL — without it WB JSA falls back to a

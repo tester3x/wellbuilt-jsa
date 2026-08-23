@@ -1,14 +1,12 @@
 // app/contexts/AuthContext.tsx
 // Auth context for WB JSA — wraps the entire app with driver session state.
-// Uses the same Firebase auth as WB S / WB M (name + passcode → SHA-256 → RTDB).
+// Manual login and Suite SSO both install the governed Firebase Auth session.
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import type { CompleteLogoutResult } from "../../services/sso/jsaLogoutContract";
 import {
   DriverSession,
   getDriverSession,
-  verifyLogin,
-  saveDriverSession,
   submitRegistration,
   registerStandalone as registerStandaloneService,
   getPendingRegistration,
@@ -72,6 +70,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState("");
   const [pendingName, setPendingName] = useState("");
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const loginAttemptRef = React.useRef(0);
+
+  const governedPresentationSession = (governed: {
+    uid: string; driverId: string; companyId: string;
+    displayName: string | null; legalName: string | null;
+  }): DriverSession => ({
+    driverId: governed.driverId,
+    displayName: governed.displayName || governed.legalName || 'Driver',
+    legalName: governed.legalName || undefined,
+    // In-memory compatibility scope only. It is the canonical driverId,
+    // never a legacy name+passcode hash and is not persisted by this path.
+    passcodeHash: governed.driverId,
+    isAdmin: false,
+    isViewer: false,
+    companyId: governed.companyId,
+  });
 
   // Check initial state on mount
   useEffect(() => {
@@ -112,6 +126,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkInitialState = async () => {
     try {
+      const { inspectGovernedIdentityStartupDetailed } = await import('../../services/sso/jsaIdentityStartupLive');
+      const governedInspection = await inspectGovernedIdentityStartupDetailed();
+      if (governedInspection.state === 'usable') {
+        const { loadGovernedSession } = await import('../../services/sso/jsaRuntime');
+        const governed = await loadGovernedSession();
+        if (governed) {
+          setSession(governedPresentationSession(governed));
+          setMode('authenticated');
+          return;
+        }
+      } else if (governedInspection.state !== 'standalone') {
+        // One-sided or mismatched Firebase/session state is never allowed to
+        // fall through into legacy or another driver's standalone session.
+        setSession(null);
+        setMode('error');
+        setError('Secure sign-in requires cleanup before retrying.');
+        return;
+      }
       // Check for existing session
       const existingSession = await getDriverSession();
       if (existingSession) {
@@ -150,37 +182,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = useCallback(async (displayName: string, passcode: string): Promise<boolean> => {
+    const attempt = ++loginAttemptRef.current;
     setMode("verifying");
     setError("");
 
     try {
-      const result = await verifyLogin(displayName.trim(), passcode.trim());
-
-      if (result.valid && result.driverId && result.displayName && result.passcodeHash) {
-        await saveDriverSession(
-          result.driverId,
-          result.displayName,
-          result.passcodeHash,
-          result.isAdmin || false,
-          result.isViewer || false,
-          result.companyId,
-          result.companyName,
-          result.legalName,
-          'manual',
-        );
-        const driverSession = await getDriverSession();
-        setSession(driverSession);
+      const { manualGovernedLogin } = await import('../../services/sso/jsaManualLoginLive');
+      const result = await manualGovernedLogin(displayName.trim(), passcode);
+      if (attempt !== loginAttemptRef.current) return false;
+      if (result.ok) {
+        const { loadGovernedSession } = await import('../../services/sso/jsaRuntime');
+        const governed = await loadGovernedSession();
+        if (!governed || governed.uid !== result.payload.uid
+          || governed.driverId !== result.payload.driverId
+          || governed.companyId !== result.payload.companyId) {
+          setMode('error');
+          setError('Secure sign-in could not verify this JSA session.');
+          return false;
+        }
+        setSession(governedPresentationSession(governed));
         setMode("authenticated");
         return true;
-      } else {
-        setMode("login");
-        setError(result.error || "Invalid name or passcode");
-        return false;
       }
+      setMode(result.code === 'server_failure' || result.code === 'binding_mismatch' ? 'error' : 'login');
+      setError(result.message);
+      return false;
     } catch (err) {
-      console.error("[AuthContext-JSA] Login error:", err);
+      if (attempt !== loginAttemptRef.current) return false;
       setMode("error");
-      setError("Connection error. Please check your internet.");
+      setError("WellBuilt sign-in is temporarily unavailable. Try again.");
       return false;
     }
   }, []);
@@ -280,83 +310,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const ssoLogin = useCallback(async (hash: string, displayName: string): Promise<boolean> => {
-    console.log("[AuthContext-JSA] SSO login for:", displayName);
-
-    try {
-      // Look up driver by hash in Firebase
-      const FIREBASE_DATABASE_URL = "https://wellbuilt-sync-default-rtdb.firebaseio.com";
-      const FIREBASE_API_KEY = "AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI";
-      const url = `${FIREBASE_DATABASE_URL}/drivers/approved/${hash}.json?auth=${FIREBASE_API_KEY}`;
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      const response = await fetch(url, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        console.error("[AuthContext-JSA] SSO: Firebase lookup failed");
-        return false;
-      }
-
-      const driverData = await response.json();
-      if (!driverData) {
-        console.error("[AuthContext-JSA] SSO: Driver not found");
-        return false;
-      }
-
-      // Handle flat structure
-      if (driverData.displayName) {
-        if (driverData.active === false) return false;
-        await saveDriverSession(
-          hash,
-          driverData.displayName,
-          hash,
-          driverData.isAdmin === true,
-          driverData.isViewer === true,
-          driverData.companyId,
-          driverData.companyName,
-          // legalName lives at profile.legalName for most approved drivers —
-          // fall through to root legalName for back-compat.
-          driverData.profile?.legalName || driverData.legalName,
-          'sso',
-        );
-        const driverSession = await getDriverSession();
-        setSession(driverSession);
-        setMode("authenticated");
-        return true;
-      }
-
-      // Handle legacy structure
-      for (const key of Object.keys(driverData)) {
-        const entry = driverData[key];
-        if (entry.displayName && entry.active !== false) {
-          await saveDriverSession(
-            hash,
-            entry.displayName,
-            hash,
-            entry.isAdmin === true,
-            entry.isViewer === true,
-            entry.companyId,
-            entry.companyName,
-            entry.legalName,
-            'sso',
-          );
-          const driverSession = await getDriverSession();
-          setSession(driverSession);
-          setMode("authenticated");
-          return true;
-        }
-      }
-
-      return false;
-    } catch (err) {
-      console.error("[AuthContext-JSA] SSO login error:", err);
-      return false;
-    }
+    // Legacy hash/name deep links are no longer credentials. Governed Suite
+    // SSO continues through sso-callback.tsx and persistAfterExchange().
+    void hash;
+    void displayName;
+    setSession(null);
+    setMode('error');
+    setError('Return to WellBuilt and open JSA again.');
+    return false;
   }, []);
 
   const value: AuthContextValue = {
