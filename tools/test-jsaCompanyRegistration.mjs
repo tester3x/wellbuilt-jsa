@@ -81,12 +81,13 @@ check(
   /handleStandaloneRegister[\s\S]*await registerStandalone\(/.test(login),
 );
 
+// Pins refreshed against Codex-approved governed source bc961573e12f0de789827b529b38d606d4be7173.
 const frozen = {
-  'services/sso/jsaArtifactCallables.ts': '934f4c13bd8fa95235bf9dbead6c880f6b7b7f92632c8cef9f4d188df9082149',
-  'services/sso/jsaArtifactSnapshot.ts': '020c7f435d6ba27d53434c349d2ce1ddb3ebe21c69aa8239edee2d3712efb156',
-  'services/sso/jsaRequestCallables.ts': '6f47d68dd7a2964b69fea514f573da1f6beffa927c2b34727e2ceb559c6859b3',
+  'services/sso/jsaArtifactCallables.ts': '94ba3b59b156576778b26decd8449a655776a6ba759768ad4b63f89cf7673624',
+  'services/sso/jsaArtifactSnapshot.ts': '72fc4d97fd00016f539e630b004820ceea30ba1e5763bef1cf8d2c584e1a607d',
+  'services/sso/jsaRequestCallables.ts': 'fa0b593b7a4bde78d121686eb269739270e9e0dfdb09ededccd6e1d33e3508ab',
   'services/sso/jsaRequestLifecycle.ts': '15a4781f7dc72c3198774547ce13e4a6c9ffb59944d485bbc092955b936bcb0b',
-  'tools/test-jsaRequestLifecycle.mjs': '7f3560710bd692f4c934df7b34e351133197f28501baa93a546ad86e3d79a12d',
+  'tools/test-jsaRequestLifecycle.mjs': '9e3d7ce3121bd67dce48d2d43181a67618ad799c46e912421da206f0e480e081',
 };
 for (const [rel, want] of Object.entries(frozen)) {
   check(`protected ${rel} freeze hash`, sha256(rel) === want, sha256(rel));
