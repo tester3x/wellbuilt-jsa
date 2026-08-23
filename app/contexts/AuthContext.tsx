@@ -6,7 +6,6 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import {
   DriverSession,
   getDriverSession,
-  clearDriverSession,
   verifyLogin,
   saveDriverSession,
   submitRegistration,
@@ -256,12 +255,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    const { captureGovernedReturnBeforeLogout } = await import("../../services/shiftAuthorityStore");
-    await captureGovernedReturnBeforeLogout();
-    await clearDriverSession();
-    setSession(null);
-    setError("");
-    setMode("login");
+    const { logoutJsaCompletely } = await import("../../services/logoutJsaCompletely");
+    await logoutJsaCompletely(() => {
+      setSession(null);
+      setError("");
+      setMode("login");
+    });
   }, []);
 
   const switchToRegister = useCallback(() => {

@@ -453,6 +453,9 @@ export const clearDriverSession = async (): Promise<void> => {
       "@jsa/governedLaunchContext",
       "@jsa/governedLaunchOwnership",
       "@jsa/governedUiStage",
+      "@jsa/truckNumber",
+      "@jsa/trailerNumber",
+      "@jsa/standaloneContacts",
     ]);
   } catch (err) {
     console.warn("[logout] period-cache clear failed (non-fatal):", err);
@@ -477,7 +480,25 @@ export const fetchDriverProfile = async (): Promise<{
   legalName?: string;
   signature?: string;
   assignedCustomers: AssignedCustomer[];
+  companyId?: string;
+  companyName?: string;
+  phone?: string;
+  cdl?: string;
 } | null> => {
+  const { loadGovernedSession } = await import('./sso/jsaRuntime');
+  const governed = await loadGovernedSession();
+  if (governed) {
+    const { fetchCanonicalGovernedProfile } = await import('./sso/jsaCanonicalProfile');
+    const canonical = await fetchCanonicalGovernedProfile();
+    if (!canonical) return null;
+    return {
+      truckNumber: canonical.truckNumber || '', trailerNumber: canonical.trailerNumber || '',
+      legalName: canonical.legalName || undefined, signature: canonical.signature || undefined,
+      assignedCustomers: canonical.assignedCustomers as AssignedCustomer[],
+      companyId: canonical.companyId, companyName: canonical.companyName || undefined,
+      phone: canonical.phone || undefined, cdl: canonical.cdl || undefined,
+    };
+  }
   const session = await getDriverSession();
   if (!session) return null;
 

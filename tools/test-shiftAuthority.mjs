@@ -222,8 +222,8 @@ check('fail-closed copy is the required wording',
   check('Welcome gated on verified shift', layout.includes('isCurrentShiftVerified'));
   check('unauth overlay can render the gate instead of LoginScreen',
     layout.includes("unauthSurface === 'unverified_gate'") && layout.includes('<LoginScreen'));
-  check('logout captures governed return BEFORE clearDriverSession',
-    /captureGovernedReturnBeforeLogout[\s\S]*clearDriverSession/.test(authCtx));
+  check('logout uses the complete governed and legacy identity cleanup contract',
+    authCtx.includes('logoutJsaCompletely') && !authCtx.includes('clearDriverSession'));
   check('verified / governed keys are distinct from historical saves',
     CURRENT_SHIFT_VERIFIED_KEY.startsWith('@jsa/') && GOVERNED_RETURN_KEY.startsWith('@jsa/'));
 }

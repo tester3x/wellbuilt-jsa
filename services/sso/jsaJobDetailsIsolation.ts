@@ -51,7 +51,7 @@ export function initialStartMayOwn(input: {
   ownerSameRequest: boolean;
   ownerAgeMs: number | null;
 }): boolean {
-  if (input.ignoredSameRequest || !input.installationSeen) return false;
+  if (input.ignoredSameRequest) return false;
   if (!input.ownerSameRequest) return true;
   return input.ownerAgeMs !== null && input.ownerAgeMs >= 0 && input.ownerAgeMs <= INITIAL_OWNER_RESUME_TTL_MS;
 }

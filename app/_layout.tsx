@@ -100,6 +100,15 @@ async function checkRtdbLogoutSignal(): Promise<boolean> {
     return false;
   }
 }
+
+async function checkAnyLogoutSignal(): Promise<boolean> {
+  const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
+  if (await loadGovernedSession()) {
+    const { canonicalLogoutWasSignaled } = await import('../services/sso/jsaCanonicalProfile');
+    return canonicalLogoutWasSignaled();
+  }
+  return checkRtdbLogoutSignal();
+}
 import { colors } from '../constants/colors';
 
 // Module-scoped session flag — once "Remind me later" is tapped, the
@@ -309,11 +318,7 @@ function AppContent() {
   };
 
   const leaveGovernedForStandalone = async () => {
-    const { clearLocalGovernedLaunchState } = await import('../services/sso/jsaRuntime');
-    const { signOutGovernedAuth } = await import('../services/sso/jsaGovernedAuthLive');
-    await signOutGovernedAuth();
     await logout();
-    await clearLocalGovernedLaunchState();
     setHasActiveGovernedLaunch(false);
     setGovernedSessionReady(false);
     setUnauthSurface('legacy_login');
@@ -439,23 +444,33 @@ function AppContent() {
     hideNavBar();
     // Re-hide nav bar when app returns to foreground (deep links from WB S can re-show it)
     // Also check for RTDB logoutAt signal from WB S (silent cascade logout)
+    let active = AppState.currentState === 'active';
+    let polling = false;
+    const pollLogout = async () => {
+      if (!active || polling) return;
+      polling = true;
+      try {
+        if (await checkAnyLogoutSignal()) {
+          await logout();
+          router.replace('/login');
+        }
+      } finally { polling = false; }
+    };
+    const timer = setInterval(() => { void pollLogout(); }, 3_000);
     const appStateSub = AppState.addEventListener('change', (state) => {
+      active = state === 'active';
       if (state === 'active') {
         hideNavBar();
+        void pollLogout();
         if (isAuthenticated) {
-          checkRtdbLogoutSignal().then((shouldLogout) => {
-            if (shouldLogout) {
-              console.log('[JSA] RTDB logoutAt signal detected — auto-logging out');
-              logout();
-            }
-          }).catch(() => {});
           // Re-surface unfinished-JSA nag on foreground
           checkUnfinishedJsas();
         }
       }
     });
-    return () => appStateSub.remove();
-  }, [isAuthenticated, logout]);
+    void pollLogout();
+    return () => { clearInterval(timer); appStateSub.remove(); };
+  }, [isAuthenticated, logout, router]);
 
   // Handle SSO deep links while app is running (warm start).
   // Cold-start deep links are handled by the /login route directly.
@@ -465,12 +480,14 @@ function AppContent() {
         // Cascade logout from WB S — only if this session was started via SSO
         if (event.url?.includes('logout')) {
           const authMethod = await SecureStore.getItemAsync('jsa_authMethod');
-          if (authMethod !== 'sso') {
+          const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
+          if (authMethod !== 'sso' && !(await loadGovernedSession())) {
             console.log('[JSA] Ignoring logout deep link — session is manual, not SSO');
             return;
           }
           console.log('[JSA] Logout deep link received from WB S — clearing SSO session');
-          logout();
+          await logout();
+          router.replace('/login');
           return;
         }
 
@@ -601,9 +618,11 @@ function AppContent() {
       }
       if (url.includes('logout')) {
         const authMethod = await SecureStore.getItemAsync('jsa_authMethod');
-        if (authMethod === 'sso') {
+        const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
+        if (authMethod === 'sso' || await loadGovernedSession()) {
           console.log('[JSA] Cold start logout deep link from WB S');
-          logout();
+          await logout();
+          router.replace('/login');
         }
         setSsoInProgress(false);
         return;

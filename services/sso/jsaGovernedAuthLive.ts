@@ -144,6 +144,8 @@ export async function persistAfterExchange(payload: ExchangePayload): Promise<vo
     },
     persist: async (session) => {
       await saveGovernedSession(session);
+      const { seedCanonicalLogoutBaseline } = await import('./jsaCanonicalProfile');
+      await seedCanonicalLogoutBaseline();
     },
     reconcileAuth: () => reconcileGovernedAuth(),
     clearIfGeneration: (gen) => clearGovernedSessionIfGeneration(gen).then(() => undefined),

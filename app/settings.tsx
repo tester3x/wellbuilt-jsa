@@ -20,8 +20,6 @@ import { useAuth } from "./contexts/AuthContext";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 
-const FIREBASE_DB = 'https://wellbuilt-sync-default-rtdb.firebaseio.com';
-
 type Contact = { label: string; phone: string };
 
 export default function SettingsScreen() {
@@ -35,6 +33,10 @@ export default function SettingsScreen() {
   const [truckNumber, setTruckNumber] = useState("");
   const [trailerNumber, setTrailerNumber] = useState("");
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [cdl, setCdl] = useState('');
+  const [governedProfile, setGovernedProfile] = useState(false);
   const [showSigModal, setShowSigModal] = useState(false);
 
   // Standalone contacts (only editable when no companyId)
@@ -50,13 +52,18 @@ export default function SettingsScreen() {
   useEffect(() => {
     (async () => {
       try {
-        // Load truck/trailer from AsyncStorage
-        const [truck, trailer] = await Promise.all([
-          AsyncStorage.getItem("@jsa/truckNumber"),
-          AsyncStorage.getItem("@jsa/trailerNumber"),
-        ]);
-        if (truck) setTruckNumber(truck);
-        if (trailer) setTrailerNumber(trailer);
+        const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
+        const governed = await loadGovernedSession();
+        setGovernedProfile(!!governed);
+        setLegalName(''); setSignatureImage(null); setTruckNumber(''); setTrailerNumber('');
+        setCompanyName(''); setPhone(''); setCdl('');
+        if (!governed) {
+          const [truck, trailer] = await Promise.all([
+            AsyncStorage.getItem("@jsa/truckNumber"), AsyncStorage.getItem("@jsa/trailerNumber"),
+          ]);
+          if (truck) setTruckNumber(truck);
+          if (trailer) setTrailerNumber(trailer);
+        }
 
         // Load signature from Firebase profile
         const profile = await fetchDriverProfile();
@@ -64,6 +71,9 @@ export default function SettingsScreen() {
         if (profile?.truckNumber) setTruckNumber(profile.truckNumber);
         if (profile?.trailerNumber) setTrailerNumber(profile.trailerNumber);
         if (profile?.legalName) setLegalName(profile.legalName);
+        if (profile?.companyName) setCompanyName(profile.companyName);
+        if (profile?.phone) setPhone(profile.phone);
+        if (profile?.cdl) setCdl(profile.cdl);
 
         // Load standalone contacts
         if (isStandalone) {
@@ -82,20 +92,14 @@ export default function SettingsScreen() {
 
   const saveProfile = async () => {
     try {
-      // Save to AsyncStorage
-      await Promise.all([
-        AsyncStorage.setItem("@jsa/truckNumber", truckNumber),
-        AsyncStorage.setItem("@jsa/trailerNumber", trailerNumber),
-      ]);
-
-      // Sync to RTDB profile if we have a hash
-      if (session?.passcodeHash) {
-        const profileUrl = `${FIREBASE_DB}/drivers/approved/${session.passcodeHash}/profile.json`;
-        await fetch(profileUrl, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ truckNumber, trailerNumber }),
-        });
+      if (governedProfile) {
+        const { updateCanonicalGovernedProfile } = await import('../services/sso/jsaCanonicalProfile');
+        await updateCanonicalGovernedProfile({ truckNumber, trailerNumber });
+      } else {
+        await Promise.all([
+          AsyncStorage.setItem("@jsa/truckNumber", truckNumber),
+          AsyncStorage.setItem("@jsa/trailerNumber", trailerNumber),
+        ]);
       }
 
       Alert.alert(t("Saved"), t("Profile updated successfully."));
@@ -106,21 +110,11 @@ export default function SettingsScreen() {
   };
 
   const saveSignature = async (base64: string) => {
-    console.log('[Settings] Signature received, length:', base64?.length, 'starts with:', base64?.substring(0, 30));
     const fullUri = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
     setSignatureImage(fullUri);
-    // Sync to RTDB profile
-    if (session?.passcodeHash) {
-      try {
-        const profileUrl = `${FIREBASE_DB}/drivers/approved/${session.passcodeHash}/profile.json`;
-        await fetch(profileUrl, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ signature: base64 }),
-        });
-      } catch (err) {
-        console.warn("[Settings] Signature sync failed:", err);
-      }
+    if (governedProfile) {
+      const { updateCanonicalGovernedProfile } = await import('../services/sso/jsaCanonicalProfile');
+      await updateCanonicalGovernedProfile({ signature: fullUri });
     }
   };
 
@@ -159,9 +153,9 @@ export default function SettingsScreen() {
         {
           text: t("Sign Out"),
           style: "destructive",
-          onPress: () => {
-            logout();
-            router.replace("/(tabs)");
+          onPress: async () => {
+            await logout();
+            router.replace("/login");
           },
         },
       ]
@@ -197,6 +191,11 @@ export default function SettingsScreen() {
               {t("Name is set from your login profile.")}
             </Text>
           </View>
+          {governedProfile && <>
+            <View style={styles.field}><Text style={styles.label}>{t("Company")}</Text><Text style={styles.profileValue}>{companyName || '—'}</Text></View>
+            <View style={styles.field}><Text style={styles.label}>{t("Phone")}</Text><Text style={styles.profileValue}>{phone || '—'}</Text></View>
+            <View style={styles.field}><Text style={styles.label}>CDL</Text><Text style={styles.profileValue}>{cdl || '—'}</Text></View>
+          </>}
 
           <View style={styles.field}>
             <Text style={styles.label}>{t("Truck #")}</Text>
@@ -402,21 +401,7 @@ export default function SettingsScreen() {
       <SignatureModal
         visible={showSigModal}
         onClose={() => setShowSigModal(false)}
-        onSave={(base64: string) => {
-          console.log('[Settings] DIRECT onSave, length:', base64?.length);
-          if (base64 && base64.length > 10) {
-            const uri = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
-            setSignatureImage(uri);
-            // Fire-and-forget RTDB sync
-            if (session?.passcodeHash) {
-              fetch(`${FIREBASE_DB}/drivers/approved/${session.passcodeHash}/profile.json`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ signature: base64 }),
-              }).catch(() => {});
-            }
-          }
-        }}
+        onSave={(base64: string) => { if (base64?.length > 10) void saveSignature(base64); }}
         accent={accent}
         title={t("Update Signature")}
       />
@@ -468,6 +453,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.textDark,
   },
+  profileValue: { color: colors.textDark, fontSize: 15, paddingVertical: 8 },
   saveButton: {
     marginTop: 12,
     paddingVertical: 12,

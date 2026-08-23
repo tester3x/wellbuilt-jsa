@@ -13,8 +13,8 @@ check('fresh install icon launch enters standalone login',
   !decideJobDetailsIsolation({ ...base, hasGovernedLaunch: false }).blocked);
 check('clear app data icon launch enters standalone login',
   iconReopenSurface({ ...base, hasGovernedLaunch: false }) === 'standalone');
-check('stale prior initial intent is refused after clear data',
-  !initialStartMayOwn({ installationSeen: false, ignoredSameRequest: false, ownerSameRequest: false, ownerAgeMs: null }));
+check('fresh install accepts a first governed launch without icon priming',
+  initialStartMayOwn({ installationSeen: false, ignoredSameRequest: false, ownerSameRequest: false, ownerAgeMs: null }));
 check('same ignored Android intent stays refused',
   !initialStartMayOwn({ installationSeen: true, ignoredSameRequest: true, ownerSameRequest: false, ownerAgeMs: null }));
 check('stale owned initial intent expires to standalone',
