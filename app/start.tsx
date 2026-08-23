@@ -12,6 +12,7 @@ import { markGovernedReturnRequired } from '../services/shiftAuthorityStore';
 import {
   consumeJsaStart,
   hrefAfterStart,
+  normalizeJsaStartUrl,
   reconstructJsaStartUrl,
 } from '../services/sso/jsaStartLive';
 
@@ -23,10 +24,19 @@ export default function StartScreen() {
     (async () => {
       try {
         const fromParams = reconstructJsaStartUrl(params as Record<string, unknown>);
-        const url = fromParams || (await Linking.getInitialURL());
+        const initialUrl = await Linking.getInitialURL();
+        const url = fromParams || initialUrl;
         // Route params are a live navigation; the initial-URL fallback is a
-        // replayable read.
-        const result = await consumeJsaStart(url, fromParams ? 'live' : 'initial');
+        // replayable read. Android may remount the stale initial route with
+        // reconstructed params on an icon reopen, so equal URLs remain initial.
+        const sameInitial = !!fromParams && !!initialUrl
+          && normalizeJsaStartUrl(fromParams) === normalizeJsaStartUrl(initialUrl);
+        const provenance = fromParams && !sameInitial ? 'live' : 'initial';
+        const result = await consumeJsaStart(url, provenance);
+        if (result.kind === 'ignored' && result.refusal === 'stale_replay') {
+          router.replace('/login');
+          return;
+        }
         // Stale replay / superseded run: this route's candidate lost.
         // A LOSER NEVER NAVIGATES — only the winning launch coordinator
         // chooses the destination. This screen stays on its neutral

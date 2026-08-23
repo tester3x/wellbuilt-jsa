@@ -30,6 +30,36 @@ import {
   awaitGovernedAuthReady,
   loadUsableGovernedSession,
 } from './jsaGovernedAuthLive';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initialStartMayOwn } from './jsaJobDetailsIsolation';
+const INSTALLATION_SEEN_KEY = '@jsa/installationSeen';
+const IGNORED_INITIAL_REQUEST_KEY = '@jsa/ignoredInitialRequestId';
+
+async function initialCandidateAllowed(url: string): Promise<boolean> {
+  const parsed = parseJsaLaunchUrl(url);
+  if (!parsed.ok) return true;
+  const requestId = parsed.value.requestId;
+  const [seen, ignored, owner] = await Promise.all([
+    AsyncStorage.getItem(INSTALLATION_SEEN_KEY),
+    AsyncStorage.getItem(IGNORED_INITIAL_REQUEST_KEY),
+    loadLaunchOwnership(),
+  ]);
+  const sameOwner = owner?.request?.requestId === requestId;
+  const age = sameOwner && typeof owner.receivedAtMs === 'number' ? Date.now() - owner.receivedAtMs : null;
+  const allowed = initialStartMayOwn({
+    installationSeen: seen === '1', ignoredSameRequest: ignored === requestId,
+    ownerSameRequest: sameOwner, ownerAgeMs: age,
+  });
+  await AsyncStorage.setItem(INSTALLATION_SEEN_KEY, '1');
+  if (!allowed) {
+    await AsyncStorage.setItem(IGNORED_INITIAL_REQUEST_KEY, requestId);
+    if (sameOwner) {
+      const { clearLocalGovernedLaunchState } = await import('./jsaRuntime');
+      await clearLocalGovernedLaunchState();
+    }
+  }
+  return allowed;
+}
 
 export {
   isJsaStartUrl,
@@ -123,6 +153,10 @@ export async function consumeJsaStart(
   provenance: StartDeliveryProvenance,
 ): Promise<StartOwnerResult> {
   const accepted = typeof url === 'string' && isJsaStartUrl(url);
+  if (accepted && provenance === 'initial' && !(await initialCandidateAllowed(url))) {
+    logStart('refused');
+    return { kind: 'ignored', ownership: 'refused', refusal: 'stale_replay' };
+  }
   if (accepted) bumpStartResolving(1);
   try {
     // Terminal marking happens INSIDE the owner/lifecycle generation

@@ -83,6 +83,12 @@ export function getGovernedAuth(): Auth {
   return authSingleton;
 }
 
+export async function signOutGovernedAuth(): Promise<void> {
+  const auth = getGovernedAuth();
+  await awaitGovernedAuthReady();
+  await signOut(auth).catch(() => {});
+}
+
 export function awaitGovernedAuthReady(): Promise<void> {
   if (readyPromise) return readyPromise;
   readyPromise = new Promise((resolve) => {

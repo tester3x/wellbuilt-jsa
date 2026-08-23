@@ -1,5 +1,5 @@
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { useEffect, useState } from 'react';
@@ -149,6 +149,7 @@ function AppContent() {
   const colorScheme = useColorScheme();
   const { mode, isAuthenticated, ssoLogin, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [ssoInProgress, setSsoInProgress] = useState(true); // suppress login overlay until we check initial URL
   // Count of governed /start candidates being processed — published by
   // the owner choke point (subscribeStartResolving), so EVERY entry
@@ -179,6 +180,7 @@ function AppContent() {
   const [unauthSurface, setUnauthSurface] = useState<'legacy_login' | 'unverified_gate'>('legacy_login');
   const [returnTarget, setReturnTarget] = useState<GovernedReturnTarget>('suite');
   const [governedSessionReady, setGovernedSessionReady] = useState(false);
+  const [hasActiveGovernedLaunch, setHasActiveGovernedLaunch] = useState(false);
   const [authWorkflowIsolation, setAuthWorkflowIsolation] = useState(unresolvedJobDetailsIsolation);
 
   const checkUnfinishedJsas = async () => {
@@ -273,6 +275,7 @@ function AppContent() {
       const { loadLaunchContext, loadGovernedTerminalFailure, loadRequestContext } = await import('../services/sso/jsaRuntime');
       const { loadUsableGovernedSession } = await import('../services/sso/jsaGovernedAuthLive');
       const governedLaunch = await loadLaunchContext();
+      setHasActiveGovernedLaunch(!!governedLaunch);
       const usable = await loadUsableGovernedSession();
       const marker = await loadGovernedTerminalFailure();
       const ctx = await loadRequestContext();
@@ -282,7 +285,7 @@ function AppContent() {
         hasPendingRequest: !!pending || !!governedLaunch,
         isGovernedLaunch: returnTo === 'wbt' || returnTo === 'wbs' || returnTo === 'wellbuilt-suite' || !!governedLaunch,
       });
-      setUnauthSurface(surface);
+      setUnauthSurface(governedLaunch ? surface : 'legacy_login');
       if (target) setReturnTarget(target);
       const match = authoritativeContextMatchesLaunch({
         launchRequestId: governedLaunch?.requestId,
@@ -303,6 +306,23 @@ function AppContent() {
       setUnauthSurface('legacy_login');
       setAuthWorkflowIsolation(unresolvedJobDetailsIsolation());
     }
+  };
+
+  const leaveGovernedForStandalone = async () => {
+    const { clearLocalGovernedLaunchState } = await import('../services/sso/jsaRuntime');
+    const { signOutGovernedAuth } = await import('../services/sso/jsaGovernedAuthLive');
+    await signOutGovernedAuth();
+    await logout();
+    await clearLocalGovernedLaunchState();
+    setHasActiveGovernedLaunch(false);
+    setGovernedSessionReady(false);
+    setUnauthSurface('legacy_login');
+    setAuthWorkflowIsolation(decideJobDetailsIsolation({
+      resolved: true, authoritySurface: null, explicitGovernedFailure: false,
+      hasGovernedLaunch: false, hasUsableGovernedSession: false,
+      hasMatchingAuthoritativeContext: false, authPending: false,
+    }));
+    router.replace('/login');
   };
 
   // Clear SSO suppression once auth succeeds
@@ -359,6 +379,7 @@ function AppContent() {
         const { isLegacyJsaLaunchUrl } = await import('../services/sso/jsaLaunch');
         const { buildAuthorizeUrl } = await import('../services/sso/jsaPkce');
         const url = await Linking.getInitialURL();
+        if (!url) await AsyncStorage.setItem('@jsa/installationSeen', '1').catch(() => {});
         const session = await loadUsableGovernedSession();
         const decision = decideBootstrap({
           hasPersistedSession: !!session || isAuthenticated,
@@ -574,6 +595,7 @@ function AppContent() {
     // Cold start: check initial URL for SSO login or logout
     Linking.getInitialURL().then(async (url) => {
       if (!url) {
+        await AsyncStorage.setItem('@jsa/installationSeen', '1').catch(() => {});
         setSsoInProgress(false);
         return;
       }
@@ -781,18 +803,25 @@ function AppContent() {
           {mode !== 'checking' && !isAuthenticated && !ssoInProgress && !governedSessionReady && (
             <View style={styles.overlay}>
               {unauthSurface === 'unverified_gate' ? (
-                <ShiftAuthorityGate variant="overlay" returnTarget={returnTarget} />
+                <ShiftAuthorityGate variant="overlay" returnTarget={returnTarget}
+                  hasGovernedLaunch={hasActiveGovernedLaunch}
+                  onOpenStandalone={() => { void leaveGovernedForStandalone(); }}
+                  onSignOut={() => { void leaveGovernedForStandalone(); }} />
               ) : (
                 <LoginScreen />
               )}
             </View>
           )}
-          {mode !== 'checking' && isAuthenticated && authWorkflowIsolation.blocked && (
+          {mode !== 'checking' && isAuthenticated && authWorkflowIsolation.blocked && pathname !== '/settings' && (
             <View style={styles.overlay}>
               <GovernedIsolationSurface
                 kind={authWorkflowIsolation.surface}
                 returnTarget={returnTarget}
                 variant="overlay"
+                hasGovernedLaunch={hasActiveGovernedLaunch}
+                onOpenStandalone={() => { void leaveGovernedForStandalone(); }}
+                onSignOut={() => { void leaveGovernedForStandalone(); }}
+                onOpenSettings={() => router.push('/settings')}
               />
             </View>
           )}

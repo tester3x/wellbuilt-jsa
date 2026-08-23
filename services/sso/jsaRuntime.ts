@@ -286,6 +286,28 @@ export async function clearGovernedUiStage(): Promise<void> {
   await AsyncStorage.removeItem(GOVERNED_UI_STAGE_KEY);
 }
 
+/**
+ * Leave governed presentation locally without touching Suite or its shift.
+ * Artifact queues/local saves are deliberately retained for recovery.
+ */
+export async function clearLocalGovernedLaunchState(): Promise<void> {
+  await Promise.all([
+    clearLaunchContext(),
+    clearAttempt(),
+    clearGovernedSession(),
+    clearAuthRecoveryLatch(),
+    clearRequestContext(),
+    clearPendingComplete(),
+    clearGovernedUiStage(),
+    clearFreshSubmittedMarker(),
+    AsyncStorage.removeItem(GOVERNED_LAUNCH_OWNERSHIP_KEY),
+    AsyncStorage.removeItem(GOVERNED_TERMINAL_FAILURE_KEY),
+    AsyncStorage.removeItem('jsa_returnTo'),
+    AsyncStorage.removeItem('jsa_autofill'),
+    AsyncStorage.removeItem('@jsa/wbtReadRequest'),
+  ]);
+}
+
 /** Stay on JSA / successful Return: drop only transient launch/nav. */
 export async function consumeGovernedLaunchAfterStay(): Promise<void> {
   await clearFreshSubmittedMarker();

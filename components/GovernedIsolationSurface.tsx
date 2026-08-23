@@ -13,13 +13,22 @@ export default function GovernedIsolationSurface({
   kind,
   returnTarget = 'wbt',
   variant = 'card',
+  hasGovernedLaunch = false,
+  onOpenStandalone,
+  onSignOut,
+  onOpenSettings,
 }: {
   kind: IsolationSurfaceKind | null;
   returnTarget?: GovernedReturnTarget | null;
   variant?: 'card' | 'overlay';
+  hasGovernedLaunch?: boolean;
+  onOpenStandalone?: () => void;
+  onSignOut?: () => void;
+  onOpenSettings?: () => void;
 }) {
   if (kind === 'unverified_gate') {
-    return <ShiftAuthorityGate variant={variant} returnTarget={returnTarget} />;
+    return <ShiftAuthorityGate variant={variant} returnTarget={returnTarget} hasGovernedLaunch={hasGovernedLaunch}
+      onOpenStandalone={onOpenStandalone} onSignOut={onSignOut} onOpenSettings={onOpenSettings} />;
   }
   const onReturn = () => {
     const url = returnTarget === 'wbt' ? 'wellbuilt-tickets://resume' : 'wellbuilt-suite://';

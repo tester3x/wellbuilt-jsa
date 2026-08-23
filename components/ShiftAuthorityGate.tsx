@@ -12,6 +12,10 @@ import {
 interface Props {
   variant?: 'overlay' | 'card';
   returnTarget?: GovernedReturnTarget | null;
+  hasGovernedLaunch?: boolean;
+  onOpenStandalone?: () => void;
+  onSignOut?: () => void;
+  onOpenSettings?: () => void;
 }
 
 function returnUrl(target: GovernedReturnTarget | null | undefined): string {
@@ -21,6 +25,10 @@ function returnUrl(target: GovernedReturnTarget | null | undefined): string {
 export default function ShiftAuthorityGate({
   variant = 'overlay',
   returnTarget = 'suite',
+  hasGovernedLaunch = false,
+  onOpenStandalone,
+  onSignOut,
+  onOpenSettings,
 }: Props) {
   const onReturn = () => {
     Linking.openURL(returnUrl(returnTarget)).catch(() => {});
@@ -30,13 +38,18 @@ export default function ShiftAuthorityGate({
     <View style={variant === 'overlay' ? styles.card : styles.inlineCard}>
       <Text style={styles.title}>Shift not verified</Text>
       <Text style={styles.copy}>{SHIFT_UNVERIFIED_COPY}</Text>
-      <TouchableOpacity
-        style={styles.btn}
-        onPress={onReturn}
-        accessibilityLabel="Return to WellBuilt"
-      >
-        <Text style={styles.btnText}>Return to WellBuilt</Text>
-      </TouchableOpacity>
+      {onOpenStandalone && <TouchableOpacity style={styles.btn} onPress={onOpenStandalone} accessibilityLabel="Open standalone login">
+        <Text style={styles.btnText}>Open standalone login</Text>
+      </TouchableOpacity>}
+      {onSignOut && <TouchableOpacity style={styles.secondaryBtn} onPress={onSignOut} accessibilityLabel="Sign out and clear local JSA session">
+        <Text style={styles.secondaryText}>Sign out</Text>
+      </TouchableOpacity>}
+      {onOpenSettings && <TouchableOpacity style={styles.secondaryBtn} onPress={onOpenSettings} accessibilityLabel="Open JSA settings">
+        <Text style={styles.secondaryText}>Settings</Text>
+      </TouchableOpacity>}
+      {hasGovernedLaunch && <TouchableOpacity style={styles.secondaryBtn} onPress={onReturn} accessibilityLabel="Return to WellBuilt">
+        <Text style={styles.secondaryText}>Return to WellBuilt</Text>
+      </TouchableOpacity>}
     </View>
   );
 
@@ -94,4 +107,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
+  secondaryBtn: { marginTop: 10, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 10 },
+  secondaryText: { color: colors.textDark, fontSize: 15, fontWeight: '700' },
 });

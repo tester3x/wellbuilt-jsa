@@ -43,6 +43,18 @@ export const GOVERNED_CONNECTING_COPY = 'Signing in to WellBuilt JSA…';
 export const GOVERNED_FAILED_COPY =
   'Could not sign in to WellBuilt JSA. Return to WellBuilt Tickets and launch again.';
 export const GOVERNED_RESOLVING_COPY = 'Opening WellBuilt JSA…';
+export const INITIAL_OWNER_RESUME_TTL_MS = 180_000;
+
+export function initialStartMayOwn(input: {
+  installationSeen: boolean;
+  ignoredSameRequest: boolean;
+  ownerSameRequest: boolean;
+  ownerAgeMs: number | null;
+}): boolean {
+  if (input.ignoredSameRequest || !input.installationSeen) return false;
+  if (!input.ownerSameRequest) return true;
+  return input.ownerAgeMs !== null && input.ownerAgeMs >= 0 && input.ownerAgeMs <= INITIAL_OWNER_RESUME_TTL_MS;
+}
 
 /**
  * Root launch-resolution overlay (vc10). The moment a valid governed
@@ -77,11 +89,11 @@ export function decideJobDetailsIsolation(input: IsolationInput): JobDetailsIsol
   let reason: IsolationReason = null;
   if (!input.resolved) {
     reason = 'unresolved';
-  } else if (input.explicitGovernedFailure) {
+  } else if (input.hasGovernedLaunch && input.explicitGovernedFailure) {
     reason = 'governed_failed';
   } else if (authorizedGovernedRequestReady(input)) {
     reason = null;
-  } else if (input.authoritySurface === 'unverified_gate') {
+  } else if (input.hasGovernedLaunch && input.authoritySurface === 'unverified_gate') {
     reason = 'unverified_gate';
   } else if (
     input.authPending
@@ -186,7 +198,7 @@ export function iconReopenSurface(input: {
   hasUsableGovernedSession: boolean;
   hasMatchingAuthoritativeContext: boolean;
 }): 'isolated_gate' | 'standalone' {
-  if (input.explicitGovernedFailure) {
+  if (input.hasGovernedLaunch && input.explicitGovernedFailure) {
     return 'isolated_gate';
   }
   if (authorizedGovernedRequestReady({
@@ -197,7 +209,7 @@ export function iconReopenSurface(input: {
   })) {
     return 'standalone';
   }
-  if (input.authoritySurface === 'unverified_gate') {
+  if (input.hasGovernedLaunch && input.authoritySurface === 'unverified_gate') {
     return 'isolated_gate';
   }
   if (input.hasGovernedLaunch && !input.hasUsableGovernedSession) {
