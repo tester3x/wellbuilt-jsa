@@ -426,6 +426,27 @@ export async function clearLocalGovernedLaunchState(): Promise<void> {
   ]);
 }
 
+/**
+ * Suite's application-grid card is a general JSA entry, not a WB-T request.
+ * Drop only transient request/navigation ownership so an obsolete request
+ * from an older release cannot capture the new governed card session.
+ * Sessions, Firebase Auth, local/history saves, active JSAs, and artifact
+ * recovery queues are deliberately outside this operation.
+ */
+export async function clearGovernedRequestStateForSuiteCard(): Promise<void> {
+  await Promise.all([
+    clearLaunchContext(),
+    clearRequestContext(),
+    clearPendingComplete(),
+    clearGovernedUiStage(),
+    clearFreshSubmittedMarker(),
+    AsyncStorage.removeItem(GOVERNED_LAUNCH_OWNERSHIP_KEY),
+    AsyncStorage.removeItem(GOVERNED_TERMINAL_FAILURE_KEY),
+    AsyncStorage.removeItem('jsa_autofill'),
+    AsyncStorage.removeItem('@jsa/wbtReadRequest'),
+  ]);
+}
+
 /** Stay on JSA / successful Return: drop only transient launch/nav. */
 export async function consumeGovernedLaunchAfterStay(): Promise<void> {
   await clearFreshSubmittedMarker();

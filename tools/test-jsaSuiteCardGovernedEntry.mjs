@@ -31,6 +31,7 @@ const layout = source('app/_layout.tsx');
 const login = source('app/login.tsx');
 const home = source('app/(tabs)/index.tsx');
 const live = source('services/sso/jsaSuiteCardLive.ts');
+const runtime = source('services/sso/jsaRuntime.ts');
 check('legacy Suite card identity fields are ignored and never sent to authentication',
   !/ssoLogin\(/.test(layout) && !/ssoLogin\(/.test(login)
   && /hash\/name\/truck\/trailer\/shiftId are never consumed/.test(login));
@@ -43,6 +44,10 @@ check('active exact period retains governed JSA action',
   /isSsoMode && mayLabelActive/.test(home) && /Read Safety Steps/.test(home));
 check('no local or governed history deletion was introduced',
   !/removeItem\([^)]*(saves|activeJsas|artifact)/i.test(live + login));
+check('Suite card clears stale request ownership without clearing identity or saved work',
+  /clearGovernedRequestStateForSuiteCard/.test(live)
+  && /clearLaunchContext\(\)/.test(runtime)
+  && !/clearGovernedRequestStateForSuiteCard[\s\S]{0,700}(clearGovernedSession|clearAuthRecoveryLatch|STORAGE_KEYS\.saves)/.test(runtime));
 
 console.log(`\nRESULT passed=${passed} failed=${failed} total=${passed + failed}`);
 process.exit(failed ? 1 : 0);

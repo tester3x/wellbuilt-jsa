@@ -15,7 +15,7 @@ import {
   reserveGovernedIdentityEpoch,
   runGovernedIdentityMutation,
 } from './jsaGovernedAuthLive';
-import { mintAttempt } from './jsaRuntime';
+import { clearGovernedRequestStateForSuiteCard, mintAttempt } from './jsaRuntime';
 import { createSuiteCardSingleFlight, decideSuiteCardEntry } from './jsaSuiteCardContract';
 
 export type SuiteCardAuthorizationResult = 'usable' | 'opened_suite' | 'fail_closed';
@@ -34,13 +34,15 @@ export function beginSuiteCardAuthorization(): Promise<SuiteCardAuthorizationRes
   return suiteCardFlights.run(async () => {
     const inspected = await inspectGovernedIdentityStartupDetailed();
     const decision = decideSuiteCardEntry(inspected.state);
-    if (decision === 'use_session') return 'usable';
     if (decision === 'fail_closed') return 'fail_closed';
 
     const epoch = reserveGovernedIdentityEpoch();
     const current = () => governedIdentityEpochIsCurrent(epoch);
     const attempt = await runGovernedIdentityMutation(async () => {
       if (!current()) throw new Error('superseded');
+      await clearGovernedRequestStateForSuiteCard();
+      if (!current()) throw new Error('superseded');
+      if (decision === 'use_session') return null;
       return mintAttempt({
         randomBytes: (count) => Crypto.getRandomBytesAsync(count),
         sha256Hex: (value) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, value),
@@ -49,6 +51,7 @@ export function beginSuiteCardAuthorization(): Promise<SuiteCardAuthorizationRes
       });
     });
     if (!current()) return 'fail_closed';
+    if (!attempt) return 'usable';
     await AsyncStorage.setItem('jsa_returnTo', 'wellbuilt-suite');
     if (!current()) return 'fail_closed';
     await Linking.openURL(buildAuthorizeUrl(attempt));
