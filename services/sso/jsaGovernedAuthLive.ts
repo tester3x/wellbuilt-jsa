@@ -29,8 +29,10 @@ import {
 import type { Persistence } from 'firebase/auth';
 import { app } from '../firebase';
 import {
+  attachRetryGenerationForCurrentOwner,
   beginUnauthenticatedRecovery,
   classifyInitializeAuthError,
+  consumeRecoveryLatchForCurrentOwner,
   installGovernedAuthSession,
   newSessionGeneration,
   sessionGenerationOf,
@@ -208,13 +210,14 @@ export async function persistAfterExchange(
       stillCurrent: current,
     });
     if (!result.ok) throw new Error(result.reason);
-    const attempt = await loadAttempt();
-    if (attempt) {
-      await governedLatchMutator().attachRetryGeneration(
-        { state: attempt.state, createdAtMs: attempt.createdAtMs },
-        generation,
-      );
-    }
+    const latchOwned = await attachRetryGenerationForCurrentOwner({
+      stillCurrent: current,
+      loadAttempt,
+      generation,
+      attach: (expected, retryGeneration, ownerCurrent) =>
+        governedLatchMutator().attachRetryGeneration(expected, retryGeneration, ownerCurrent),
+    });
+    if (!latchOwned && !current()) throw new Error('superseded');
     return result.session;
   });
 }
@@ -243,25 +246,38 @@ export function reconcileGovernedAuth(): Promise<void> {
   return runGovernedIdentityMutation(reconcileGovernedAuthWithinMutation);
 }
 export async function liveConsumeRecoveryLatch(session: unknown): Promise<void> {
-  const attempt = await loadAttempt();
-  await governedLatchMutator().consumeIfMatching({
-    nowMs: Date.now(),
-    sessionGeneration: sessionGenerationOf(session),
-    attemptState: attempt?.state ?? null,
-    attemptCreatedAtMs: attempt?.createdAtMs ?? null,
+  const epoch = reserveGovernedIdentityEpoch();
+  const expectedGeneration = sessionGenerationOf(session);
+  const expected = session && typeof session === 'object' ? session as Partial<ExchangePayload> & { generation?: string } : null;
+  await runGovernedIdentityMutation(async () => {
+    const current = () => governedIdentityEpochIsCurrent(epoch);
+    if (!current() || !expectedGeneration) return;
+    const installed = await strictLoadGovernedSession();
+    if (!current() || installed?.generation !== expectedGeneration
+      || installed.uid !== expected?.uid
+      || installed.driverId !== expected?.driverId
+      || installed.companyId !== expected?.companyId
+      || currentGovernedAuthUid() !== installed.uid) return;
+    await consumeRecoveryLatchForCurrentOwner({
+      stillCurrent: current,
+      loadAttempt,
+      sessionGeneration: expectedGeneration,
+      nowMs: () => Date.now(),
+      consume: (input, ownerCurrent) => governedLatchMutator().consumeIfMatching(input, ownerCurrent),
+    });
   });
 }
 
 export async function liveBeginUnauthenticatedRecovery(
   session: unknown,
 ): Promise<UnauthRecoveryOutcome> {
-  return runSerializedUnauthenticatedRecovery(identityMutations, async (current) => {
+  return runSerializedUnauthenticatedRecovery(identityMutations, async (current, epoch) => {
     const outcome = await beginUnauthenticatedRecovery({
       nowMs: () => Date.now(),
       loadLatch: () => loadAuthRecoveryLatch(),
       saveLatch: async (latch: AuthRecoveryLatch) => {
         if (!current()) throw new Error('superseded');
-        await saveAuthRecoveryLatch(latch);
+        await saveAuthRecoveryLatch(latch, current);
       },
       loadAttempt: () => loadAttempt(),
       mintAttempt: async () => {
@@ -276,9 +292,8 @@ export async function liveBeginUnauthenticatedRecovery(
         return attempt;
       },
       usedGeneration: sessionGenerationOf(session),
-      recoveryOwnerKey: sessionGenerationOf(session) ?? 'no-session',
+      recoveryOwnerKey: sessionGenerationOf(session) ?? `no-session:${epoch}`,
       stillCurrent: current,
-      currentGeneration: async () => sessionGenerationOf(await loadGovernedSession()),
       clearIfGeneration: async (generation) => {
         if (!current()) return;
         await clearGovernedSessionIfGeneration(generation);

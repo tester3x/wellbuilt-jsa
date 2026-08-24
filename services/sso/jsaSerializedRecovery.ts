@@ -9,13 +9,13 @@ export interface IdentityMutationLane {
 /** The complete recovery lifecycle runs as one epoch-owned lane operation. */
 export function runSerializedUnauthenticatedRecovery(
   lane: IdentityMutationLane,
-  operation: (stillCurrent: () => boolean) => Promise<UnauthRecoveryOutcome>,
+  operation: (stillCurrent: () => boolean, epoch: number) => Promise<UnauthRecoveryOutcome>,
 ): Promise<UnauthRecoveryOutcome> {
   const epoch = lane.reserve();
   return lane.run(async () => {
     const current = () => lane.isCurrent(epoch);
     if (!current()) return 'fail_closed';
-    const outcome = await operation(current);
+    const outcome = await operation(current, epoch);
     return current() ? outcome : 'fail_closed';
   });
 }

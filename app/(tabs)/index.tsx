@@ -71,6 +71,7 @@ import {
   type GovernedJobPopulate,
 } from "../../services/sso/jsaGovernedJobFields";
 import { terminalFailureMatches } from "../../services/sso/jsaGovernedAuth";
+import { awaitCurrentHistoryOwner, createHistoryLookupOwnership } from "../../services/sso/jsaHistoryLookupOwnership";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -162,7 +163,8 @@ export default function JsaHomeScreen() {
   // produce today's JSA for safety, even after submit-dismiss stranded them
   // on the new-form screen.
   const [todaysJsaSave, setTodaysJsaSave] = useState<any | null>(null);
-  const [historyLookup, setHistoryLookup] = useState<'checking' | 'found' | 'authoritative_none' | 'backend_required' | 'unavailable'>('checking');
+  const [historyLookup, setHistoryLookup] = useState<'checking' | 'found' | 'backend_required' | 'unavailable'>('checking');
+  const historyOwnershipRef = useRef(createHistoryLookupOwnership());
 
   // Living document — add well modal
   const [showAddWellModal, setShowAddWellModal] = useState(false);
@@ -1121,17 +1123,76 @@ export default function JsaHomeScreen() {
   // automatically. Legacy saves without shiftId fall back to date matching
   // so old data still surfaces during the rollout window.
   const loadTodaysSave = React.useCallback(async () => {
+    const ownership = historyOwnershipRef.current;
+    const sequence = ownership.reserve();
+    let owner: ReturnType<typeof ownership.bind> = null;
+    const stillLatest = () => ownership.isSequenceCurrent(sequence);
+    const publish = async (
+      status: 'checking' | 'found' | 'backend_required' | 'unavailable',
+      save: any | null,
+    ) => {
+      if (!owner || !ownership.isCurrent(owner)) return false;
+      try {
+        const { strictLoadGovernedSession } = await import('../../services/sso/jsaRuntime');
+        if (!ownership.isCurrent(owner)) return false;
+        const currentSession = await strictLoadGovernedSession();
+        if (!ownership.isCurrent(owner)) return false;
+        const currentShiftVerified = await isCurrentShiftVerified();
+        if (!ownership.isCurrent(owner)) return false;
+        const currentShift = currentShiftVerified
+          ? await AsyncStorage.getItem('wellbuilt-current-shift-id')
+          : null;
+        if (!ownership.isCurrent(owner)) return false;
+        const exactSession = owner.sessionGeneration === null
+          ? currentSession === null
+          : !!currentSession
+            && currentSession.generation === owner.sessionGeneration
+            && currentSession.uid === owner.uid
+            && currentSession.driverId === owner.driverId
+            && currentSession.companyId === owner.companyId;
+        if (!exactSession || (owner.shiftId ?? null) !== (currentShift ?? null)) return false;
+        return ownership.publish(owner, () => {
+          setHistoryLookup(status);
+          setTodaysJsaSave(save);
+        });
+      } catch {
+        return false;
+      }
+    };
     try {
-      // Refresh shiftId from server first — AsyncStorage is stale across
-      // shift boundaries when WB JSA is launched without a fresh SSO.
       await refreshShiftIdFromServer();
-      const shiftId = (await isCurrentShiftVerified())
-        ? await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null)
+      if (!stillLatest()) return;
+      const { strictLoadGovernedSession } = await import('../../services/sso/jsaRuntime');
+      if (!stillLatest()) return;
+      const governed = await strictLoadGovernedSession();
+      if (!stillLatest()) return;
+      const verified = await isCurrentShiftVerified();
+      if (!stillLatest()) return;
+      const shiftId = verified
+        ? await AsyncStorage.getItem('wellbuilt-current-shift-id')
         : null;
+      if (!stillLatest()) return;
       const isShiftMode = !!shiftId;
+      owner = ownership.bind(sequence, {
+        sessionGeneration: governed?.generation ?? null,
+        uid: governed?.uid ?? session?.uid ?? null,
+        driverId: governed?.driverId ?? session?.driverId ?? null,
+        companyId: governed?.companyId ?? session?.companyId ?? null,
+        shiftId,
+      });
+      if (!owner) return;
 
-      // Try local AsyncStorage first — fast path for the same-device same-day case.
+      const presentationMatches = !isSsoMode || (!!governed && !!session
+        && governed.uid === session.uid
+        && governed.driverId === session.driverId
+        && governed.companyId === session.companyId);
+      if (!presentationMatches) {
+        await publish('unavailable', null);
+        return;
+      }
+
       const stored = await AsyncStorage.getItem(STORAGE_KEYS.saves);
+      if (!ownership.isCurrent(owner)) return;
       const list = stored ? JSON.parse(stored) : [];
       const today = new Date().toISOString().slice(0, 10);
 
@@ -1141,50 +1202,43 @@ export default function JsaHomeScreen() {
           const sShift = typeof s?.shiftId === 'string' ? s.shiftId : '';
           if (isShiftMode) {
             return sShift === shiftId
-              && s?.driverId === session?.driverId
-              && s?.companyId === session?.companyId;
+              && s?.driverId === owner?.driverId
+              && s?.companyId === owner?.companyId;
           }
-          // Standalone: legacy date matching.
-          const d = typeof s?.date === 'string' ? s.date : '';
-          return d === today;
+          return typeof s?.date === 'string' && s.date === today;
         });
       }
 
       if (match) {
         console.log(`[JSA-current-shift] loadTodaysSave hit=local id=${match.id} shiftId=${match.shiftId || '(none)'}`);
-        setTodaysJsaSave(match);
-        setHistoryLookup('found');
+        await publish('found', match);
         return;
       }
 
-      // SSO mode + no local match: fall back to a Firestore query for any
-      // submitted jsas/{id} doc tagged with this shiftId. Fresh APK installs
-      // have empty local saves but the server may have a submitted JSA from
-      // an earlier device or session. Synthesize a save-shaped object so the
-      // existing openTodaysJsa / auto-route paths work unchanged.
       if (!isShiftMode) {
         console.log('[JSA-current-shift] loadTodaysSave miss=local mode=standalone');
-        setTodaysJsaSave(null);
-        setHistoryLookup(isSsoMode ? 'unavailable' : 'authoritative_none');
+        await publish(isSsoMode ? 'unavailable' : 'backend_required', null);
         return;
       }
 
-      if (!session) {
-        setTodaysJsaSave(null);
-        setHistoryLookup('unavailable');
+      if (!governed || !session) {
+        await publish('unavailable', null);
         return;
       }
-      setHistoryLookup('checking');
-      const { lookupCurrentGovernedShiftHistory } = await import('../../services/sso/jsaGovernedHistoryLookupLive');
-      const lookup = await lookupCurrentGovernedShiftHistory(shiftId!);
+      if (!(await publish('checking', null))) return;
+      const liveModule = await import('../../services/sso/jsaGovernedHistoryLookupLive');
+      if (!ownership.isCurrent(owner)) return;
+      const lookupStep = await awaitCurrentHistoryOwner(
+        ownership, owner, liveModule.lookupCurrentGovernedShiftHistory(shiftId!),
+      );
+      if (!lookupStep.current) return;
+      const lookup = lookupStep.value;
       if (lookup.kind !== 'found') {
-        setHistoryLookup(lookup.kind);
-        setTodaysJsaSave(null);
+        await publish(lookup.kind, null);
         return;
       }
-      setHistoryLookup('found');
       const best: any = (lookup.record as any)?.document;
-      if (!best?.fields) { setHistoryLookup('unavailable'); setTodaysJsaSave(null); return; }
+      if (!best?.fields) { await publish('unavailable', null); return; }
 
       const f = best.fields || {};
       const ppeRaw = f.ppeSelected?.stringValue || '{}';
@@ -1230,13 +1284,16 @@ export default function JsaHomeScreen() {
         _syntheticFromServer: true,
       };
       console.log(`[JSA-current-shift] loadTodaysSave hit=server id=${synthetic.id} shiftId=${shiftId}`);
-      setTodaysJsaSave(synthetic);
+      await publish('found', synthetic);
     } catch (err) {
       console.warn('[JSA] loadTodaysSave failed:', err);
-      setHistoryLookup('unavailable');
-      setTodaysJsaSave(null);
+      if (owner) await publish('unavailable', null);
     }
   }, [refreshShiftIdFromServer, session, isSsoMode]);
+  useEffect(() => {
+    historyOwnershipRef.current.invalidate();
+    return () => historyOwnershipRef.current.invalidate();
+  }, [session?.uid, session?.driverId, session?.companyId, isSsoMode]);
   useEffect(() => { loadTodaysSave(); }, [loadTodaysSave]);
   useFocusEffect(useCallback(() => { loadTodaysSave(); }, [loadTodaysSave]));
   useEffect(() => {
@@ -1247,8 +1304,7 @@ export default function JsaHomeScreen() {
   }, [loadTodaysSave]);
 
   const historyBlocksNewJsa = isSsoMode
-    && historyLookup !== 'found'
-    && historyLookup !== 'authoritative_none';
+    && historyLookup !== 'found';
 
   // Auto-route to today's submitted JSA on app open. Rule: 1 JSA per day —
   // if it's already submitted, opening the app should drop the driver into

@@ -438,15 +438,22 @@ export function createSerializedLatchMutator(io: {
 }) {
   const enqueue = createSerialQueue();
   return {
-    save(latch: AuthRecoveryLatch) {
-      return enqueue(() => io.save(latch));
+    save(latch: AuthRecoveryLatch, stillCurrent: () => boolean = () => true) {
+      return enqueue(async () => {
+        if (!stillCurrent()) return false;
+        await io.save(latch);
+        return stillCurrent();
+      });
     },
     attachRetryGeneration(
       expected: { state: string; createdAtMs: number },
       retryGeneration: string,
+      stillCurrent: () => boolean = () => true,
     ) {
       return enqueue(async () => {
+        if (!stillCurrent()) return false;
         const current = await io.load();
+        if (!stillCurrent()) return false;
         if (!shouldAttachRetryGeneration({
           latch: current,
           expectedState: expected.state,
@@ -454,6 +461,7 @@ export function createSerializedLatchMutator(io: {
         })) {
           return false;
         }
+        if (!stillCurrent()) return false;
         await io.save({ ...current!, retryGeneration });
         return true;
       });
@@ -463,10 +471,13 @@ export function createSerializedLatchMutator(io: {
       sessionGeneration: string | null;
       attemptState?: string | null;
       attemptCreatedAtMs?: number | null;
-    }) {
+    }, stillCurrent: () => boolean = () => true) {
       return enqueue(async () => {
+        if (!stillCurrent()) return false;
         const current = await io.load();
+        if (!stillCurrent()) return false;
         if (!shouldClearRecoveryLatch({ latch: current, ...input })) return false;
+        if (!stillCurrent()) return false;
         await io.clear();
         return true;
       });
@@ -583,7 +594,6 @@ export interface UnauthRecoveryDeps {
   loadAttempt(): Promise<AuthAttemptIdentity | null>;
   mintAttempt(): Promise<AuthAttemptIdentity>;
   usedGeneration: string | null;
-  currentGeneration(): Promise<string | null>;
   clearIfGeneration(generation: string): Promise<void>;
   reconcileAuth(): Promise<void>;
   stillCurrent?(): boolean;
@@ -702,4 +712,52 @@ export async function consumeRecoveryLatchOnSuccess(deps: {
   }
   await deps.clearLatch();
   return true;
+}
+
+export async function attachRetryGenerationForCurrentOwner(deps: {
+  stillCurrent(): boolean;
+  loadAttempt(): Promise<AuthAttemptIdentity | null>;
+  generation: string;
+  attach(
+    expected: { state: string; createdAtMs: number },
+    generation: string,
+    stillCurrent: () => boolean,
+  ): Promise<boolean>;
+}): Promise<boolean> {
+  if (!deps.stillCurrent()) return false;
+  const attempt = await deps.loadAttempt();
+  if (!deps.stillCurrent()) return false;
+  if (!attempt) return true;
+  const attached = await deps.attach(
+    { state: attempt.state, createdAtMs: attempt.createdAtMs },
+    deps.generation,
+    deps.stillCurrent,
+  );
+  return deps.stillCurrent() && attached;
+}
+
+export async function consumeRecoveryLatchForCurrentOwner(deps: {
+  stillCurrent(): boolean;
+  loadAttempt(): Promise<AuthAttemptIdentity | null>;
+  sessionGeneration: string;
+  consume(
+    input: {
+      nowMs: number;
+      sessionGeneration: string;
+      attemptState: string | null;
+      attemptCreatedAtMs: number | null;
+    },
+    stillCurrent: () => boolean,
+  ): Promise<boolean>;
+  nowMs(): number;
+}): Promise<boolean> {
+  if (!deps.stillCurrent()) return false;
+  const attempt = await deps.loadAttempt();
+  if (!deps.stillCurrent()) return false;
+  return deps.consume({
+    nowMs: deps.nowMs(),
+    sessionGeneration: deps.sessionGeneration,
+    attemptState: attempt?.state ?? null,
+    attemptCreatedAtMs: attempt?.createdAtMs ?? null,
+  }, deps.stillCurrent);
 }

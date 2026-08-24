@@ -219,8 +219,11 @@ const latchMutator = createSerializedLatchMutator({
   },
 });
 
-export async function saveAuthRecoveryLatch(latch: AuthRecoveryLatch): Promise<void> {
-  await latchMutator.save(latch);
+export async function saveAuthRecoveryLatch(
+  latch: AuthRecoveryLatch,
+  stillCurrent: () => boolean = () => true,
+): Promise<void> {
+  if (!(await latchMutator.save(latch, stillCurrent))) throw new Error('superseded');
 }
 
 export async function loadAuthRecoveryLatch(): Promise<AuthRecoveryLatch | null> {

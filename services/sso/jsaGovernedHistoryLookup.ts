@@ -2,7 +2,6 @@ import type { JsaGovernedSession } from './jsaSession';
 
 export type GovernedHistoryLookupResult<T> =
   | { kind: 'found'; record: T }
-  | { kind: 'authoritative_none' }
   | { kind: 'backend_required'; reason: 'pre_cutover_completeness_unavailable' }
   | { kind: 'unavailable'; reason: 'identity' | 'token' | 'denied' | 'network' | 'malformed' | 'index' };
 
@@ -10,8 +9,6 @@ export interface GovernedHistoryTransport {
   inspectIdentity(): Promise<{ state: string; session: JsaGovernedSession | null; firebaseUid: string | null }>;
   freshIdToken(expectedUid: string): Promise<string>;
   runQuery(input: { token: string; driverId: string; companyId: string; shiftId: string }): Promise<unknown>;
-  /** Only a future authenticated server contract may assert complete legacy coverage. */
-  canonicalScopeComplete(): Promise<boolean>;
 }
 
 function refusal(error: unknown): GovernedHistoryLookupResult<never> {
@@ -55,7 +52,6 @@ export async function lookupGovernedShiftHistory<T = unknown>(
       }
       return { kind: 'found', record: entry as T };
     }
-    if (await transport.canonicalScopeComplete()) return { kind: 'authoritative_none' };
     return { kind: 'backend_required', reason: 'pre_cutover_completeness_unavailable' };
   } catch (error) {
     return refusal(error);

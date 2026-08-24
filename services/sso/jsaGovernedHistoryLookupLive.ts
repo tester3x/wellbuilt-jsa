@@ -53,7 +53,5 @@ export function lookupCurrentGovernedShiftHistory(shiftId: string) {
       }
       return response.json();
     },
-    // Firestore contains no server-authored pre-cutover completeness proof.
-    canonicalScopeComplete: async () => false,
   });
 }

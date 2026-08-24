@@ -9,7 +9,10 @@ import { runSerializedUnauthenticatedRecovery } from '../services/sso/jsaSeriali
 import { classifyGovernedHistoricalRecord, governedHistoricalQuery } from '../services/sso/jsaHistoricalLookupContract.ts';
 import { lookupGovernedShiftHistory } from '../services/sso/jsaGovernedHistoryLookup.ts';
 import { strictClearRawSessionIfGeneration } from '../services/sso/jsaStrictSessionCleanup.ts';
-import { beginUnauthenticatedRecovery, installGovernedAuthSession, resetGovernedAuthRecoveryForTests } from '../services/sso/jsaGovernedAuth.ts';
+import { attachRetryGenerationForCurrentOwner, beginUnauthenticatedRecovery, consumeRecoveryLatchForCurrentOwner, createSerializedLatchMutator, installGovernedAuthSession, resetGovernedAuthRecoveryForTests } from '../services/sso/jsaGovernedAuth.ts';
+import { classifyGovernedStartup, strictStartupPresentation } from '../services/sso/jsaIdentityStartupContract.ts';
+import { createGuardedCompleteLogoutOps, runCompleteJsaLogout } from '../services/sso/jsaLogoutContract.ts';
+import { requireStrictClear, strictClearAndVerify } from '../services/sso/jsaStrictLogoutStorage.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -240,17 +243,16 @@ const historyTransport = (overrides = {}) => ({
     driverId: { stringValue: 'd' }, companyId: { stringValue: 'c' },
     shiftId: { stringValue: '2026-08-23_010203' },
   } } }],
-  canonicalScopeComplete: async () => false,
   ...overrides,
 });
 check('API-key-only governed history access is prohibited by the live adapter',
   historyLive.includes('Authorization: `Bearer ${token}`') && !historyLive.includes('?key='));
 check('authenticated canonical history returns found',
   (await lookupGovernedShiftHistory('2026-08-23_010203', historyTransport())).kind === 'found');
-check('authenticated complete canonical scope may return authoritative-none',
+check('canonical empty result cannot become authoritative-none before server contract',
   (await lookupGovernedShiftHistory('2026-08-23_010203', historyTransport({
-    runQuery: async () => [], canonicalScopeComplete: async () => true,
-  }))).kind === 'authoritative_none');
+    runQuery: async () => [],
+  }))).kind === 'backend_required');
 check('empty live canonical scope is backend-required without legacy completeness proof',
   (await lookupGovernedShiftHistory('2026-08-23_010203', historyTransport({ runQuery: async () => [] }))).kind === 'backend_required');
 for (const [name, override, expected] of [
@@ -265,8 +267,8 @@ check('production UI blocks duplicate form for checking unavailable and backend-
   tabs.includes('historyBlocksNewJsa') && tabs.includes("historyLookup === 'backend_required'")
     && tabs.includes('!historyBlocksNewJsa && isSsoMode'));
 check('same-device local history is also bound to canonical driver company and shift',
-  tabs.includes('s?.driverId === session?.driverId')
-    && tabs.includes('s?.companyId === session?.companyId'));
+  tabs.includes('s?.driverId === owner?.driverId')
+    && tabs.includes('s?.companyId === owner?.companyId'));
 
 for (const scenario of ['delete_error', 'readback_error', 'false_generation']) {
   let raw = JSON.stringify({ generation: scenario === 'false_generation' ? 'GB' : 'GA' });
@@ -283,32 +285,86 @@ for (const scenario of ['delete_error', 'readback_error', 'false_generation']) {
 }
 
 {
-  const state = { authUid: null, session: null, baseline: null, readiness: 0 };
-  const result = await installGovernedAuthSession({
-    payload, legalName: null, generation: 'GA',
-    signInWithCustomToken: async () => { state.authUid = 'uA'; return { uid: 'uA' }; },
-    persist: async (session) => { state.session = session; throw new Error('baseline_seed_failed'); },
-    reconcileAuth: async () => { if (!state.session) state.authUid = null; },
-    clearIfGeneration: async () => {
-      await cleanupOwnedIdentity({ generation: 'GA', uid: 'uA', driverId: 'dA', companyId: 'cA' }, {
-        loadSession: async () => state.session,
-        currentFirebaseUid: () => state.authUid,
-        baselineOwned: async () => false,
-        signOutFirebase: async () => { state.authUid = null; return true; },
-        clearSessionGeneration: async () => { state.session = null; },
-        clearBaselineIfOwned: async () => false,
-      });
+  const secure = new Map();
+  const state = { authUid: null, readiness: 0, context: true };
+  const sessionStore = {
+    read: async (key) => secure.get(key) ?? null,
+    remove: async (key) => { secure.delete(key); },
+  };
+  const loadSession = async () => {
+    const raw = secure.get('jsa_governed_session');
+    return raw ? JSON.parse(raw) : null;
+  };
+  const cleanupOwner = async (owner) => cleanupOwnedIdentity(owner, {
+    loadSession,
+    currentFirebaseUid: () => state.authUid,
+    baselineOwned: async (expected) => {
+      const raw = secure.get('jsa_lastCanonicalLogoutAt');
+      return !!raw && JSON.parse(raw).generation === expected.generation;
+    },
+    signOutFirebase: async () => { state.authUid = null; return true; },
+    clearSessionGeneration: async (generation) => {
+      const current = await loadSession();
+      if (current?.generation !== generation) throw new Error('session_changed');
+      requireStrictClear(await strictClearAndVerify([{ store: sessionStore, keys: ['jsa_governed_session'] }]));
+    },
+    clearBaselineIfOwned: async (expected) => {
+      const raw = secure.get('jsa_lastCanonicalLogoutAt');
+      if (!raw || JSON.parse(raw).generation !== expected.generation) return false;
+      requireStrictClear(await strictClearAndVerify([{ store: sessionStore, keys: ['jsa_lastCanonicalLogoutAt'] }]));
+      return true;
     },
   });
-  check('partial install with missing baseline cannot publish readiness and remains fail-closed',
-    !result.ok && state.authUid === 'uA' && state.session?.generation === 'GA'
-      && state.baseline === null && state.readiness === 0);
-  state.authUid = null; state.session = null; // verified logout recovery
-  state.authUid = 'uB'; state.session = { generation: 'GB' };
-  const stale = ownedFixture(); stale.state.session = state.session; stale.state.firebaseUid = 'uB'; stale.state.baseline = { generation: 'GB' };
-  const staleResult = await cleanupOwnedIdentity(stale.owner, stale.deps);
-  check('partial-install recovery cannot delete a newer identity',
-    !staleResult.ok && !staleResult.mutated && stale.state.session.generation === 'GB');
+  const first = await installGovernedAuthSession({
+    payload, legalName: null, generation: 'GA',
+    signInWithCustomToken: async () => { state.authUid = 'uA'; return { uid: 'uA' }; },
+    persist: async (session) => {
+      secure.set('jsa_governed_session', JSON.stringify(session));
+      throw new Error('baseline_seed_failed');
+    },
+    reconcileAuth: async () => {},
+    clearIfGeneration: async () => { await cleanupOwner({ generation: 'GA', uid: 'uA', driverId: 'dA', companyId: 'cA' }); },
+  });
+  const partialSession = await loadSession();
+  const startup = strictStartupPresentation(classifyGovernedStartup({
+    rawSessionPresent: !!partialSession, session: partialSession, firebaseUid: state.authUid,
+    tokenDriverId: 'dA', tokenCompanyId: 'cA', baselineBound: false,
+  }));
+  check('partial install remains protected and never publishes readiness',
+    !first.ok && state.authUid === 'uA' && partialSession?.generation === 'GA'
+      && state.readiness === 0 && startup.protectedContentBlocked && !startup.governedReady);
+
+  const logout = await runCompleteJsaLogout(createGuardedCompleteLogoutOps({
+    clearFirebaseAuth: async () => { state.authUid = null; return state.authUid === null; },
+    clearLegacyDriverSession: async () => {},
+    clearGovernedState: async () => {
+      requireStrictClear(await strictClearAndVerify([{ store: sessionStore, keys: ['jsa_governed_session'] }]));
+    },
+    resetAuthContext: async () => { state.context = false; },
+    clearCanonicalIdentityState: async () => {
+      requireStrictClear(await strictClearAndVerify([{ store: sessionStore, keys: ['jsa_lastCanonicalLogoutAt'] }]));
+    },
+  }));
+  check('real verified full logout clears partial Firebase session baseline and context',
+    logout.verified && state.authUid === null && await loadSession() === null
+      && !secure.has('jsa_lastCanonicalLogoutAt') && state.context === false && logout.failures.length === 0);
+
+  const retryPayload = { ...payload, uid: 'uB', driverId: 'dB', companyId: 'cB' };
+  const retry = await installGovernedAuthSession({
+    payload: retryPayload, legalName: null, generation: 'GB',
+    signInWithCustomToken: async () => { state.authUid = 'uB'; return { uid: 'uB' }; },
+    persist: async (session) => {
+      secure.set('jsa_governed_session', JSON.stringify(session));
+      secure.set('jsa_lastCanonicalLogoutAt', JSON.stringify({ generation: 'GB' }));
+      state.readiness++;
+    },
+  });
+  const delayedA = await cleanupOwner({ generation: 'GA', uid: 'uA', driverId: 'dA', companyId: 'cA' });
+  const retrySession = await loadSession();
+  check('later exact retry installs and delayed failed-install cleanup cannot remove it',
+    retry.ok && state.readiness === 1 && !delayedA.ok && !delayedA.mutated
+      && state.authUid === 'uB' && retrySession?.generation === 'GB'
+      && secure.has('jsa_lastCanonicalLogoutAt'));
 }
 
 {
@@ -332,6 +388,89 @@ check('live recovery persistence checks ownership at each storage mutation',
   && /await SecureStore\.setItemAsync\(VERIFIER_KEY, attempt\.verifier\);\s*if \(!stillCurrent\(\)\) throw new Error\('superseded'\);\s*await AsyncStorage\.setItem/.test(runtimeSrc)
   && /saveLatch: async \(latch: AuthRecoveryLatch\) => \{\s*if \(!current\(\)\) throw new Error\('superseded'\);/.test(liveAuthSrc)
   && /stillCurrent: current,/.test(liveAuthSrc));
+
+{
+  let current = true; let releaseAttempt;
+  const heldAttempt = new Promise((resolve) => { releaseAttempt = resolve; });
+  let attached = 0;
+  const flight = attachRetryGenerationForCurrentOwner({
+    stillCurrent: () => current,
+    loadAttempt: async () => heldAttempt,
+    generation: 'GB',
+    attach: async () => { attached++; return true; },
+  });
+  current = false;
+  releaseAttempt({ state: 'attempt-A', createdAtMs: 1, consumed: false });
+  check('supersede immediately before post-install latch attachment prevents mutation',
+    await flight === false && attached === 0);
+}
+
+{
+  let current = true; let releaseLoad;
+  const heldLoad = new Promise((resolve) => { releaseLoad = resolve; });
+  const state = {
+    latch: { state: 'newer-B', createdAtMs: 2, usedAtMs: 2, phase: 'recovering', failedGeneration: 'GB', retryGeneration: null },
+    session: 'GB', firebase: 'uB', writes: 0,
+  };
+  const mutator = createSerializedLatchMutator({
+    load: async () => { await heldLoad; return state.latch; },
+    save: async (value) => { state.latch = value; state.writes++; },
+    clear: async () => { state.latch = null; state.writes++; },
+  });
+  const queued = attachRetryGenerationForCurrentOwner({
+    stillCurrent: () => current,
+    loadAttempt: async () => ({ state: 'newer-B', createdAtMs: 2, consumed: false }),
+    generation: 'GB',
+    attach: (expected, generation, ownerCurrent) =>
+      mutator.attachRetryGeneration(expected, generation, ownerCurrent),
+  });
+  current = false; releaseLoad();
+  check('supersede while latch write is queued preserves newer owner state',
+    await queued === false && state.writes === 0 && state.latch.state === 'newer-B'
+      && state.session === 'GB' && state.firebase === 'uB');
+}
+
+{
+  let current = true; let releaseLoad;
+  const heldLoad = new Promise((resolve) => { releaseLoad = resolve; });
+  const state = {
+    latch: { state: 'newer-B', createdAtMs: 2, usedAtMs: 2, phase: 'recovering', failedGeneration: 'GA', retryGeneration: 'GB' },
+    session: 'GB', firebase: 'uB', clears: 0,
+  };
+  const mutator = createSerializedLatchMutator({
+    load: async () => { await heldLoad; return state.latch; },
+    save: async (value) => { state.latch = value; },
+    clear: async () => { state.latch = null; state.clears++; },
+  });
+  const consume = consumeRecoveryLatchForCurrentOwner({
+    stillCurrent: () => current,
+    loadAttempt: async () => ({ state: 'newer-B', createdAtMs: 2, consumed: false }),
+    sessionGeneration: 'GB', nowMs: () => 2,
+    consume: (input, ownerCurrent) => mutator.consumeIfMatching(input, ownerCurrent),
+  });
+  current = false; releaseLoad();
+  check('supersede before latch consumption preserves newer attempt latch session and Firebase identity',
+    await consume === false && state.clears === 0 && state.latch.state === 'newer-B'
+      && state.session === 'GB' && state.firebase === 'uB');
+}
+
+{
+  resetGovernedAuthRecoveryForTests();
+  let releaseA;
+  const heldA = new Promise((resolve) => { releaseA = resolve; });
+  const deps = (owner, held) => ({
+    nowMs: () => 1, loadLatch: async () => null, saveLatch: async () => {},
+    loadAttempt: async () => { if (held) await held; return null; },
+    mintAttempt: async () => ({ state: owner, createdAtMs: 1, consumed: false }),
+    usedGeneration: null, clearIfGeneration: async () => {}, reconcileAuth: async () => {},
+    recoveryOwnerKey: owner,
+  });
+  const first = beginUnauthenticatedRecovery(deps('no-session:epoch-A', heldA));
+  await Promise.resolve();
+  const second = await beginUnauthenticatedRecovery(deps('no-session:epoch-B', null));
+  releaseA(); await first;
+  check('no-session recovery flights from different identity epochs never share ownership', second === 'fail_closed');
+}
 
 console.log(`\nRESULT passed=${pass} failed=${fail} total=${pass + fail}`);
 process.exit(fail ? 1 : 0);
