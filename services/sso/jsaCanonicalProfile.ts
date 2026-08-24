@@ -45,11 +45,15 @@ export async function clearCanonicalIdentityState(): Promise<void> {
   await SecureStore.deleteItemAsync(CANONICAL_LOGOUT_BASELINE_KEY);
 }
 
-/** Delete only the baseline bound to the installation being rolled back. */
-export async function clearCanonicalIdentityStateIfOwned(owner: ManualInstallationOwner): Promise<boolean> {
+export async function canonicalBaselineOwnedBy(owner: ManualInstallationOwner): Promise<boolean> {
   const raw = await SecureStore.getItemAsync(CANONICAL_LOGOUT_BASELINE_KEY);
   const baseline = parseBoundLogoutBaseline(raw, owner);
-  if (!baseline || baseline.generation !== owner.generation) return false;
+  return !!baseline && baseline.generation === owner.generation;
+}
+
+/** Delete only the baseline bound to the installation being rolled back. */
+export async function clearCanonicalIdentityStateIfOwned(owner: ManualInstallationOwner): Promise<boolean> {
+  if (!(await canonicalBaselineOwnedBy(owner))) return false;
   await SecureStore.deleteItemAsync(CANONICAL_LOGOUT_BASELINE_KEY);
   return await SecureStore.getItemAsync(CANONICAL_LOGOUT_BASELINE_KEY) === null;
 }

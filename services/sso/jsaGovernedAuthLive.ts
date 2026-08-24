@@ -50,6 +50,9 @@ import {
   publishGovernedSessionReady,
 } from './jsaRuntime';
 import { createGovernedIdentityMutationCoordinator } from './jsaIdentityMutationContract';
+import { cleanupOwnedIdentity, type OwnedCleanupResult } from './jsaOwnedIdentityCleanup';
+import type { ManualInstallationOwner } from './jsaManualLogin';
+import { runSerializedUnauthenticatedRecovery } from './jsaSerializedRecovery';
 
 type RnAuthModule = {
   getReactNativePersistence?: (storage: typeof AsyncStorage) => Persistence;
@@ -188,16 +191,17 @@ export async function persistAfterExchange(
         if (!current()) throw new Error('superseded');
         publishGovernedSessionReady();
       },
-      reconcileAuth: () => reconcileGovernedAuthWithinMutation(),
-      clearIfGeneration: async (gen) => {
+      reconcileAuth: async () => {
         const installed = await loadGovernedSession();
-        if (installed?.generation !== gen || installed.uid !== payload.uid
-          || installed.driverId !== payload.driverId || installed.companyId !== payload.companyId) return;
-        const { clearCanonicalIdentityStateIfOwned } = await import('./jsaCanonicalProfile');
-        await clearCanonicalIdentityStateIfOwned({
+        if (installed?.generation !== generation) await reconcileGovernedAuthWithinMutation();
+      },
+      clearIfGeneration: async (gen) => {
+        const cleaned = await cleanupOwnedInstallationWithinMutation({
           generation: gen, uid: payload.uid, driverId: payload.driverId, companyId: payload.companyId,
         });
-        await clearGovernedSessionIfGeneration(gen);
+        if (!cleaned.ok && cleaned.failure !== 'session_mismatch') {
+          throw new Error(`owned_cleanup_${cleaned.failure}`);
+        }
       },
       stillCurrent: current,
     });
@@ -210,6 +214,21 @@ export async function persistAfterExchange(
       );
     }
     return result.session;
+  });
+}
+
+/** Caller must already own the serialized mutation lane. */
+export async function cleanupOwnedInstallationWithinMutation(
+  owner: ManualInstallationOwner,
+): Promise<OwnedCleanupResult> {
+  const { canonicalBaselineOwnedBy, clearCanonicalIdentityStateIfOwned } = await import('./jsaCanonicalProfile');
+  return cleanupOwnedIdentity(owner, {
+    loadSession: () => loadGovernedSession(),
+    currentFirebaseUid: () => currentGovernedAuthUid(),
+    baselineOwned: canonicalBaselineOwnedBy,
+    signOutFirebase: signOutGovernedAuthWithinMutation,
+    clearSessionGeneration: (generation) => clearGovernedSessionIfGeneration(generation).then(() => undefined),
+    clearBaselineIfOwned: clearCanonicalIdentityStateIfOwned,
   });
 }
 
@@ -230,26 +249,32 @@ export async function liveConsumeRecoveryLatch(session: unknown): Promise<void> 
 export async function liveBeginUnauthenticatedRecovery(
   session: unknown,
 ): Promise<UnauthRecoveryOutcome> {
-  return beginUnauthenticatedRecovery({
-    nowMs: () => Date.now(),
-    loadLatch: () => loadAuthRecoveryLatch(),
-    saveLatch: (latch: AuthRecoveryLatch) => saveAuthRecoveryLatch(latch),
-    loadAttempt: () => loadAttempt(),
-    mintAttempt: async () => {
-      const Crypto = await import('expo-crypto');
-      const attempt = await mintAttempt({
-        randomBytes: (n) => Crypto.getRandomBytesAsync(n),
-        sha256Hex: async (s) =>
-          Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, s),
-        nowMs: () => Date.now(),
-      });
-      return attempt;
-    },
-    usedGeneration: sessionGenerationOf(session),
-    currentGeneration: async () => sessionGenerationOf(await loadGovernedSession()),
-    clearIfGeneration: async (generation) => {
-      await clearGovernedSessionIfGeneration(generation);
-    },
-    reconcileAuth: () => reconcileGovernedAuth(),
+  return runSerializedUnauthenticatedRecovery(identityMutations, async (current) => {
+    const outcome = await beginUnauthenticatedRecovery({
+      nowMs: () => Date.now(),
+      loadLatch: () => loadAuthRecoveryLatch(),
+      saveLatch: (latch: AuthRecoveryLatch) => saveAuthRecoveryLatch(latch),
+      loadAttempt: () => loadAttempt(),
+      mintAttempt: async () => {
+        const Crypto = await import('expo-crypto');
+        const attempt = await mintAttempt({
+          randomBytes: (n) => Crypto.getRandomBytesAsync(n),
+          sha256Hex: async (s) =>
+            Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, s),
+          nowMs: () => Date.now(),
+        });
+        return attempt;
+      },
+      usedGeneration: sessionGenerationOf(session),
+      currentGeneration: async () => sessionGenerationOf(await loadGovernedSession()),
+      clearIfGeneration: async (generation) => {
+        if (!current()) return;
+        await clearGovernedSessionIfGeneration(generation);
+      },
+      reconcileAuth: async () => {
+        if (current()) await reconcileGovernedAuthWithinMutation();
+      },
+    });
+    return outcome;
   });
 }

@@ -43,7 +43,7 @@ check('still fire-and-forget', /void submitDiagnostic/.test(diag));
 
 // Pins refreshed for the governed manual-login correction above approved source 964a311640c324752a63b6f2578bb20dfbbcde6a.
 const frozen = {
-  'services/sso/jsaGovernedAuthLive.ts': 'f959aab517f98e2059c9adf9c75518a3502031e9fef9bce9ddb4ebc57ee8f65f',
+  'services/sso/jsaGovernedAuthLive.ts': '4f36d4f6065f9e4b4f708b79e47e246b9a173853294c4638e722b3b4f6c0fd0d',
   'services/sso/jsaGovernedAuth.ts': 'f1a8507de2e70034af76eaae88624fb82f924b7030e0701c88dc2c9ae6a55506',
   'services/sso/jsaArtifactCallables.ts': '127f909e5d7b38a5b830152c2d66f0e1919dfa9adc132a92bef05e1cdbbb8a32',
   'services/sso/jsaRequestCallables.ts': '4dd637a900d74f653272402d8cbd7836d34ebf386bfc2cee1d158a9360fb542c',

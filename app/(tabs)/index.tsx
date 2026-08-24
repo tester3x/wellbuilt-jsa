@@ -1160,11 +1160,13 @@ export default function JsaHomeScreen() {
         return;
       }
 
-      const driverHash = session?.driverId;
-      if (!driverHash) {
+      if (!session) {
         setTodaysJsaSave(null);
         return;
       }
+      const { governedHistoricalQuery } = await import('../../services/sso/jsaHistoricalLookupContract');
+      const historicalIdentity = governedHistoricalQuery(session);
+      if (!historicalIdentity) { setTodaysJsaSave(null); return; }
 
       const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
       const BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
@@ -1175,7 +1177,8 @@ export default function JsaHomeScreen() {
             compositeFilter: {
               op: 'AND',
               filters: [
-                { fieldFilter: { field: { fieldPath: 'driverHash' }, op: 'EQUAL', value: { stringValue: driverHash } } },
+                { fieldFilter: { field: { fieldPath: historicalIdentity.field }, op: 'EQUAL', value: { stringValue: historicalIdentity.value } } },
+                { fieldFilter: { field: { fieldPath: 'companyId' }, op: 'EQUAL', value: { stringValue: session.companyId } } },
                 { fieldFilter: { field: { fieldPath: 'shiftId' }, op: 'EQUAL', value: { stringValue: shiftId } } },
               ],
             },
