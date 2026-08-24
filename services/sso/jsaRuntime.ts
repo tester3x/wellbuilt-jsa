@@ -37,6 +37,7 @@ import {
   type PendingCompleteRecord,
 } from './jsaRequestLifecycle';
 import { createRevisionSignal } from './jsaRevisionSignal';
+import { strictClearRawSessionIfGeneration } from './jsaStrictSessionCleanup';
 
 const ATTEMPT_META_KEY = '@jsa/pkceAttemptMeta';
 const VERIFIER_KEY = 'jsa_pkce_verifier';
@@ -101,8 +102,13 @@ export async function recordFreshGovernedSubmitted(
   await saveFreshSubmittedMarker({ requestId, action, submittedAtMs: nowMs });
 }
 
-export async function saveAttempt(attempt: JsaPkceAttempt): Promise<void> {
+export async function saveAttempt(
+  attempt: JsaPkceAttempt,
+  stillCurrent: () => boolean = () => true,
+): Promise<void> {
+  if (!stillCurrent()) throw new Error('superseded');
   await SecureStore.setItemAsync(VERIFIER_KEY, attempt.verifier);
+  if (!stillCurrent()) throw new Error('superseded');
   await AsyncStorage.setItem(ATTEMPT_META_KEY, JSON.stringify({
     state: attempt.state,
     challenge: attempt.challenge,
@@ -145,6 +151,26 @@ export async function clearGovernedSession(): Promise<void> {
 /** Clear only if the stored generation is still the one this call used. Serialized with save. */
 export async function clearGovernedSessionIfGeneration(used: string): Promise<boolean> {
   return sessionMutator.clearIfGeneration(used);
+}
+
+/** Cleanup-only strict read: storage and parse failures are observable. */
+export async function strictLoadGovernedSession(): Promise<JsaGovernedSession | null> {
+  const raw = await SecureStore.getItemAsync(SESSION_KEY);
+  if (raw === null) return null;
+  const parsed = validatePersistedGovernedSession(JSON.parse(raw));
+  if (!parsed) throw new Error('governed_session_unreadable');
+  return parsed as JsaGovernedSession;
+}
+
+/** Cleanup-only strict conditional delete plus raw absence verification. */
+export async function strictClearGovernedSessionIfGeneration(used: string): Promise<boolean> {
+  return strictClearRawSessionIfGeneration(used, {
+    readRaw: () => SecureStore.getItemAsync(SESSION_KEY),
+    deleteRaw: () => SecureStore.deleteItemAsync(SESSION_KEY),
+  }, (raw) => {
+    const parsed = validatePersistedGovernedSession(JSON.parse(raw));
+    return parsed?.generation ?? null;
+  });
 }
 
 export async function markGovernedTerminalFailure(requestId: string): Promise<void> {
@@ -213,6 +239,7 @@ export async function mintAttempt(ops: {
   randomBytes: (n: number) => Promise<Uint8Array>;
   sha256Hex: (s: string) => Promise<string>;
   nowMs: () => number;
+  stillCurrent?: () => boolean;
 }): Promise<JsaPkceAttempt> {
   const stateBytes = await ops.randomBytes(32);
   const verifierBytes = await ops.randomBytes(32);
@@ -227,7 +254,7 @@ export async function mintAttempt(ops: {
   const attempt: JsaPkceAttempt = {
     state, verifier, challenge, createdAtMs: ops.nowMs(), consumed: false,
   };
-  await saveAttempt(attempt);
+  await saveAttempt(attempt, ops.stillCurrent);
   return attempt;
 }
 

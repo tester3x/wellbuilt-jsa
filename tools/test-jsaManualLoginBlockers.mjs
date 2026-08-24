@@ -6,11 +6,15 @@ import { retireLegacyAuthentication } from '../services/sso/jsaLegacyAuthRetirem
 import { createGovernedIdentityMutationCoordinator } from '../services/sso/jsaIdentityMutationContract.ts';
 import { cleanupOwnedIdentity } from '../services/sso/jsaOwnedIdentityCleanup.ts';
 import { runSerializedUnauthenticatedRecovery } from '../services/sso/jsaSerializedRecovery.ts';
-import { beginUnauthenticatedRecovery } from '../services/sso/jsaGovernedAuth.ts';
 import { classifyGovernedHistoricalRecord, governedHistoricalQuery } from '../services/sso/jsaHistoricalLookupContract.ts';
+import { lookupGovernedShiftHistory } from '../services/sso/jsaGovernedHistoryLookup.ts';
+import { strictClearRawSessionIfGeneration } from '../services/sso/jsaStrictSessionCleanup.ts';
+import { beginUnauthenticatedRecovery, installGovernedAuthSession, resetGovernedAuthRecoveryForTests } from '../services/sso/jsaGovernedAuth.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
+const runtimeSrc = read('services/sso/jsaRuntime.ts');
+const liveAuthSrc = read('services/sso/jsaGovernedAuthLive.ts');
 let pass = 0; let fail = 0;
 function check(name, ok) { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`); ok ? pass++ : fail++; }
 
@@ -104,6 +108,7 @@ const cleanupContract = read('services/sso/jsaOwnedIdentityCleanup.ts');
 const login = read('components/LoginScreen.tsx');
 const tabs = read('app/(tabs)/index.tsx');
 const signoff = read('app/signoff.tsx');
+const historyLive = read('services/sso/jsaGovernedHistoryLookupLive.ts');
 check('no protected or readiness path calls legacy session restore or revalidation',
   !/getDriverSession|revalidateDriverSession|isDriverVerified|saveDriverSession/.test(ctx + driverAuth));
 check('no canonical UUID is stored or presented as passcodeHash',
@@ -219,12 +224,114 @@ for (const contender of ['manual_login', 'suite_sso', 'logout']) {
     classifyGovernedHistoricalRecord({ driverId: 'canonical-driver', companyId: 'company' }, identity) === 'canonical_match'
       && classifyGovernedHistoricalRecord({ driverHash: 'legacy-credential-hash' }, identity) === 'backend_required'
       && classifyGovernedHistoricalRecord({ driverId: 'other', companyId: 'company' }, identity) === 'foreign');
-  const historyQuery = tabs.slice(tabs.indexOf("from: [{ collectionId: 'jsas' }]"));
   check('production JSA history read and write use canonical driverId without credential fallback',
-    historyQuery.includes('historicalIdentity.field')
+    historyLive.includes("fieldPath: 'driverId'")
       && signoff.includes('driverId: { stringValue: driverHash }')
-      && !/passcodeHash/.test(historyQuery));
+      && !/passcodeHash/.test(historyLive));
 }
+
+const exactHistorySession = { uid: 'u', driverId: 'd', companyId: 'c', generation: 'g',
+  displayName: null, legalName: null,
+  binding: { shiftState: 'none', requiresActiveShift: false, jsaEnabled: true } };
+const historyTransport = (overrides = {}) => ({
+  inspectIdentity: async () => ({ state: 'usable', session: exactHistorySession, firebaseUid: 'u' }),
+  freshIdToken: async () => 'fresh-id-token',
+  runQuery: async () => [{ document: { fields: {
+    driverId: { stringValue: 'd' }, companyId: { stringValue: 'c' },
+    shiftId: { stringValue: '2026-08-23_010203' },
+  } } }],
+  canonicalScopeComplete: async () => false,
+  ...overrides,
+});
+check('API-key-only governed history access is prohibited by the live adapter',
+  historyLive.includes('Authorization: `Bearer ${token}`') && !historyLive.includes('?key='));
+check('authenticated canonical history returns found',
+  (await lookupGovernedShiftHistory('2026-08-23_010203', historyTransport())).kind === 'found');
+check('authenticated complete canonical scope may return authoritative-none',
+  (await lookupGovernedShiftHistory('2026-08-23_010203', historyTransport({
+    runQuery: async () => [], canonicalScopeComplete: async () => true,
+  }))).kind === 'authoritative_none');
+check('empty live canonical scope is backend-required without legacy completeness proof',
+  (await lookupGovernedShiftHistory('2026-08-23_010203', historyTransport({ runQuery: async () => [] }))).kind === 'backend_required');
+for (const [name, override, expected] of [
+  ['denial', { runQuery: async () => { const e = new Error('denied'); e.status = 403; throw e; } }, 'denied'],
+  ['offline', { runQuery: async () => { throw new Error('network'); } }, 'network'],
+  ['malformed', { runQuery: async () => ({ nope: true }) }, 'malformed'],
+]) {
+  const result = await lookupGovernedShiftHistory('2026-08-23_010203', historyTransport(override));
+  check(`authenticated history ${name} remains unavailable`, result.kind === 'unavailable' && result.reason === expected);
+}
+check('production UI blocks duplicate form for checking unavailable and backend-required lookup states',
+  tabs.includes('historyBlocksNewJsa') && tabs.includes("historyLookup === 'backend_required'")
+    && tabs.includes('!historyBlocksNewJsa && isSsoMode'));
+check('same-device local history is also bound to canonical driver company and shift',
+  tabs.includes('s?.driverId === session?.driverId')
+    && tabs.includes('s?.companyId === session?.companyId'));
+
+for (const scenario of ['delete_error', 'readback_error', 'false_generation']) {
+  let raw = JSON.stringify({ generation: scenario === 'false_generation' ? 'GB' : 'GA' });
+  let reads = 0;
+  const storage = {
+    readRaw: async () => { reads++; if (scenario === 'readback_error' && reads > 1) throw new Error('read'); return raw; },
+    deleteRaw: async () => { if (scenario === 'delete_error') throw new Error('delete'); raw = null; },
+  };
+  let outcome = 'throw';
+  try { outcome = String(await strictClearRawSessionIfGeneration('GA', storage, (value) => JSON.parse(value).generation)); }
+  catch { outcome = 'throw'; }
+  check(`strict session cleanup ${scenario} cannot verify absence`,
+    scenario === 'false_generation' ? outcome === 'false' && raw !== null : outcome === 'throw');
+}
+
+{
+  const state = { authUid: null, session: null, baseline: null, readiness: 0 };
+  const result = await installGovernedAuthSession({
+    payload, legalName: null, generation: 'GA',
+    signInWithCustomToken: async () => { state.authUid = 'uA'; return { uid: 'uA' }; },
+    persist: async (session) => { state.session = session; throw new Error('baseline_seed_failed'); },
+    reconcileAuth: async () => { if (!state.session) state.authUid = null; },
+    clearIfGeneration: async () => {
+      await cleanupOwnedIdentity({ generation: 'GA', uid: 'uA', driverId: 'dA', companyId: 'cA' }, {
+        loadSession: async () => state.session,
+        currentFirebaseUid: () => state.authUid,
+        baselineOwned: async () => false,
+        signOutFirebase: async () => { state.authUid = null; return true; },
+        clearSessionGeneration: async () => { state.session = null; },
+        clearBaselineIfOwned: async () => false,
+      });
+    },
+  });
+  check('partial install with missing baseline cannot publish readiness and remains fail-closed',
+    !result.ok && state.authUid === 'uA' && state.session?.generation === 'GA'
+      && state.baseline === null && state.readiness === 0);
+  state.authUid = null; state.session = null; // verified logout recovery
+  state.authUid = 'uB'; state.session = { generation: 'GB' };
+  const stale = ownedFixture(); stale.state.session = state.session; stale.state.firebaseUid = 'uB'; stale.state.baseline = { generation: 'GB' };
+  const staleResult = await cleanupOwnedIdentity(stale.owner, stale.deps);
+  check('partial-install recovery cannot delete a newer identity',
+    !staleResult.ok && !staleResult.mutated && stale.state.session.generation === 'GB');
+}
+
+{
+  resetGovernedAuthRecoveryForTests();
+  let current = true; let minted = 0; let latchWrites = 0; let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const recovery = beginUnauthenticatedRecovery({
+    nowMs: () => 100, loadLatch: async () => null, saveLatch: async () => { latchWrites++; },
+    loadAttempt: async () => { await held; return null; },
+    mintAttempt: async () => { minted++; return { state: 's', createdAtMs: 1, consumed: false }; },
+    usedGeneration: 'GA', currentGeneration: async () => 'GA', clearIfGeneration: async () => {},
+    reconcileAuth: async () => {}, stillCurrent: () => current, recoveryOwnerKey: 'owner-A',
+  });
+  await Promise.resolve(); current = false; release();
+  check('stale recovery cannot mint attempt or persist latch after losing epoch',
+    await recovery === 'fail_closed' && minted === 0 && latchWrites === 0);
+}
+
+check('live recovery persistence checks ownership at each storage mutation',
+  /if \(!stillCurrent\(\)\) throw new Error\('superseded'\);\s*await SecureStore\.setItemAsync\(VERIFIER_KEY/.test(runtimeSrc)
+  && /await SecureStore\.setItemAsync\(VERIFIER_KEY, attempt\.verifier\);\s*if \(!stillCurrent\(\)\) throw new Error\('superseded'\);\s*await AsyncStorage\.setItem/.test(runtimeSrc)
+  && /saveLatch: async \(latch: AuthRecoveryLatch\) => \{\s*if \(!current\(\)\) throw new Error\('superseded'\);/.test(liveAuthSrc)
+  && /stillCurrent: current,/.test(liveAuthSrc));
 
 console.log(`\nRESULT passed=${pass} failed=${fail} total=${pass + fail}`);
 process.exit(fail ? 1 : 0);

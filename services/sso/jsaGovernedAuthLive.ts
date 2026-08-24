@@ -48,6 +48,8 @@ import {
   saveAuthRecoveryLatch,
   saveGovernedSession,
   publishGovernedSessionReady,
+  strictClearGovernedSessionIfGeneration,
+  strictLoadGovernedSession,
 } from './jsaRuntime';
 import { createGovernedIdentityMutationCoordinator } from './jsaIdentityMutationContract';
 import { cleanupOwnedIdentity, type OwnedCleanupResult } from './jsaOwnedIdentityCleanup';
@@ -223,11 +225,15 @@ export async function cleanupOwnedInstallationWithinMutation(
 ): Promise<OwnedCleanupResult> {
   const { canonicalBaselineOwnedBy, clearCanonicalIdentityStateIfOwned } = await import('./jsaCanonicalProfile');
   return cleanupOwnedIdentity(owner, {
-    loadSession: () => loadGovernedSession(),
+    loadSession: () => strictLoadGovernedSession(),
     currentFirebaseUid: () => currentGovernedAuthUid(),
     baselineOwned: canonicalBaselineOwnedBy,
     signOutFirebase: signOutGovernedAuthWithinMutation,
-    clearSessionGeneration: (generation) => clearGovernedSessionIfGeneration(generation).then(() => undefined),
+    clearSessionGeneration: async (generation) => {
+      if (!(await strictClearGovernedSessionIfGeneration(generation))) {
+        throw new Error('strict_session_clear_refused');
+      }
+    },
     clearBaselineIfOwned: clearCanonicalIdentityStateIfOwned,
   });
 }
@@ -253,7 +259,10 @@ export async function liveBeginUnauthenticatedRecovery(
     const outcome = await beginUnauthenticatedRecovery({
       nowMs: () => Date.now(),
       loadLatch: () => loadAuthRecoveryLatch(),
-      saveLatch: (latch: AuthRecoveryLatch) => saveAuthRecoveryLatch(latch),
+      saveLatch: async (latch: AuthRecoveryLatch) => {
+        if (!current()) throw new Error('superseded');
+        await saveAuthRecoveryLatch(latch);
+      },
       loadAttempt: () => loadAttempt(),
       mintAttempt: async () => {
         const Crypto = await import('expo-crypto');
@@ -262,10 +271,13 @@ export async function liveBeginUnauthenticatedRecovery(
           sha256Hex: async (s) =>
             Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, s),
           nowMs: () => Date.now(),
+          stillCurrent: current,
         });
         return attempt;
       },
       usedGeneration: sessionGenerationOf(session),
+      recoveryOwnerKey: sessionGenerationOf(session) ?? 'no-session',
+      stillCurrent: current,
       currentGeneration: async () => sessionGenerationOf(await loadGovernedSession()),
       clearIfGeneration: async (generation) => {
         if (!current()) return;

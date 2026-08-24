@@ -162,6 +162,7 @@ export default function JsaHomeScreen() {
   // produce today's JSA for safety, even after submit-dismiss stranded them
   // on the new-form screen.
   const [todaysJsaSave, setTodaysJsaSave] = useState<any | null>(null);
+  const [historyLookup, setHistoryLookup] = useState<'checking' | 'found' | 'authoritative_none' | 'backend_required' | 'unavailable'>('checking');
 
   // Living document — add well modal
   const [showAddWellModal, setShowAddWellModal] = useState(false);
@@ -464,8 +465,9 @@ export default function JsaHomeScreen() {
         const mm = String(now.getMonth() + 1).padStart(2, '0');
         const dd = String(now.getDate()).padStart(2, '0');
         const localDate = `${yyyy}-${mm}-${dd}`;
-        const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${driverHash}_${localDate}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
-        const resp = await fetch(url);
+        const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${driverHash}_${localDate}`;
+        const { authenticatedGovernedFirestoreFetch } = await import('../../services/sso/jsaGovernedHistoryLookupLive');
+        const resp = await authenticatedGovernedFirestoreFetch(url);
         const docOk = resp.ok;
         let serverShiftId: string | null = null;
         let explicitlyEnded = false;
@@ -512,8 +514,8 @@ export default function JsaHomeScreen() {
 
         const { resolveCachedShift } = await import('../../services/shiftStaleness');
         const verdict = await resolveCachedShift(existing, localDate, async (shiftDate) => {
-          const originUrl = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${driverHash}_${shiftDate}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
-          const originResp = await fetch(originUrl);
+          const originUrl = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${driverHash}_${shiftDate}`;
+          const originResp = await authenticatedGovernedFirestoreFetch(originUrl);
           if (!originResp.ok) return { readable: false };
           const originDoc = await originResp.json();
           const raw = originDoc?.fields?.currentShiftId?.stringValue;
@@ -685,7 +687,6 @@ export default function JsaHomeScreen() {
     // shift boundaries when WB JSA is launched without a fresh SSO.
     await refreshShiftIdFromServer();
     const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
-    const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
 
     // Detect SSO shift mode by direct AsyncStorage check (don't go through
     // getJsaScope which collapses the distinction).
@@ -718,7 +719,8 @@ export default function JsaHomeScreen() {
         };
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10000);
-        const queryResp = await fetch(`${FIRESTORE_BASE}:runQuery?key=${API_KEY}`, {
+        const { authenticatedGovernedFirestoreFetch } = await import('../../services/sso/jsaGovernedHistoryLookupLive');
+        const queryResp = await authenticatedGovernedFirestoreFetch(`${FIRESTORE_BASE}:runQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(queryBody),
@@ -750,8 +752,9 @@ export default function JsaHomeScreen() {
         const docId = `${session.driverId}_${dateScope}`;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10000);
-        const resp = await fetch(
-          `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`,
+        const { authenticatedGovernedFirestoreFetch } = await import('../../services/sso/jsaGovernedHistoryLookupLive');
+        const resp = await authenticatedGovernedFirestoreFetch(
+          `${FIRESTORE_BASE}/jsa_day_status/${docId}`,
           { signal: controller.signal },
         );
         clearTimeout(timer);
@@ -1136,7 +1139,11 @@ export default function JsaHomeScreen() {
       if (Array.isArray(list) && list.length > 0) {
         match = list.find((s: any) => {
           const sShift = typeof s?.shiftId === 'string' ? s.shiftId : '';
-          if (isShiftMode) return sShift === shiftId;
+          if (isShiftMode) {
+            return sShift === shiftId
+              && s?.driverId === session?.driverId
+              && s?.companyId === session?.companyId;
+          }
           // Standalone: legacy date matching.
           const d = typeof s?.date === 'string' ? s.date : '';
           return d === today;
@@ -1146,6 +1153,7 @@ export default function JsaHomeScreen() {
       if (match) {
         console.log(`[JSA-current-shift] loadTodaysSave hit=local id=${match.id} shiftId=${match.shiftId || '(none)'}`);
         setTodaysJsaSave(match);
+        setHistoryLookup('found');
         return;
       }
 
@@ -1157,56 +1165,26 @@ export default function JsaHomeScreen() {
       if (!isShiftMode) {
         console.log('[JSA-current-shift] loadTodaysSave miss=local mode=standalone');
         setTodaysJsaSave(null);
+        setHistoryLookup(isSsoMode ? 'unavailable' : 'authoritative_none');
         return;
       }
 
       if (!session) {
         setTodaysJsaSave(null);
+        setHistoryLookup('unavailable');
         return;
       }
-      const { governedHistoricalQuery } = await import('../../services/sso/jsaHistoricalLookupContract');
-      const historicalIdentity = governedHistoricalQuery(session);
-      if (!historicalIdentity) { setTodaysJsaSave(null); return; }
-
-      const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
-      const BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
-      const queryBody = {
-        structuredQuery: {
-          from: [{ collectionId: 'jsas' }],
-          where: {
-            compositeFilter: {
-              op: 'AND',
-              filters: [
-                { fieldFilter: { field: { fieldPath: historicalIdentity.field }, op: 'EQUAL', value: { stringValue: historicalIdentity.value } } },
-                { fieldFilter: { field: { fieldPath: 'companyId' }, op: 'EQUAL', value: { stringValue: session.companyId } } },
-                { fieldFilter: { field: { fieldPath: 'shiftId' }, op: 'EQUAL', value: { stringValue: shiftId } } },
-              ],
-            },
-          },
-          limit: 10,
-        },
-      };
-      const resp = await fetch(`${BASE}:runQuery?key=${API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(queryBody),
-      });
-      if (!resp.ok) { setTodaysJsaSave(null); return; }
-      const arr: any[] = await resp.json();
-      // Newest by createdAt — convert to a save-shaped synthetic.
-      let best: any = null;
-      let bestTs = '';
-      for (const r of arr) {
-        if (!r.document) continue;
-        const f = r.document.fields || {};
-        const ts = f.createdAt?.timestampValue || f.timestamp?.stringValue || '';
-        if (ts > bestTs) { best = r.document; bestTs = ts; }
-      }
-      if (!best) {
-        console.log(`[JSA-current-shift] loadTodaysSave miss=both shiftId=${shiftId} — no submitted JSA on server`);
+      setHistoryLookup('checking');
+      const { lookupCurrentGovernedShiftHistory } = await import('../../services/sso/jsaGovernedHistoryLookupLive');
+      const lookup = await lookupCurrentGovernedShiftHistory(shiftId!);
+      if (lookup.kind !== 'found') {
+        setHistoryLookup(lookup.kind);
         setTodaysJsaSave(null);
         return;
       }
+      setHistoryLookup('found');
+      const best: any = (lookup.record as any)?.document;
+      if (!best?.fields) { setHistoryLookup('unavailable'); setTodaysJsaSave(null); return; }
 
       const f = best.fields || {};
       const ppeRaw = f.ppeSelected?.stringValue || '{}';
@@ -1255,9 +1233,10 @@ export default function JsaHomeScreen() {
       setTodaysJsaSave(synthetic);
     } catch (err) {
       console.warn('[JSA] loadTodaysSave failed:', err);
+      setHistoryLookup('unavailable');
       setTodaysJsaSave(null);
     }
-  }, [refreshShiftIdFromServer]);
+  }, [refreshShiftIdFromServer, session, isSsoMode]);
   useEffect(() => { loadTodaysSave(); }, [loadTodaysSave]);
   useFocusEffect(useCallback(() => { loadTodaysSave(); }, [loadTodaysSave]));
   useEffect(() => {
@@ -1266,6 +1245,10 @@ export default function JsaHomeScreen() {
     });
     return () => sub.remove();
   }, [loadTodaysSave]);
+
+  const historyBlocksNewJsa = isSsoMode
+    && historyLookup !== 'found'
+    && historyLookup !== 'authoritative_none';
 
   // Auto-route to today's submitted JSA on app open. Rule: 1 JSA per day —
   // if it's already submitted, opening the app should drop the driver into
@@ -1324,6 +1307,7 @@ export default function JsaHomeScreen() {
 
     (async () => {
       try {
+        if (historyBlocksNewJsa) return;
         // Pending deep-link autofill or resume? Let those flows route.
         const autofill = await AsyncStorage.getItem('jsa_autofill');
         if (autofill) {
@@ -1385,7 +1369,7 @@ export default function JsaHomeScreen() {
         console.warn('[JSA][auto-route] check failed:', err);
       }
     })();
-  }, [hydrationDone, todaysJsaSave, openTodaysJsa, isSsoMode, shiftVerdict, verifiedShiftId]);
+  }, [hydrationDone, todaysJsaSave, openTodaysJsa, isSsoMode, shiftVerdict, verifiedShiftId, historyBlocksNewJsa]);
 
   // Debug: log the open-mode decision on every state change that affects it.
   // Field-test signal for proving how WB JSA resolved the driver's situation:
@@ -2119,6 +2103,20 @@ export default function JsaHomeScreen() {
           />
         )}
 
+        {workflowIsolation.mountForm && historyBlocksNewJsa && (
+          <View style={[styles.card, { borderColor: '#B45309', borderWidth: 1 }]}>
+            <Text style={styles.cardTitle}>JSA status could not be verified</Text>
+            <Text style={styles.cardSubtitle}>
+              {historyLookup === 'backend_required'
+                ? 'Older JSA records require secure server verification before another JSA can be started.'
+                : 'WellBuilt could not securely verify this shift. Retry when service is available.'}
+            </Text>
+            <TouchableOpacity style={[styles.button, { backgroundColor: accent }]} onPress={() => void loadTodaysSave()}>
+              <Text style={styles.buttonText}>Retry secure check</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {workflowIsolation.mountForm && authoritySurface !== 'unverified_gate' && todaysJsaSave && activeJsas.length === 0 && (() => {
           // vc51.9B: "Current" wording ONLY for a verified open matching
           // period; anything else is honestly labeled a previous JSA
@@ -2333,7 +2331,7 @@ export default function JsaHomeScreen() {
             button drops them into the same /steps → /ppe → /signoff flow
             standalone uses, but with empty params (wells/locations come
             from jsa_day_status stamps written by WB T at job-close). */}
-        {workflowIsolation.mountForm && isSsoMode && mayLabelActive && !jsaCompletedToday && (
+        {workflowIsolation.mountForm && !historyBlocksNewJsa && isSsoMode && mayLabelActive && !jsaCompletedToday && (
           <View style={[styles.card, { borderColor: accent, borderWidth: 1 }]}>
             <Text style={styles.cardTitle}>{t("Read & Acknowledge JSA")}</Text>
             <Text style={styles.cardSubtitle}>

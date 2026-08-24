@@ -586,9 +586,11 @@ export interface UnauthRecoveryDeps {
   currentGeneration(): Promise<string | null>;
   clearIfGeneration(generation: string): Promise<void>;
   reconcileAuth(): Promise<void>;
+  stillCurrent?(): boolean;
+  recoveryOwnerKey?: string;
 }
 
-let recoveryFlight: Promise<UnauthRecoveryOutcome> | null = null;
+let recoveryFlight: { ownerKey: string; promise: Promise<UnauthRecoveryOutcome> } | null = null;
 
 export function resetGovernedAuthRecoveryForTests(): void {
   recoveryFlight = null;
@@ -601,18 +603,25 @@ export function resetGovernedAuthRecoveryForTests(): void {
 export async function beginUnauthenticatedRecovery(
   deps: UnauthRecoveryDeps,
 ): Promise<UnauthRecoveryOutcome> {
-  if (recoveryFlight) return recoveryFlight;
-  recoveryFlight = runBeginRecovery(deps).finally(() => {
-    recoveryFlight = null;
+  const ownerKey = deps.recoveryOwnerKey ?? 'legacy-shared-owner';
+  if (recoveryFlight) {
+    return recoveryFlight.ownerKey === ownerKey ? recoveryFlight.promise : 'fail_closed';
+  }
+  const promise = runBeginRecovery(deps).finally(() => {
+    if (recoveryFlight?.promise === promise) recoveryFlight = null;
   });
-  return recoveryFlight;
+  recoveryFlight = { ownerKey, promise };
+  return promise;
 }
 
 async function runBeginRecovery(
   deps: UnauthRecoveryDeps,
 ): Promise<'recover' | 'join' | 'fail_closed'> {
+  const current = () => !deps.stillCurrent || deps.stillCurrent();
+  if (!current()) return 'fail_closed';
   const now = deps.nowMs();
   const latch = await deps.loadLatch();
+  if (!current()) return 'fail_closed';
   const action = decideUnauthenticatedRecoveryAction({
     exactUnauthenticated: true,
     latch,
@@ -623,14 +632,19 @@ async function runBeginRecovery(
   if (action === 'fail_closed') return 'fail_closed';
   if (action === 'exhaust') {
     if (latch) {
+      if (!current()) return 'fail_closed';
       await deps.saveLatch({ ...latch, phase: 'exhausted', usedAtMs: now });
     }
     return 'fail_closed';
   }
   let attempt = await deps.loadAttempt();
+  if (!current()) return 'fail_closed';
   if (!attempt || attempt.consumed) {
+    if (!current()) return 'fail_closed';
     attempt = await deps.mintAttempt();
+    if (!current()) return 'fail_closed';
   }
+  if (!current()) return 'fail_closed';
   await deps.saveLatch({
     state: attempt.state,
     createdAtMs: attempt.createdAtMs,
@@ -639,9 +653,12 @@ async function runBeginRecovery(
     failedGeneration: deps.usedGeneration,
     retryGeneration: null,
   });
+  if (!current()) return 'fail_closed';
   if (deps.usedGeneration) {
+    if (!current()) return 'fail_closed';
     await deps.clearIfGeneration(deps.usedGeneration);
   }
+  if (!current()) return 'fail_closed';
   await deps.reconcileAuth();
   return 'recover';
 }
