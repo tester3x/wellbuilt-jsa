@@ -561,7 +561,7 @@ check('receipt write is server complete, not client-invented',
   {
     const { deps, spy } = lifecycleDeps({
       commitOwnedEffect: async () => ({ applied: false }), // never runs effect
-      consumeRecoveryLatch: async () => { spy.marked.push('latch'); },
+      consumeRecoveryLatch: async () => { spy.marked.push('latch'); return 'applied'; },
     });
     const out = await obtainAuthoritativeContext(deps);
     check('not-applied success commit: save+latch+clear all skipped',

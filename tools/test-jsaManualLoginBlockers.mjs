@@ -395,6 +395,7 @@ check('live recovery persistence checks ownership at each storage mutation',
   let attached = 0;
   const flight = attachRetryGenerationForCurrentOwner({
     stillCurrent: () => current,
+    loadLatch: async () => ({ state: 'attempt-A', createdAtMs: 1, usedAtMs: 1, phase: 'recovering', failedGeneration: 'GA', retryGeneration: null }),
     loadAttempt: async () => heldAttempt,
     generation: 'GB',
     attach: async () => { attached++; return true; },
@@ -402,7 +403,7 @@ check('live recovery persistence checks ownership at each storage mutation',
   current = false;
   releaseAttempt({ state: 'attempt-A', createdAtMs: 1, consumed: false });
   check('supersede immediately before post-install latch attachment prevents mutation',
-    await flight === false && attached === 0);
+    await flight === 'owner_superseded' && attached === 0);
 }
 
 {
@@ -419,6 +420,7 @@ check('live recovery persistence checks ownership at each storage mutation',
   });
   const queued = attachRetryGenerationForCurrentOwner({
     stillCurrent: () => current,
+    loadLatch: async () => state.latch,
     loadAttempt: async () => ({ state: 'newer-B', createdAtMs: 2, consumed: false }),
     generation: 'GB',
     attach: (expected, generation, ownerCurrent) =>
@@ -426,7 +428,7 @@ check('live recovery persistence checks ownership at each storage mutation',
   });
   current = false; releaseLoad();
   check('supersede while latch write is queued preserves newer owner state',
-    await queued === false && state.writes === 0 && state.latch.state === 'newer-B'
+    await queued === 'owner_superseded' && state.writes === 0 && state.latch.state === 'newer-B'
       && state.session === 'GB' && state.firebase === 'uB');
 }
 
@@ -444,13 +446,14 @@ check('live recovery persistence checks ownership at each storage mutation',
   });
   const consume = consumeRecoveryLatchForCurrentOwner({
     stillCurrent: () => current,
+    loadLatch: async () => state.latch,
     loadAttempt: async () => ({ state: 'newer-B', createdAtMs: 2, consumed: false }),
     sessionGeneration: 'GB', nowMs: () => 2,
     consume: (input, ownerCurrent) => mutator.consumeIfMatching(input, ownerCurrent),
   });
   current = false; releaseLoad();
   check('supersede before latch consumption preserves newer attempt latch session and Firebase identity',
-    await consume === false && state.clears === 0 && state.latch.state === 'newer-B'
+    await consume === 'owner_superseded' && state.clears === 0 && state.latch.state === 'newer-B'
       && state.session === 'GB' && state.firebase === 'uB');
 }
 

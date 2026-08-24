@@ -482,9 +482,15 @@ export function createSerializedLatchMutator(io: {
         return true;
       });
     },
-    exhaustIfMatching(expected: { state: string; createdAtMs: number }, nowMs: number) {
+    exhaustIfMatching(
+      expected: { state: string; createdAtMs: number },
+      nowMs: number,
+      stillCurrent: () => boolean = () => true,
+    ) {
       return enqueue(async () => {
+        if (!stillCurrent()) return false;
         const current = await io.load();
+        if (!stillCurrent()) return false;
         if (
           !current
           || current.state !== expected.state
@@ -492,6 +498,7 @@ export function createSerializedLatchMutator(io: {
         ) {
           return false;
         }
+        if (!stillCurrent()) return false;
         await io.save({ ...current, phase: 'exhausted', usedAtMs: nowMs });
         return true;
       });
@@ -717,28 +724,67 @@ export async function consumeRecoveryLatchOnSuccess(deps: {
 export async function attachRetryGenerationForCurrentOwner(deps: {
   stillCurrent(): boolean;
   loadAttempt(): Promise<AuthAttemptIdentity | null>;
+  loadLatch(): Promise<AuthRecoveryLatch | null>;
   generation: string;
   attach(
     expected: { state: string; createdAtMs: number },
     generation: string,
     stillCurrent: () => boolean,
   ): Promise<boolean>;
-}): Promise<boolean> {
-  if (!deps.stillCurrent()) return false;
-  const attempt = await deps.loadAttempt();
-  if (!deps.stillCurrent()) return false;
-  if (!attempt) return true;
-  const attached = await deps.attach(
-    { state: attempt.state, createdAtMs: attempt.createdAtMs },
-    deps.generation,
-    deps.stillCurrent,
-  );
-  return deps.stillCurrent() && attached;
+}): Promise<RecoveryLatchOutcome> {
+  if (!deps.stillCurrent()) return 'owner_superseded';
+  try {
+    const latch = await deps.loadLatch();
+    if (!deps.stillCurrent()) return 'owner_superseded';
+    if (!latch) return 'not_applicable';
+    const attempt = await deps.loadAttempt();
+    if (!deps.stillCurrent()) return 'owner_superseded';
+    if (!attempt || latch.state !== attempt.state || latch.createdAtMs !== attempt.createdAtMs) {
+      return 'active_latch_mismatch';
+    }
+    if (latch.retryGeneration && latch.retryGeneration !== deps.generation) {
+      return 'active_latch_mismatch';
+    }
+    const attached = await deps.attach(
+      { state: attempt.state, createdAtMs: attempt.createdAtMs },
+      deps.generation,
+      deps.stillCurrent,
+    );
+    if (!deps.stillCurrent()) return 'owner_superseded';
+    return attached ? 'applied' : 'active_latch_mismatch';
+  } catch {
+    return deps.stillCurrent() ? 'storage_failure' : 'owner_superseded';
+  }
+}
+
+export type RecoveryLatchOutcome =
+  | 'not_applicable'
+  | 'applied'
+  | 'owner_superseded'
+  | 'active_latch_mismatch'
+  | 'storage_failure';
+
+export async function finalizeGovernedInstallation(deps: {
+  stillCurrent(): boolean;
+  attachRecovery(): Promise<RecoveryLatchOutcome>;
+  verifyExactIdentity(): Promise<boolean>;
+  publishReady(): void;
+}): Promise<RecoveryLatchOutcome | 'identity_mismatch'> {
+  if (!deps.stillCurrent()) return 'owner_superseded';
+  const latchOutcome = await deps.attachRecovery();
+  if (latchOutcome !== 'not_applicable' && latchOutcome !== 'applied') return latchOutcome;
+  if (!deps.stillCurrent()) return 'owner_superseded';
+  const exact = await deps.verifyExactIdentity();
+  if (!deps.stillCurrent()) return 'owner_superseded';
+  if (!exact) return 'identity_mismatch';
+  deps.publishReady();
+  return latchOutcome;
 }
 
 export async function consumeRecoveryLatchForCurrentOwner(deps: {
   stillCurrent(): boolean;
   loadAttempt(): Promise<AuthAttemptIdentity | null>;
+  loadLatch(): Promise<AuthRecoveryLatch | null>;
   sessionGeneration: string;
   consume(
     input: {
@@ -750,14 +796,27 @@ export async function consumeRecoveryLatchForCurrentOwner(deps: {
     stillCurrent: () => boolean,
   ): Promise<boolean>;
   nowMs(): number;
-}): Promise<boolean> {
-  if (!deps.stillCurrent()) return false;
-  const attempt = await deps.loadAttempt();
-  if (!deps.stillCurrent()) return false;
-  return deps.consume({
-    nowMs: deps.nowMs(),
-    sessionGeneration: deps.sessionGeneration,
-    attemptState: attempt?.state ?? null,
-    attemptCreatedAtMs: attempt?.createdAtMs ?? null,
-  }, deps.stillCurrent);
+}): Promise<RecoveryLatchOutcome> {
+  if (!deps.stillCurrent()) return 'owner_superseded';
+  try {
+    const latch = await deps.loadLatch();
+    if (!deps.stillCurrent()) return 'owner_superseded';
+    if (!latch) return 'not_applicable';
+    const attempt = await deps.loadAttempt();
+    if (!deps.stillCurrent()) return 'owner_superseded';
+    if (!attempt || latch.state !== attempt.state || latch.createdAtMs !== attempt.createdAtMs) {
+      return 'active_latch_mismatch';
+    }
+    if (latch.retryGeneration !== deps.sessionGeneration) return 'active_latch_mismatch';
+    const consumed = await deps.consume({
+      nowMs: deps.nowMs(),
+      sessionGeneration: deps.sessionGeneration,
+      attemptState: attempt.state,
+      attemptCreatedAtMs: attempt.createdAtMs,
+    }, deps.stillCurrent);
+    if (!deps.stillCurrent()) return 'owner_superseded';
+    return consumed ? 'applied' : 'active_latch_mismatch';
+  } catch {
+    return deps.stillCurrent() ? 'storage_failure' : 'owner_superseded';
+  }
 }

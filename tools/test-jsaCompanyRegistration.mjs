@@ -89,8 +89,8 @@ const frozen = {
   'services/sso/jsaArtifactCallables.ts': '127f909e5d7b38a5b830152c2d66f0e1919dfa9adc132a92bef05e1cdbbb8a32',
   'services/sso/jsaArtifactSnapshot.ts': '86132e9d0ce5e5cfee23e3061dc1e1ff6e5fe4338e2769ce3b4c60b1804872f6',
   'services/sso/jsaRequestCallables.ts': '4dd637a900d74f653272402d8cbd7836d34ebf386bfc2cee1d158a9360fb542c',
-  'services/sso/jsaRequestLifecycle.ts': 'd140338069b96c5e251573604ffec6bd20f06c844300522db4eedb6a7d7473b5',
-  'tools/test-jsaRequestLifecycle.mjs': '324edb75d6ff8c9747183946e3c2e7f46b32dceb19e0eb5f0374da80d6885d27',
+  'services/sso/jsaRequestLifecycle.ts': '04978ae1fa34510c6a92a917e6c6d0fee71203fd0cf49795ae429df887042e02',
+  'tools/test-jsaRequestLifecycle.mjs': '02cbcfcb585a01cb6f5267ca7685232c078e691c8c70352e35a24c6cef05e630',
 };
 for (const [rel, want] of Object.entries(frozen)) {
   check(`protected ${rel} freeze hash`, sha256(rel) === want, sha256(rel));

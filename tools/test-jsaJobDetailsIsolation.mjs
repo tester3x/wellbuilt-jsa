@@ -267,7 +267,7 @@ check('index does not introduce a Login fallback on the isolated surface',
   indexSrc.includes('GovernedIsolationSurface')
   && !indexSrc.includes('LoginScreen'));
 check('index loader catch stays unresolved',
-  /catch \{[\s\S]{0,80}unresolvedJobDetailsIsolation/.test(indexSrc));
+  /catch (?:\([^)]*\) )?\{[\s\S]{0,160}unresolvedJobDetailsIsolation/.test(indexSrc));
 
 const stepsSrc = readFileSync(join(root, 'app/steps.tsx'), 'utf8');
 check('/steps has a route-level isolation guard that holds content until allowed',

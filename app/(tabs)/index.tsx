@@ -49,7 +49,7 @@ import {
   type ShiftSurface,
 } from "../../services/shiftAuthority";
 import {
-  persistShiftAuthorityDecision,
+  persistShiftAuthorityDecisionIfOwned,
   isCurrentShiftVerified,
   readGovernedReturnTarget,
 } from "../../services/shiftAuthorityStore";
@@ -72,6 +72,7 @@ import {
 } from "../../services/sso/jsaGovernedJobFields";
 import { terminalFailureMatches } from "../../services/sso/jsaGovernedAuth";
 import { awaitCurrentHistoryOwner, createHistoryLookupOwnership } from "../../services/sso/jsaHistoryLookupOwnership";
+import { commitOwnedShiftRefresh, createShiftRefreshOwnership } from "../../services/sso/jsaShiftRefreshOwnership";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -352,27 +353,52 @@ export default function JsaHomeScreen() {
   // event. Date is LOCAL (matches WB S shiftTracking.dateString — UTC
   // would skew across midnight). In-flight cache prevents triple-fetch
   // when the three loaders all fire on the same launch.
-  const refreshShiftIdInFlight = useRef<Promise<string | null> | null>(null);
+  const shiftRefreshOwnershipRef = useRef(createShiftRefreshOwnership());
   // vc51.9B: the TYPED verdict from the last refresh — auto-navigation and
   // the "Current" banner label consume it; 'unverified' never presents a
   // record as current (cached state is a hint, never authority).
   const [shiftVerdict, setShiftVerdict] = useState<ShiftVerdictKind>('none');
   const [verifiedShiftId, setVerifiedShiftId] = useState<string | null>(null);
-  const refreshShiftIdFromServer = React.useCallback(async (): Promise<string | null> => {
-    if (refreshShiftIdInFlight.current) return refreshShiftIdInFlight.current;
+  const refreshShiftIdFromServer = React.useCallback(async (
+    caller?: { historyRequestSequence: number; stillCurrent(): boolean },
+  ): Promise<string | null> => {
+    const refreshOwnership = shiftRefreshOwnershipRef.current;
+    const refreshSequence = refreshOwnership.reserve();
     const work = (async (): Promise<string | null> => {
-      const driverHash = session?.driverId || null;
+      const { strictLoadGovernedSession } = await import('../../services/sso/jsaRuntime');
+      const governedOwner = await strictLoadGovernedSession();
+      if (!refreshOwnership.isSequenceCurrent(refreshSequence)) throw new Error('shift_refresh_superseded');
       const existing = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+      const refreshOwner = refreshOwnership.bind(refreshSequence, {
+        sessionGeneration: governedOwner?.generation ?? null,
+        uid: governedOwner?.uid ?? null,
+        driverId: governedOwner?.driverId ?? null,
+        companyId: governedOwner?.companyId ?? null,
+        expectedShiftId: existing,
+        historyRequestSequence: caller?.historyRequestSequence ?? null,
+      });
+      const owned = () => !!refreshOwner && refreshOwnership.isCurrent(refreshOwner)
+        && (!caller || caller.stillCurrent())
+        && (governedOwner
+          ? governedOwner.uid === session?.uid
+            && governedOwner.driverId === session?.driverId
+            && governedOwner.companyId === session?.companyId
+          : !session);
+      if (!owned()) throw new Error('shift_refresh_superseded');
+      const driverHash = governedOwner?.driverId || null;
       const pendingCtx = await loadReadRequestContext().catch(() => null);
+      if (!owned()) throw new Error('shift_refresh_superseded');
       const returnTo = await AsyncStorage.getItem('jsa_returnTo').catch(() => null);
+      if (!owned()) throw new Error('shift_refresh_superseded');
       const governedFlag = await readGovernedReturnTarget();
+      if (!owned()) throw new Error('shift_refresh_superseded');
       const isGovernedLaunch =
         !!pendingCtx ||
         !!governedFlag ||
         returnTo === 'wbt' ||
         returnTo === 'wbs' ||
         returnTo === 'wellbuilt-suite';
-      if (governedFlag) setReturnTarget(governedFlag);
+      if (governedFlag && owned()) setReturnTarget(governedFlag);
 
       const applyDecision = async (
         today: Parameters<typeof decideShiftAuthority>[0]['today'],
@@ -382,7 +408,7 @@ export default function JsaHomeScreen() {
         const decision = decideShiftAuthority({
           isAuthenticated: !!driverHash,
           authenticatedDriverId: driverHash,
-          authenticatedCompanyId: session?.companyId || null,
+          authenticatedCompanyId: governedOwner?.companyId || null,
           cachedShiftId: existing,
           today,
           originVerdict,
@@ -396,16 +422,28 @@ export default function JsaHomeScreen() {
               }
             : null,
         });
-        await persistShiftAuthorityDecision(decision);
-        setMayLabelActive(decision.mayLabelActive);
-        setAuthoritySurface(decision.surface);
+        const authorityCommitted = await commitOwnedShiftRefresh(owned, [
+          async () => {
+            if (!(await persistShiftAuthorityDecisionIfOwned(decision, owned))) {
+              throw new Error('shift_refresh_superseded');
+            }
+          },
+          () => setMayLabelActive(decision.mayLabelActive),
+          () => setAuthoritySurface(decision.surface),
+        ]);
+        if (!authorityCommitted) throw new Error('shift_refresh_superseded');
         try {
           const { loadLaunchContext, loadGovernedTerminalFailure, loadRequestContext } = await import('../../services/sso/jsaRuntime');
           const { loadUsableGovernedSession } = await import('../../services/sso/jsaGovernedAuthLive');
+          if (!owned()) throw new Error('shift_refresh_superseded');
           const launch = await loadLaunchContext();
+          if (!owned()) throw new Error('shift_refresh_superseded');
           const usable = await loadUsableGovernedSession();
+          if (!owned()) throw new Error('shift_refresh_superseded');
           const marker = await loadGovernedTerminalFailure();
+          if (!owned()) throw new Error('shift_refresh_superseded');
           const ctx = await loadRequestContext();
+          if (!owned()) throw new Error('shift_refresh_superseded');
           const match = authoritativeContextMatchesLaunch({
             launchRequestId: launch?.requestId,
             contextRequestId: ctx?.requestId,
@@ -416,9 +454,11 @@ export default function JsaHomeScreen() {
             context: ctx,
             explicitFailure: failed,
           });
+          if (!owned()) throw new Error('shift_refresh_superseded');
           setGovernedJobPopulate(job);
           const jobFailed = job.kind === 'fail_closed'
             && (job.reason !== 'no_context' || !!usable);
+          if (!owned()) throw new Error('shift_refresh_superseded');
           setWorkflowIsolation(decideJobDetailsIsolation({
             resolved: true,
             authoritySurface: decision.surface,
@@ -429,20 +469,29 @@ export default function JsaHomeScreen() {
             authPending: !!launch && !usable && !failed,
           }));
           if (job.kind === 'populate') {
+            if (!owned()) throw new Error('shift_refresh_superseded');
             setAddedWells([{
               name: job.wellName,
               operator: '',
               county: '',
               ...(job.jobType ? { jobType: job.jobType } : {}),
             }]);
-            if (job.jobType) setJobActivityName(job.jobType);
+            if (job.jobType) {
+              if (!owned()) throw new Error('shift_refresh_superseded');
+              setJobActivityName(job.jobType);
+            }
           }
-        } catch {
+        } catch (error) {
+          if (!owned()) throw error;
           setWorkflowIsolation(unresolvedJobDetailsIsolation());
+          if (!owned()) throw new Error('shift_refresh_superseded');
           setGovernedJobPopulate({ kind: 'none', reason: 'unset' });
         }
-        setShiftVerdict(decision.mayLabelActive ? shiftVerdictKind : (decision.kind === 'stale_cached' ? 'verified_closed' : decision.kind === 'origin_day_unverified' || decision.kind === 'authority_unavailable' ? 'unverified' : 'none'));
-        setVerifiedShiftId(decision.mayLabelActive ? decision.activeShiftId : null);
+        const verdictCommitted = await commitOwnedShiftRefresh(owned, [
+          () => setShiftVerdict(decision.mayLabelActive ? shiftVerdictKind : (decision.kind === 'stale_cached' ? 'verified_closed' : decision.kind === 'origin_day_unverified' || decision.kind === 'authority_unavailable' ? 'unverified' : 'none')),
+          () => setVerifiedShiftId(decision.mayLabelActive ? decision.activeShiftId : null),
+        ]);
+        if (!verdictCommitted) throw new Error('shift_refresh_superseded');
         if (decision.surface === 'unverified_gate') {
           console.log('[JSA-shift-refresh] current shift unverified — fail closed');
         } else if (decision.mayLabelActive) {
@@ -469,12 +518,15 @@ export default function JsaHomeScreen() {
         const localDate = `${yyyy}-${mm}-${dd}`;
         const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${driverHash}_${localDate}`;
         const { authenticatedGovernedFirestoreFetch } = await import('../../services/sso/jsaGovernedHistoryLookupLive');
+        if (!owned()) throw new Error('shift_refresh_superseded');
         const resp = await authenticatedGovernedFirestoreFetch(url);
+        if (!owned()) throw new Error('shift_refresh_superseded');
         const docOk = resp.ok;
         let serverShiftId: string | null = null;
         let explicitlyEnded = false;
         if (docOk) {
           const doc = await resp.json();
+          if (!owned()) throw new Error('shift_refresh_superseded');
           const raw = doc?.fields?.currentShiftId?.stringValue;
           if (typeof raw === 'string') {
             if (raw.length > 0) serverShiftId = raw;
@@ -515,11 +567,15 @@ export default function JsaHomeScreen() {
         }
 
         const { resolveCachedShift } = await import('../../services/shiftStaleness');
+        if (!owned()) throw new Error('shift_refresh_superseded');
         const verdict = await resolveCachedShift(existing, localDate, async (shiftDate) => {
+          if (!owned()) return { readable: false };
           const originUrl = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/driver_shifts/${driverHash}_${shiftDate}`;
           const originResp = await authenticatedGovernedFirestoreFetch(originUrl);
+          if (!owned()) return { readable: false };
           if (!originResp.ok) return { readable: false };
           const originDoc = await originResp.json();
+          if (!owned()) return { readable: false };
           const raw = originDoc?.fields?.currentShiftId?.stringValue;
           return { readable: true, currentShiftId: typeof raw === 'string' ? raw : undefined };
         });
@@ -537,6 +593,7 @@ export default function JsaHomeScreen() {
           verdict.verdict as ShiftVerdictKind,
         );
       } catch (err) {
+        if (!owned()) throw err;
         console.warn('[JSA-shift-refresh] failed:', err);
         wbDiagLog({
           area: 'jsa',
@@ -552,8 +609,6 @@ export default function JsaHomeScreen() {
         );
       }
     })();
-    refreshShiftIdInFlight.current = work;
-    work.finally(() => { refreshShiftIdInFlight.current = null; });
     return work;
   }, [session?.driverId, session?.companyId]);
 
@@ -1160,7 +1215,10 @@ export default function JsaHomeScreen() {
       }
     };
     try {
-      await refreshShiftIdFromServer();
+      await refreshShiftIdFromServer({
+        historyRequestSequence: sequence,
+        stillCurrent: () => ownership.isSequenceCurrent(sequence),
+      });
       if (!stillLatest()) return;
       const { strictLoadGovernedSession } = await import('../../services/sso/jsaRuntime');
       if (!stillLatest()) return;
@@ -1292,7 +1350,11 @@ export default function JsaHomeScreen() {
   }, [refreshShiftIdFromServer, session, isSsoMode]);
   useEffect(() => {
     historyOwnershipRef.current.invalidate();
-    return () => historyOwnershipRef.current.invalidate();
+    shiftRefreshOwnershipRef.current.invalidate();
+    return () => {
+      historyOwnershipRef.current.invalidate();
+      shiftRefreshOwnershipRef.current.invalidate();
+    };
   }, [session?.uid, session?.driverId, session?.companyId, isSsoMode]);
   useEffect(() => { loadTodaysSave(); }, [loadTodaysSave]);
   useFocusEffect(useCallback(() => { loadTodaysSave(); }, [loadTodaysSave]));

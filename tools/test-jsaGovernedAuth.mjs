@@ -885,13 +885,14 @@ check('jsaCompleteReadRequest has no new reauthorization / signIn',
       return beginUnauthenticatedRecovery(recov);
     },
     consumeRecoveryLatch: async (session) => {
-      await consumeRecoveryLatchOnSuccess({
+      const consumed = await consumeRecoveryLatchOnSuccess({
         nowMs: () => 10_000,
         loadLatch: async () => store.latch,
         clearLatch: async () => { store.latch = null; },
         sessionGeneration: sessionGenerationOf(session),
         attemptState: store.attempt?.state ?? null,
       });
+      return consumed ? 'applied' : 'not_applicable';
     },
     get: async () => {
       store.wave += 1;

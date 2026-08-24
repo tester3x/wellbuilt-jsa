@@ -230,6 +230,14 @@ export async function loadAuthRecoveryLatch(): Promise<AuthRecoveryLatch | null>
   return loadAuthRecoveryLatchUnlocked();
 }
 
+export async function strictLoadAuthRecoveryLatch(): Promise<AuthRecoveryLatch | null> {
+  const raw = await AsyncStorage.getItem(AUTH_RECOVERY_LATCH_KEY);
+  if (raw === null) return null;
+  const parsed = parseAuthRecoveryLatch(JSON.parse(raw));
+  if (!parsed) throw new Error('recovery_latch_unreadable');
+  return parsed;
+}
+
 export async function clearAuthRecoveryLatch(): Promise<void> {
   await latchMutator.clear();
 }

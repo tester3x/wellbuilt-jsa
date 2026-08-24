@@ -49,6 +49,33 @@ export async function persistShiftAuthorityDecision(
   }
 }
 
+/** Exact-owner variant for network refreshes; every durable mutation rechecks ownership. */
+export async function persistShiftAuthorityDecisionIfOwned(
+  decision: ShiftAuthorityDecision,
+  stillCurrent: () => boolean,
+): Promise<boolean> {
+  const mutate = async (operation: () => Promise<void>) => {
+    if (!stillCurrent()) return false;
+    await operation();
+    return stillCurrent();
+  };
+  if (decision.currentCacheAction === 'keep_verified' && decision.activeShiftId) {
+    if (!(await mutate(() => AsyncStorage.setItem(CURRENT_SHIFT_ID_KEY, decision.activeShiftId!)))) return false;
+    if (decision.mayLabelActive) {
+      if (!(await mutate(() => AsyncStorage.setItem(CURRENT_SHIFT_VERIFIED_KEY, '1')))) return false;
+      if (!(await mutate(() => AsyncStorage.removeItem(GOVERNED_RETURN_KEY)))) return false;
+      if (!stillCurrent()) return false;
+      notifyShiftVerified();
+    } else if (!(await mutate(() => AsyncStorage.removeItem(CURRENT_SHIFT_VERIFIED_KEY)))) return false;
+    return stillCurrent();
+  }
+  if (decision.currentCacheAction === 'clear_current') {
+    if (!(await mutate(() => AsyncStorage.removeItem(CURRENT_SHIFT_ID_KEY)))) return false;
+    if (!(await mutate(() => AsyncStorage.removeItem(CURRENT_SHIFT_VERIFIED_KEY)))) return false;
+  }
+  return stillCurrent();
+}
+
 export async function isCurrentShiftVerified(): Promise<boolean> {
   try {
     return (await AsyncStorage.getItem(CURRENT_SHIFT_VERIFIED_KEY)) === '1';

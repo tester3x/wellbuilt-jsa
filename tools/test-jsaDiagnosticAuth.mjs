@@ -43,11 +43,11 @@ check('still fire-and-forget', /void submitDiagnostic/.test(diag));
 
 // Pins refreshed for the governed manual-login correction above approved source 964a311640c324752a63b6f2578bb20dfbbcde6a.
 const frozen = {
-  'services/sso/jsaGovernedAuthLive.ts': '820b43948ff0f55c465cddf780c00eb982c6874acace438474d0fae29567cbe3',
-  'services/sso/jsaGovernedAuth.ts': '5dc2db37ca96d03f6afa03e0c1a816b340c2d3a993422b32fa4bebe698500538',
+  'services/sso/jsaGovernedAuthLive.ts': '4a999c9caedd230b8e39137d412bc8cfdd4b4e80986a2b3052815fd4f34e777f',
+  'services/sso/jsaGovernedAuth.ts': '6e2e518180901cd3df1e6b4a52f67b20a59ae2614cfe1c050603da23c008d221',
   'services/sso/jsaArtifactCallables.ts': '127f909e5d7b38a5b830152c2d66f0e1919dfa9adc132a92bef05e1cdbbb8a32',
   'services/sso/jsaRequestCallables.ts': '4dd637a900d74f653272402d8cbd7836d34ebf386bfc2cee1d158a9360fb542c',
-  'services/sso/jsaRequestLifecycle.ts': 'd140338069b96c5e251573604ffec6bd20f06c844300522db4eedb6a7d7473b5',
+  'services/sso/jsaRequestLifecycle.ts': '04978ae1fa34510c6a92a917e6c6d0fee71203fd0cf49795ae429df887042e02',
   'app/contexts/AuthContext.tsx': 'f0ab90851482f35ebc471c43d572b028dd03164489b17cb0d698f32c1ddf3054',
 };
 for (const [rel, want] of Object.entries(frozen)) {

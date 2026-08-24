@@ -603,7 +603,9 @@ export interface GovernedEntryDeps {
    * run one-shot recovery. Missing hook → fail-closed (no new complete recovery).
    */
   beginUnauthenticatedRecovery?(session: unknown): Promise<'recover' | 'join' | 'fail_closed'>;
-  consumeRecoveryLatch?(session: unknown): Promise<void>;
+  consumeRecoveryLatch?(session: unknown): Promise<
+    'not_applicable' | 'applied' | 'owner_superseded' | 'active_latch_mismatch' | 'storage_failure'
+  >;
   markTerminalFailure?(requestId: string): Promise<void>;
   clearTerminalFailure?(requestId: string): Promise<void>;
   awaitAuthReady?(): Promise<void>;
@@ -700,13 +702,18 @@ export async function obtainAuthoritativeContext(deps: GovernedEntryDeps): Promi
   // ONE success transaction: context persistence + matching latch
   // consumption + matching terminal clear — another launch cannot adopt
   // between these related effects.
+  let latchOutcome: Awaited<ReturnType<NonNullable<GovernedEntryDeps['consumeRecoveryLatch']>>> = 'not_applicable';
   const committed = await commit(async () => {
+    if (deps.consumeRecoveryLatch) latchOutcome = await deps.consumeRecoveryLatch(session);
+    if (latchOutcome !== 'not_applicable' && latchOutcome !== 'applied') return;
     await deps.saveContext(got.view);
-    if (deps.consumeRecoveryLatch) await deps.consumeRecoveryLatch(session);
     if (deps.clearTerminalFailure) await deps.clearTerminalFailure(launch.requestId);
   });
   if (!committed.applied) {
     return { kind: 'fail_closed', refusal: 'not_found', copy: failClosedCopy('not_found') };
+  }
+  if (latchOutcome !== 'not_applicable' && latchOutcome !== 'applied') {
+    return { kind: 'fail_closed', refusal: 'binding_mismatch', copy: failClosedCopy('binding_mismatch') };
   }
   const decided = decideAfterGet(got.view);
   return { kind: 'ready', ...decided, view: got.view };
