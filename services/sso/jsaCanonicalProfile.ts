@@ -3,7 +3,8 @@ import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { awaitGovernedAuthReady, getGovernedAuth } from './jsaGovernedAuthLive';
 import { loadGovernedSession } from './jsaRuntime';
-import { serializeBoundLogoutBaseline } from './jsaLogoutWatcherContract';
+import { parseBoundLogoutBaseline, serializeBoundLogoutBaseline } from './jsaLogoutWatcherContract';
+import type { ManualInstallationOwner } from './jsaManualLogin';
 import { parseCanonicalProfile, type JsaCanonicalProfile } from './jsaIdentityContract';
 
 export const CANONICAL_LOGOUT_BASELINE_KEY = 'jsa_lastCanonicalLogoutAt';
@@ -26,7 +27,8 @@ export async function seedCanonicalLogoutBaseline(): Promise<void> {
   const uid = getGovernedAuth().currentUser?.uid;
   if (!profile || !session || !uid || uid !== session.uid) throw new Error('canonical_baseline_binding_failed');
   await SecureStore.setItemAsync(CANONICAL_LOGOUT_BASELINE_KEY, serializeBoundLogoutBaseline({
-    uid, driverId: session.driverId, companyId: session.companyId, value: profile.logoutAt,
+    uid, driverId: session.driverId, companyId: session.companyId,
+    generation: session.generation, value: profile.logoutAt,
   }));
 }
 
@@ -41,4 +43,13 @@ export async function updateCanonicalGovernedProfile(profile: Record<string, unk
 
 export async function clearCanonicalIdentityState(): Promise<void> {
   await SecureStore.deleteItemAsync(CANONICAL_LOGOUT_BASELINE_KEY);
+}
+
+/** Delete only the baseline bound to the installation being rolled back. */
+export async function clearCanonicalIdentityStateIfOwned(owner: ManualInstallationOwner): Promise<boolean> {
+  const raw = await SecureStore.getItemAsync(CANONICAL_LOGOUT_BASELINE_KEY);
+  const baseline = parseBoundLogoutBaseline(raw, owner);
+  if (!baseline || baseline.generation !== owner.generation) return false;
+  await SecureStore.deleteItemAsync(CANONICAL_LOGOUT_BASELINE_KEY);
+  return await SecureStore.getItemAsync(CANONICAL_LOGOUT_BASELINE_KEY) === null;
 }

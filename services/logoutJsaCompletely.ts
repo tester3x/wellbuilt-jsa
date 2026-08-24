@@ -1,5 +1,9 @@
 import * as SecureStore from 'expo-secure-store';
-import { signOutGovernedAuth } from './sso/jsaGovernedAuthLive';
+import {
+  reserveGovernedIdentityEpoch,
+  runGovernedIdentityMutation,
+  signOutGovernedAuthWithinMutation,
+} from './sso/jsaGovernedAuthLive';
 import { stopGovernedLogoutWatcher } from './sso/jsaLogoutWatcherLive';
 import {
   clearCanonicalBaselineStrictly,
@@ -13,8 +17,9 @@ export const LOGOUT_VERIFICATION_FAILED_KEY = 'jsa_logoutVerificationFailed';
 
 export function logoutJsaCompletely(resetAuthContext?: () => void | Promise<void>): Promise<CompleteLogoutResult> {
   if (inFlight) return inFlight;
-  inFlight = runCompleteJsaLogout(createGuardedCompleteLogoutOps({
-    clearFirebaseAuth: signOutGovernedAuth,
+  reserveGovernedIdentityEpoch();
+  inFlight = runGovernedIdentityMutation(() => runCompleteJsaLogout(createGuardedCompleteLogoutOps({
+    clearFirebaseAuth: signOutGovernedAuthWithinMutation,
     clearLegacyDriverSession: clearLocalIdentityStrictly,
     clearGovernedState: async () => {
       stopGovernedLogoutWatcher();
@@ -22,7 +27,7 @@ export function logoutJsaCompletely(resetAuthContext?: () => void | Promise<void
     },
     clearCanonicalIdentityState: clearCanonicalBaselineStrictly,
     resetAuthContext: async () => { await resetAuthContext?.(); },
-  })).then(async (result) => {
+  }))).then(async (result) => {
     try {
       if (result.verified) {
         await SecureStore.deleteItemAsync(LOGOUT_VERIFICATION_FAILED_KEY);

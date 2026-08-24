@@ -89,14 +89,14 @@ export default function CompletedScreen() {
   React.useEffect(() => {
     (async () => {
       try {
-        const { getDriverSession } = await import('../services/driverAuth');
-        const session = await getDriverSession();
-        if (!session?.passcodeHash) return;
+        const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
+        const session = await loadGovernedSession();
+        if (!session?.driverId) return;
         // Prefer the current shiftId scope (matches WB T stamps + signoff
         // writes); fall back to today's UTC date for standalone mode.
         const shiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
         const scope = shiftId || new Date().toISOString().slice(0, 10);
-        const docId = `${session.passcodeHash}_${scope}`;
+        const docId = `${session.driverId}_${scope}`;
         const url = `https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents/jsa_day_status/${docId}?key=AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI`;
         const resp = await fetch(url);
         if (!resp.ok) return;

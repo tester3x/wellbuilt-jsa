@@ -6,8 +6,8 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as NavigationBar from 'expo-navigation-bar';
-import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { LanguageProvider } from './contexts/LanguageContext';
@@ -17,7 +17,6 @@ import LoginScreen from '../components/LoginScreen';
 import AppSwitcher from '../components/AppSwitcher';
 import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getDriverSession } from '../services/driverAuth';
 import { getUnfinishedJsas, discardJsa, type UnfinishedJsa } from '../services/jsaStatus';
 import UnfinishedJsasModal from '../components/UnfinishedJsasModal';
 import WelcomeModal from '../components/WelcomeModal';
@@ -43,64 +42,6 @@ import {
 } from '../services/sso/jsaJobDetailsIsolation';
 import { terminalFailureMatches } from '../services/sso/jsaGovernedAuth';
 import type { LogoutWatcherBinding } from '../services/sso/jsaLogoutWatcherContract';
-
-const FIREBASE_DB = 'https://wellbuilt-sync-default-rtdb.firebaseio.com';
-
-/**
- * Check if WB S wrote a logoutAt signal to RTDB that should fire a cascade
- * logout for the local session.
- *
- * Mirrors WB T's consumed-logoutAt baseline approach (post-2026-04-30
- * redesign). Each session keeps a `jsa_lastConsumedLogoutAt` baseline
- * snapshot in SecureStore. ANY logoutAt strictly newer than the baseline
- * fires the cascade and bumps the baseline so subsequent foregrounds
- * don't re-fire on the same signal. ISO-8601 sorts lex == chrono so we
- * compare strings directly.
- *
- * Cascade-logout policy (post-2026-04-30): WB S is the global logout
- * authority for the matching driverHash. Both manual AND SSO sessions
- * honor the signal — the prior `authMethod !== 'sso'` gate was removed
- * to match the same change made in WB T (4/27/2026 entry). If a driver
- * is logged in to JSA on the same hash that WB S logs out, JSA also
- * logs out, regardless of how JSA was logged in.
- */
-async function checkRtdbLogoutSignal(): Promise<boolean> {
-  try {
-    const hash = await SecureStore.getItemAsync('jsa_passcodeHash');
-    if (!hash) return false;
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
-    const resp = await fetch(`${FIREBASE_DB}/drivers/approved/${hash}/logoutAt.json`, {
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (!resp.ok) return false;
-
-    const logoutAtRaw = await resp.json();
-    const logoutAt = (typeof logoutAtRaw === 'string' && logoutAtRaw.length > 0) ? logoutAtRaw : null;
-    if (!logoutAt) return false;
-
-    const baseline = await SecureStore.getItemAsync('jsa_lastConsumedLogoutAt');
-
-    if (!baseline) {
-      // Race window: saveDriverSession's baseline seed never landed
-      // (offline at login). Conservative fallback — compare to NOW.
-      const nowIso = new Date().toISOString();
-      const fireOnSeed = logoutAt > nowIso;
-      await SecureStore.setItemAsync('jsa_lastConsumedLogoutAt', fireOnSeed ? logoutAt : nowIso);
-      return fireOnSeed;
-    }
-
-    const shouldLogout = logoutAt > baseline;
-    if (shouldLogout) {
-      await SecureStore.setItemAsync('jsa_lastConsumedLogoutAt', logoutAt);
-    }
-    return shouldLogout;
-  } catch {
-    return false;
-  }
-}
 
 import { colors } from '../constants/colors';
 
@@ -149,7 +90,7 @@ function NavigationStack() {
 /** Inner component that gates on auth state + handles SSO deep links */
 function AppContent() {
   const colorScheme = useColorScheme();
-  const { mode, isAuthenticated, ssoLogin, logout } = useAuth();
+  const { mode, session, isAuthenticated, ssoLogin, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [ssoInProgress, setSsoInProgress] = useState(true); // suppress login overlay until we check initial URL
@@ -202,8 +143,7 @@ function AppContent() {
 
   const checkUnfinishedJsas = async () => {
     try {
-      const session = await getDriverSession();
-      if (!session?.passcodeHash) return;
+      if (!session?.driverId) return;
 
       const todayStr = new Date().toISOString().slice(0, 10);
       const activeShiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
@@ -226,7 +166,7 @@ function AppContent() {
       const persistedDismissAt = await AsyncStorage.getItem(dismissKey).catch(() => null);
       const remindLaterSuppressed = sessionUnfinishedSuppressed || !!persistedDismissAt;
 
-      const list = await getUnfinishedJsas(session.passcodeHash);
+      const list = await getUnfinishedJsas(session.driverId);
 
       // Strict scope filter — fixes fresh-install bug where prior-date
       // unfinished JSAs surfaced during an active shift. The active
@@ -270,7 +210,6 @@ function AppContent() {
 
   const maybeShowWelcome = async () => {
     try {
-      const session = await getDriverSession();
       if (!session) return;
       // Welcome/Get Started must not expose an unverified cached shift.
       if (!(await isCurrentShiftVerified())) return;
@@ -515,8 +454,6 @@ function AppContent() {
           if (await loadGovernedSession()) {
             const { checkGovernedLogoutSignalOnce } = await import('../services/sso/jsaLogoutWatcherLive');
             if (await checkGovernedLogoutSignalOnce()) await handleSignal();
-          } else if (await checkRtdbLogoutSignal()) {
-            await handleSignal();
           }
         }).catch(() => {});
         if (isAuthenticated) {
@@ -780,11 +717,7 @@ function AppContent() {
             <AppSwitcher
               badgeSource={require('../assets/images/app-switcher-badge.png')}
               selfScheme="jsaapp"
-              getIdentity={async () => {
-                const hash = await SecureStore.getItemAsync('jsa_passcodeHash');
-                const name = await SecureStore.getItemAsync('jsa_driverName');
-                return hash && name ? { hash, name } : null;
-              }}
+              getIdentity={async () => null}
             />
           )}
 
@@ -819,9 +752,8 @@ function AppContent() {
                 router.replace('/(tabs)');
               }}
               onDiscard={async (date, reason) => {
-                const session = await getDriverSession();
-                if (!session?.passcodeHash) return;
-                const ok = await discardJsa(session.passcodeHash, date, reason);
+                if (!session?.driverId) return;
+                const ok = await discardJsa(session.driverId, date, reason);
                 if (ok) {
                   setUnfinished(prev => prev.filter(j => j.date !== date));
                   // Auto-close modal if this was the last unfinished one

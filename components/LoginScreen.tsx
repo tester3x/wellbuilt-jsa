@@ -41,7 +41,6 @@ export default function LoginScreen() {
     pendingName,
     login,
     register,
-    registerStandalone,
     completeReg,
     cancelRegistration,
     switchToRegister,
@@ -89,13 +88,6 @@ export default function LoginScreen() {
     if (!validation.valid) return;
     if (!displayName.trim() || !legalName.trim() || !companyName.trim()) return;
     await register(displayName, passcode, companyName, legalName);
-  };
-
-  const handleStandaloneRegister = async () => {
-    const validation = validatePasscode(passcode);
-    if (!validation.valid) return;
-    if (!displayName.trim()) return;
-    await registerStandalone(displayName, passcode, legalName || displayName);
   };
 
   const handleSwitchToRegister = () => {
@@ -343,22 +335,10 @@ export default function LoginScreen() {
               </Text>
             )}
 
-            {/* Standalone / Independent Driver option */}
             {isRegister && (
-              <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: '#e0e0e0', paddingTop: 12 }}>
-                <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', marginBottom: 8 }}>
-                  No company? Use JSA independently.
-                </Text>
-                <TouchableOpacity
-                  style={[styles.primaryButton, { backgroundColor: '#fff', borderWidth: 1.5, borderColor: colors.primary }, (!displayName.trim() || !passcode.trim()) && styles.disabledButton]}
-                  onPress={handleStandaloneRegister}
-                  disabled={!displayName.trim() || !passcode.trim()}
-                >
-                  <Text style={[styles.primaryButtonText, { color: colors.primary }]}>
-                    Register as Independent Driver
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              <Text style={styles.approvalNote}>
+                Independent registration is temporarily unavailable while governed identity support is completed.
+              </Text>
             )}
 
             {/* Toggle login/register */}

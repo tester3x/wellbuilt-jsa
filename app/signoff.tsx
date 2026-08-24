@@ -28,7 +28,7 @@ import {
     PREPARED_FOR_WORK_ITEMS,
 } from "../constants/jsaTemplate";
 import { STORAGE_KEYS } from "../constants/storageKeys";
-import { fetchDriverProfile, getDriverSession } from "../services/driverAuth";
+import { fetchDriverProfile } from "../services/driverAuth";
 import { wbDiagLog } from "../services/wbDiagLog";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
@@ -426,8 +426,8 @@ export default function SignoffScreen() {
       // AsyncStorage save (replayed by syncToCloud) AND the direct Firestore
       // writes below. Historically the jsas collection docs had no driverHash
       // at all, so "all JSAs by Mike" couldn't be queried server-side.
-      const sessionForPayload = await getDriverSession().catch(() => null);
-      const driverHashForPayload = sessionForPayload?.passcodeHash || '';
+      const sessionForPayload = await loadGovernedSession().catch(() => null);
+      const driverHashForPayload = sessionForPayload?.driverId || '';
       const companyIdForPayload =
         sessionForPayload?.companyId
         || (await AsyncStorage.getItem('selectedCompanyId').catch(() => null))

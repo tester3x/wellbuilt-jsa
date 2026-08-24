@@ -70,7 +70,7 @@ check('server failure is distinct and bounded', classifyManualLoginError({ code:
     cleanup: async () => { cleanups++; firebaseUid = null; localSession = null; },
   });
   check('network failure creates no local or Firebase authenticated session', !result.ok
-    && result.code === 'offline_timeout' && installs === 0 && inspections === 0 && cleanups === 1
+    && result.code === 'offline_timeout' && installs === 0 && inspections === 0 && cleanups === 0
     && firebaseUid === null && localSession === null);
 }
 
@@ -155,14 +155,14 @@ check('direct RTDB credential read and API-key auth credential are absent',
 check('AuthContext manual login never saves a legacy driver session',
   !authContext.slice(authContext.indexOf('const login ='), authContext.indexOf('const register =')).includes('saveDriverSession'));
 check('network failure path creates no local legacy session',
-  !live.includes('saveDriverSession') && live.includes('clearFailedInstallation'));
+  !live.includes('saveDriverSession') && live.includes('clearInstallationIfOwned'));
 check('strict post-install inspection binds UID driver and company before success',
   live.includes('manualInspectionMatches') && live.includes('sessionBinding: installed?.binding'));
 check('governed Suite SSO exchange remains wired', callback.includes("audience: 'wellbuilt-jsa'")
   && callback.includes('persistAfterExchange') && callback.includes('ssoExchangeAuthorizationCode'));
 check('registration behavior remains callable-governed and pending-only',
-  driverAuth.includes("'requestDriverRegistration'") && authContext.includes('registerStandaloneService')
-  && authContext.includes('Pending-only. Never mint a local approved session'));
+  driverAuth.includes("'requestDriverRegistration'") && !authContext.includes('registerStandaloneService')
+  && !driverAuth.includes('registerStandalone'));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

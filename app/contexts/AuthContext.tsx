@@ -5,15 +5,21 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import type { CompleteLogoutResult } from "../../services/sso/jsaLogoutContract";
 import {
-  DriverSession,
-  getDriverSession,
   submitRegistration,
-  registerStandalone as registerStandaloneService,
   getPendingRegistration,
   checkRegistrationStatus,
   clearPendingRegistration,
-  revalidateDriverSession,
 } from "../../services/driverAuth";
+
+export interface GovernedDriverPresentation {
+  authKind: 'governed';
+  uid: string;
+  driverId: string;
+  companyId: string;
+  companyName: null;
+  displayName: string | null;
+  legalName: string | null;
+}
 
 export type AuthMode =
   | "checking"
@@ -31,7 +37,7 @@ interface AuthContextValue {
   /** Current auth mode */
   mode: AuthMode;
   /** Driver session (null if not authenticated) */
-  session: DriverSession | null;
+  session: GovernedDriverPresentation | null;
   /** Whether the user is authenticated */
   isAuthenticated: boolean;
   /** Error message from last operation */
@@ -43,8 +49,6 @@ interface AuthContextValue {
   login: (displayName: string, passcode: string) => Promise<boolean>;
   /** Register a new driver (company flow — pending approval) */
   register: (displayName: string, passcode: string, companyName?: string, legalName?: string) => Promise<boolean>;
-  /** Register as independent driver — pending-only, never auto-approved */
-  registerStandalone: (displayName: string, passcode: string, legalName?: string) => Promise<boolean>;
   /** After approval, return the driver to normal login. Never mints a session. */
   completeReg: () => Promise<boolean>;
   /** Cancel pending registration */
@@ -66,7 +70,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<AuthMode>("checking");
-  const [session, setSession] = useState<DriverSession | null>(null);
+  const [session, setSession] = useState<GovernedDriverPresentation | null>(null);
   const [error, setError] = useState("");
   const [pendingName, setPendingName] = useState("");
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
@@ -75,16 +79,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const governedPresentationSession = (governed: {
     uid: string; driverId: string; companyId: string;
     displayName: string | null; legalName: string | null;
-  }): DriverSession => ({
+  }): GovernedDriverPresentation => ({
+    authKind: 'governed',
+    uid: governed.uid,
     driverId: governed.driverId,
-    displayName: governed.displayName || governed.legalName || 'Driver',
-    legalName: governed.legalName || undefined,
-    // In-memory compatibility scope only. It is the canonical driverId,
-    // never a legacy name+passcode hash and is not persisted by this path.
-    passcodeHash: governed.driverId,
-    isAdmin: false,
-    isViewer: false,
+    displayName: governed.displayName,
+    legalName: governed.legalName,
     companyId: governed.companyId,
+    companyName: null,
   });
 
   // Check initial state on mount
@@ -144,18 +146,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setError('Secure sign-in requires cleanup before retrying.');
         return;
       }
-      // Check for existing session
-      const existingSession = await getDriverSession();
-      if (existingSession) {
-        // Revalidate that driver is still active (also refreshes legalName etc.)
-        const stillValid = await revalidateDriverSession();
-        if (stillValid) {
-          // Re-read session — revalidation may have updated SecureStore with fresh data
-          const freshSession = await getDriverSession();
-          setSession(freshSession || existingSession);
-          setMode("authenticated");
-          return;
-        }
+      // Standalone means NO governed identity. Retire only obsolete auth keys;
+      // pending registration, historical/active JSAs and recovery queues survive.
+      const { retireLegacyAuthenticationKeys } = await import('../../services/sso/jsaLegacyAuthRetirementLive');
+      const retirement = await retireLegacyAuthenticationKeys();
+      if (!retirement.retired) {
+        setSession(null);
+        setMode('error');
+        setError('Old sign-in data could not be cleared. Retry secure sign-in cleanup.');
+        return;
       }
 
       // Check for pending registration
@@ -177,7 +176,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setMode("login");
     } catch (err) {
       console.error("[AuthContext-JSA] Initial check error:", err);
-      setMode("login");
+      setSession(null);
+      setMode("error");
+      setError('Secure sign-in could not be verified. Check your connection and retry.');
     }
   };
 
@@ -244,35 +245,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const registerStandalone = useCallback(async (displayName: string, passcode: string, legalName?: string): Promise<boolean> => {
-    setMode("registering");
-    setError("");
-
-    try {
-      const result = await registerStandaloneService({
-        passcode: passcode.trim(),
-        displayName: displayName.trim(),
-        legalName: legalName?.trim() || undefined,
-      });
-
-      if (result.success) {
-        // Pending-only. Never mint a local approved session from this path.
-        setPendingName(displayName.trim());
-        setMode("pending");
-        return true;
-      } else {
-        setMode("register");
-        setError(result.error || "Could not complete registration");
-        return false;
-      }
-    } catch (err) {
-      console.error("[AuthContext-JSA] Standalone registration error:", err);
-      setMode("register");
-      setError("Connection error. Please try again.");
-      return false;
-    }
-  }, []);
-
   const completeReg = useCallback(async (): Promise<boolean> => {
     setMode("login");
     setError("Registration approved. Please sign in.");
@@ -328,7 +300,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     pendingName,
     login,
     register,
-    registerStandalone,
     completeReg,
     cancelRegistration,
     logout,

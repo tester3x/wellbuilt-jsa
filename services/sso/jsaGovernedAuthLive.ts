@@ -49,6 +49,7 @@ import {
   saveGovernedSession,
   publishGovernedSessionReady,
 } from './jsaRuntime';
+import { createGovernedIdentityMutationCoordinator } from './jsaIdentityMutationContract';
 
 type RnAuthModule = {
   getReactNativePersistence?: (storage: typeof AsyncStorage) => Persistence;
@@ -56,6 +57,15 @@ type RnAuthModule = {
 
 let authSingleton: Auth | null = null;
 let readyPromise: Promise<void> | null = null;
+const identityMutations = createGovernedIdentityMutationCoordinator();
+
+/** One process-wide lane for manual login, Suite SSO, recovery and logout. */
+export function runGovernedIdentityMutation<T>(operation: () => Promise<T>): Promise<T> {
+  return identityMutations.run(operation);
+}
+
+export function reserveGovernedIdentityEpoch(): number { return identityMutations.reserve(); }
+export function governedIdentityEpochIsCurrent(epoch: number): boolean { return identityMutations.isCurrent(epoch); }
 
 function reactNativePersistence(): Persistence {
   // RN export — not on the browser typings of firebase/auth.
@@ -84,7 +94,7 @@ export function getGovernedAuth(): Auth {
   return authSingleton;
 }
 
-export async function signOutGovernedAuth(): Promise<boolean> {
+export async function signOutGovernedAuthWithinMutation(): Promise<boolean> {
   const auth = getGovernedAuth();
   await awaitGovernedAuthReady();
   let settled = false;
@@ -103,6 +113,11 @@ export async function signOutGovernedAuth(): Promise<boolean> {
   } finally {
     unsubscribe();
   }
+}
+
+export function signOutGovernedAuth(): Promise<boolean> {
+  reserveGovernedIdentityEpoch();
+  return runGovernedIdentityMutation(signOutGovernedAuthWithinMutation);
 }
 
 export function awaitGovernedAuthReady(): Promise<void> {
@@ -128,7 +143,7 @@ export async function loadUsableGovernedSession() {
   return session;
 }
 
-export async function reconcileGovernedAuth(): Promise<void> {
+async function reconcileGovernedAuthWithinMutation(): Promise<void> {
   await awaitGovernedAuthReady();
   const auth = getGovernedAuth();
   if (auth.currentUser) {
@@ -148,43 +163,60 @@ async function generationEntropyHex(): Promise<string> {
 
 export async function persistAfterExchange(
   payload: ExchangePayload,
-  options: { stillCurrent?: () => boolean } = {},
+  options: { stillCurrent?: () => boolean; identityEpoch?: number } = {},
 ) {
-  const generation = newSessionGeneration(Date.now(), await generationEntropyHex());
-  const result = await installGovernedAuthSession({
-    payload,
-    legalName: payload.legalName ?? null,
-    generation,
-    signInWithCustomToken: async (customToken) => {
-      const cred = await signInWithCustomToken(getGovernedAuth(), customToken);
-      await awaitGovernedAuthReady();
-      const uid = cred.user?.uid ?? currentGovernedAuthUid();
-      return uid ? { uid } : null;
-    },
-    persist: async (session) => {
-      await saveGovernedSession(session);
-      const { seedCanonicalLogoutBaseline } = await import('./jsaCanonicalProfile');
-      await seedCanonicalLogoutBaseline();
-      if (options.stillCurrent && !options.stillCurrent()) throw new Error('superseded');
-      publishGovernedSessionReady();
-    },
-    reconcileAuth: () => reconcileGovernedAuth(),
-    clearIfGeneration: (gen) => clearGovernedSessionIfGeneration(gen).then(() => undefined),
-    stillCurrent: options.stillCurrent,
-  });
-  if (!result.ok) {
-    throw new Error(result.reason);
-  }
-  const attempt = await loadAttempt();
-  if (attempt) {
-    await governedLatchMutator().attachRetryGeneration(
-      { state: attempt.state, createdAtMs: attempt.createdAtMs },
+  const epoch = options.identityEpoch ?? reserveGovernedIdentityEpoch();
+  const current = () => governedIdentityEpochIsCurrent(epoch)
+    && (!options.stillCurrent || options.stillCurrent());
+  return runGovernedIdentityMutation(async () => {
+    if (!current()) throw new Error('superseded');
+    const generation = newSessionGeneration(Date.now(), await generationEntropyHex());
+    const result = await installGovernedAuthSession({
+      payload,
+      legalName: payload.legalName ?? null,
       generation,
-    );
-  }
-  return result.session;
+      signInWithCustomToken: async (customToken) => {
+        const cred = await signInWithCustomToken(getGovernedAuth(), customToken);
+        await awaitGovernedAuthReady();
+        const uid = cred.user?.uid ?? currentGovernedAuthUid();
+        return uid ? { uid } : null;
+      },
+      persist: async (session) => {
+        await saveGovernedSession(session);
+        const { seedCanonicalLogoutBaseline } = await import('./jsaCanonicalProfile');
+        await seedCanonicalLogoutBaseline();
+        if (!current()) throw new Error('superseded');
+        publishGovernedSessionReady();
+      },
+      reconcileAuth: () => reconcileGovernedAuthWithinMutation(),
+      clearIfGeneration: async (gen) => {
+        const installed = await loadGovernedSession();
+        if (installed?.generation !== gen || installed.uid !== payload.uid
+          || installed.driverId !== payload.driverId || installed.companyId !== payload.companyId) return;
+        const { clearCanonicalIdentityStateIfOwned } = await import('./jsaCanonicalProfile');
+        await clearCanonicalIdentityStateIfOwned({
+          generation: gen, uid: payload.uid, driverId: payload.driverId, companyId: payload.companyId,
+        });
+        await clearGovernedSessionIfGeneration(gen);
+      },
+      stillCurrent: current,
+    });
+    if (!result.ok) throw new Error(result.reason);
+    const attempt = await loadAttempt();
+    if (attempt) {
+      await governedLatchMutator().attachRetryGeneration(
+        { state: attempt.state, createdAtMs: attempt.createdAtMs },
+        generation,
+      );
+    }
+    return result.session;
+  });
 }
 
+export function reconcileGovernedAuth(): Promise<void> {
+  reserveGovernedIdentityEpoch();
+  return runGovernedIdentityMutation(reconcileGovernedAuthWithinMutation);
+}
 export async function liveConsumeRecoveryLatch(session: unknown): Promise<void> {
   const attempt = await loadAttempt();
   await governedLatchMutator().consumeIfMatching({

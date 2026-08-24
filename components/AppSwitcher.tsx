@@ -345,7 +345,7 @@ export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getI
             if (id?.hash && id?.name) identity = { hash: id.hash, name: id.name };
           } catch {}
         }
-        const hash = identity?.hash || await AsyncStorage.getItem('passcodeHash') || '';
+        const hash = identity?.hash || '';
         const companyId = await AsyncStorage.getItem('selectedCompanyId') || '';
         const vehicleRaw = await AsyncStorage.getItem('vehicleInfo');
         const vehicle = vehicleRaw ? JSON.parse(vehicleRaw) : {};

@@ -1,6 +1,6 @@
 // app/login.tsx
 // SSO deep link handler — receives hash + name + shiftId from WB Suite hub app.
-// URL: jsaapp://login?hash={passcodeHash}&name={displayName}&shiftId={shiftId}
+// Legacy hash deep links are refused; governed SSO uses the callback exchange.
 //
 // This route exists solely so Expo Router can match the deep link URL.
 // Legacy hash/name links are refused by AuthContext.ssoLogin(); governed

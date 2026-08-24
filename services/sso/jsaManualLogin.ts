@@ -29,6 +29,13 @@ export type ManualLoginResult =
   | { ok: true; payload: ManualLoginPayload }
   | { ok: false; code: ManualLoginFailureCode; message: string };
 
+export interface ManualInstallationOwner {
+  generation: string;
+  uid: string;
+  driverId: string;
+  companyId: string;
+}
+
 const MESSAGES: Record<ManualLoginFailureCode, string> = {
   invalid_credentials: 'Invalid name or passcode.',
   deactivated: 'This account has been deactivated.',
@@ -171,11 +178,12 @@ export async function executeManualLoginAttempt(input: {
   stillCurrent(): boolean;
 }, deps: {
   call(request: { displayName: string; passcode: string; audience: typeof JSA_MANUAL_LOGIN_AUDIENCE }): Promise<unknown>;
-  install(payload: ManualLoginPayload, stillCurrent: () => boolean): Promise<void>;
-  inspect(payload: ManualLoginPayload): Promise<boolean>;
-  cleanup(): Promise<void>;
+  install(payload: ManualLoginPayload, stillCurrent: () => boolean): Promise<ManualInstallationOwner>;
+  inspect(payload: ManualLoginPayload, owner: ManualInstallationOwner): Promise<boolean>;
+  cleanup(owner: ManualInstallationOwner): Promise<void>;
 }): Promise<ManualLoginResult> {
   if (!input.stillCurrent()) return manualLoginFailure('superseded');
+  let owner: ManualInstallationOwner | null = null;
   try {
     const raw = await deps.call({
       displayName: input.displayName.trim(),
@@ -185,18 +193,19 @@ export async function executeManualLoginAttempt(input: {
     if (!input.stillCurrent()) return manualLoginFailure('superseded');
     const parsed = parseManualLoginPayload(raw);
     if (!parsed.ok) return parsed;
-    await deps.install(parsed.payload, input.stillCurrent);
+    owner = await deps.install(parsed.payload, input.stillCurrent);
     if (!input.stillCurrent()) {
-      await deps.cleanup();
+      await deps.cleanup(owner);
       return manualLoginFailure('superseded');
     }
-    if (!(await deps.inspect(parsed.payload))) {
-      await deps.cleanup();
+    if (!(await deps.inspect(parsed.payload, owner))) {
+      await deps.cleanup(owner);
       return manualLoginFailure('binding_mismatch');
     }
     return parsed;
   } catch (error) {
-    await deps.cleanup();
+    // A rejected callable created no identity and owns nothing to clean up.
+    if (owner) await deps.cleanup(owner);
     return input.stillCurrent()
       ? classifyManualLoginError(error)
       : manualLoginFailure('superseded');

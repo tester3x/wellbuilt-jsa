@@ -17,7 +17,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { JsaSummaryCard, buildLocationActivityRows } from "../components/jsa";
 import { colors } from "../constants/colors";
 import { STORAGE_KEYS } from "../constants/storageKeys";
-import { getDriverSession } from "../services/driverAuth";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 
@@ -209,8 +208,9 @@ export default function ViewJsaScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const session = await getDriverSession();
-        const driverHash = session?.passcodeHash;
+        const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
+        const session = await loadGovernedSession();
+        const driverHash = session?.driverId;
         if (!driverHash) return;
         const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
         const BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';

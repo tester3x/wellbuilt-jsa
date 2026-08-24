@@ -31,8 +31,11 @@ export async function currentGovernedWatcherBinding(): Promise<LogoutWatcherBind
   return { uid: session.uid, driverId: session.driverId, companyId: session.companyId };
 }
 
-export async function governedBaselineReady(bound: LogoutWatcherBinding): Promise<boolean> {
-  try { return parseBoundLogoutBaseline(await SecureStore.getItemAsync(BASELINE_KEY), bound) !== null; }
+export async function governedBaselineReady(bound: LogoutWatcherBinding, generation?: string): Promise<boolean> {
+  try {
+    const baseline = parseBoundLogoutBaseline(await SecureStore.getItemAsync(BASELINE_KEY), bound);
+    return baseline !== null && (generation === undefined || baseline.generation === generation);
+  }
   catch { return false; }
 }
 
@@ -43,7 +46,7 @@ async function consume(bound: LogoutWatcherBinding, value: unknown): Promise<boo
   if (!stored) throw new Error('governed_logout_baseline_unbound');
   const decision = decideLogoutSignal(stored.value, value);
   if (decision.kind === 'initialize') {
-    await SecureStore.setItemAsync(BASELINE_KEY, serializeBoundLogoutBaseline({ ...bound, value: decision.value }));
+    await SecureStore.setItemAsync(BASELINE_KEY, serializeBoundLogoutBaseline({ ...stored, value: decision.value }));
     return false;
   }
   if (decision.kind !== 'logout_required') return false;

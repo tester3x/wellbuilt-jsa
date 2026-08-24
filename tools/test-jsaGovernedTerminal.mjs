@@ -343,7 +343,7 @@ function makeLifecycle() {
 }
 
 {
-  const auth = src('services/driverAuth.ts');
+  const auth = src('services/sso/jsaStrictLogoutStorage.ts');
   check('14 logout clears the marker according to governed logout policy',
     auth.includes('@jsa/freshGovernedSubmitted')
     && auth.includes('@jsa/governedLaunchContext')

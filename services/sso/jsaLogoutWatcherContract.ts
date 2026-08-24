@@ -1,5 +1,5 @@
 export interface LogoutWatcherBinding { uid: string; driverId: string; companyId: string; }
-export interface BoundLogoutBaseline extends LogoutWatcherBinding { value: number | null; }
+export interface BoundLogoutBaseline extends LogoutWatcherBinding { value: number | null; generation?: string; }
 
 export function watcherBindingMatches(
   bound: LogoutWatcherBinding,
@@ -32,7 +32,8 @@ export function parseBoundLogoutBaseline(raw: string | null, bound: LogoutWatche
     const value = JSON.parse(raw) as Partial<BoundLogoutBaseline>;
     if (!watcherBindingMatches(bound, value as LogoutWatcherBinding)) return null;
     if (value.value !== null && (typeof value.value !== 'number' || !Number.isFinite(value.value))) return null;
-    return { ...bound, value: value.value ?? null };
+    return { ...bound, value: value.value ?? null,
+      ...(typeof value.generation === 'string' && value.generation ? { generation: value.generation } : {}) };
   } catch { return null; }
 }
 

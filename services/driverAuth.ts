@@ -1,360 +1,13 @@
 // services/driverAuth.ts
-// Legacy standalone storage plus governed registration/profile helpers.
+// Governed registration/profile helpers.
 // Manual authentication is exclusively services/sso/jsaManualLoginLive.ts:
 // authenticateDriver → Firebase Auth → sanitized governed session.
 // Registration remains requestDriverRegistration (pending-only).
-//
-// Structure:
-// - drivers/approved/{passcodeHash}/ = { displayName, active, approvedAt, isAdmin? }
-// - pending_credentials/{pendingId} + drivers/pending_secure/{pendingId} (server)
+// Pending registration state is an opaque server-issued id only.
 
 import * as SecureStore from "expo-secure-store";
-import * as Crypto from "expo-crypto";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
-// Firebase configuration (same project as WB M / WB S: wellbuilt-sync)
-const FIREBASE_DATABASE_URL = "https://wellbuilt-sync-default-rtdb.firebaseio.com";
-
-// Firebase paths
-const DRIVERS_PENDING = "drivers/pending";
-const DRIVERS_APPROVED = "drivers/approved";
-
-// --- Interfaces ---
-
-export interface DriverInfo {
-  driverId: string;
-  displayName: string;
-  passcodeHash: string;
-  approvedAt: string;
-  active: boolean;
-}
-
-export interface DriverSession {
-  driverId: string;
-  displayName: string;
-  legalName?: string;
-  passcodeHash: string;
-  isAdmin: boolean;
-  isViewer: boolean;
-  companyId?: string;
-  companyName?: string;
-  tier?: 'free' | 'company';
-}
-
-// --- Firebase helpers ---
-
-/** Network timeout for all Firebase requests (ms) */
-const FIREBASE_TIMEOUT_MS = 10000;
-
-const buildFirebaseUrl = (path: string): string => {
-  return `${FIREBASE_DATABASE_URL}/${path}.json`;
-};
-
-/**
- * Fetch with AbortController timeout.
- * Prevents the app from hanging indefinitely on bad/slow connections.
- */
-const fetchWithTimeout = async (
-  url: string,
-  options: RequestInit,
-  timeoutMs: number = FIREBASE_TIMEOUT_MS
-): Promise<Response> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-    return response;
-  } catch (error: any) {
-    if (error.name === "AbortError") {
-      throw new Error(`Firebase request timed out after ${timeoutMs}ms`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-};
-
-export const firebaseGet = async (path: string): Promise<any> => {
-  const url = buildFirebaseUrl(path);
-  const response = await fetchWithTimeout(url, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Firebase GET failed (${response.status})`);
-  }
-
-  return response.json();
-};
-
-const firebasePatch = async (path: string, data: any): Promise<void> => {
-  const url = buildFirebaseUrl(path);
-  const response = await fetchWithTimeout(url, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Firebase PATCH failed (${response.status})`);
-  }
-};
-
-// --- Crypto helpers ---
-
-/**
- * Hash name + passcode using SHA-256.
- * Same algorithm as WB M, WB T, WB S: SHA-256(name.toLowerCase().trim() + passcode)
- * Including name allows different drivers to share the same passcode.
- */
-export const hashPasscode = async (passcode: string, name?: string): Promise<string> => {
-  const input = name ? name.toLowerCase().trim() + passcode : passcode;
-  const hash = await Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    input
-  );
-  return hash.toLowerCase();
-};
-
-// --- Session Management ---
-
-/**
- * Save driver session after successful passcode verification
- */
-export const saveDriverSession = async (
-  driverId: string,
-  displayName: string,
-  passcodeHash: string,
-  isAdmin: boolean = false,
-  isViewer: boolean = false,
-  companyId?: string,
-  companyName?: string,
-  legalName?: string,
-  authMethod?: 'sso' | 'manual'
-): Promise<void> => {
-  await SecureStore.setItemAsync("jsa_driverId", driverId);
-  await SecureStore.setItemAsync("jsa_driverName", displayName);
-  await SecureStore.setItemAsync("jsa_passcodeHash", passcodeHash);
-  await SecureStore.setItemAsync("jsa_isAdmin", isAdmin ? "true" : "false");
-  await SecureStore.setItemAsync("jsa_isViewer", isViewer ? "true" : "false");
-  await SecureStore.setItemAsync("jsa_driverVerifiedAt", Date.now().toString());
-  if (companyId) {
-    await SecureStore.setItemAsync("jsa_companyId", companyId);
-  } else {
-    await SecureStore.deleteItemAsync("jsa_companyId");
-  }
-  if (companyName) {
-    await SecureStore.setItemAsync("jsa_companyName", companyName);
-  } else {
-    await SecureStore.deleteItemAsync("jsa_companyName");
-  }
-  if (legalName) {
-    await SecureStore.setItemAsync("jsa_legalName", legalName);
-  } else {
-    await SecureStore.deleteItemAsync("jsa_legalName");
-  }
-  // Track how driver logged in. Audit-only post-2026-04-30 — the cascade
-  // logout policy is now driver-hash-scoped regardless of authMethod
-  // (manual + SSO both honor the WB S signal, mirroring WB T).
-  if (authMethod) await SecureStore.setItemAsync("jsa_authMethod", authMethod);
-
-  // Cascade-logout baseline: snapshot the current RTDB logoutAt for this
-  // hash so checkRtdbLogoutSignal in _layout.tsx can fire on any
-  // STRICTLY NEWER logoutAt going forward. Best-effort; falls back to
-  // NOW if the seed fetch fails (offline). Stale signals from before
-  // this moment will never fire (they're <= baseline).
-  try {
-    const FIREBASE_DB = 'https://wellbuilt-sync-default-rtdb.firebaseio.com';
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    let baseline: string;
-    try {
-      const resp = await fetch(`${FIREBASE_DB}/drivers/approved/${passcodeHash}/logoutAt.json`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (resp.ok) {
-        const v = await resp.json();
-        baseline = (typeof v === 'string' && v.length > 0) ? v : new Date().toISOString();
-      } else {
-        baseline = new Date().toISOString();
-      }
-    } catch {
-      clearTimeout(timer);
-      baseline = new Date().toISOString();
-    }
-    await SecureStore.setItemAsync('jsa_lastConsumedLogoutAt', baseline);
-  } catch {
-    // Best-effort; if SecureStore write fails, the no-baseline fallback
-    // in checkRtdbLogoutSignal will compare against NOW on first check.
-  }
-
-  // Clear any pending registration data
-  await clearPendingRegistration();
-};
-
-/**
- * Get current driver session
- */
-export const getDriverSession = async (): Promise<DriverSession | null> => {
-  const driverId = await SecureStore.getItemAsync("jsa_driverId");
-  const displayName = await SecureStore.getItemAsync("jsa_driverName");
-  const passcodeHash = await SecureStore.getItemAsync("jsa_passcodeHash");
-  const isAdminStr = await SecureStore.getItemAsync("jsa_isAdmin");
-  const isViewerStr = await SecureStore.getItemAsync("jsa_isViewer");
-  const companyId = await SecureStore.getItemAsync("jsa_companyId");
-  const companyName = await SecureStore.getItemAsync("jsa_companyName");
-  const legalName = await SecureStore.getItemAsync("jsa_legalName");
-
-  if (driverId && displayName && passcodeHash) {
-    return {
-      driverId,
-      displayName,
-      legalName: legalName || undefined,
-      passcodeHash,
-      isAdmin: isAdminStr === "true",
-      isViewer: isViewerStr === "true",
-      companyId: companyId || undefined,
-      companyName: companyName || undefined,
-    };
-  }
-  return null;
-};
-
-/**
- * Check if driver is verified (has a valid session)
- */
-export const isDriverVerified = async (): Promise<boolean> => {
-  const session = await getDriverSession();
-  return session !== null;
-};
-
-/**
- * Revalidate driver session - verify driver is still approved.
- * Also refreshes session data (legalName, companyId, etc.) from RTDB
- * so stale SecureStore values get updated on app resume.
- */
-export const revalidateDriverSession = async (): Promise<boolean> => {
-  const session = await getDriverSession();
-  if (!session) return false;
-
-  try {
-    const hash = session.passcodeHash;
-    if (!hash) {
-      console.log("[DriverAuth-JSA] No passcodeHash in session");
-      return false;
-    }
-
-    console.log("[DriverAuth-JSA] Revalidating session");
-    const driverData = await firebaseGet(`${DRIVERS_APPROVED}/${hash}`);
-
-    if (!driverData) {
-      console.log("[DriverAuth-JSA] Driver not found, clearing session...");
-      await clearDriverSession();
-      return false;
-    }
-
-    // Check new structure (displayName at root)
-    if (driverData.displayName) {
-      if (driverData.active === false) {
-        console.log("[DriverAuth-JSA] Driver deactivated, clearing session...");
-        await clearDriverSession();
-        return false;
-      }
-
-      // Refresh session with latest RTDB data (legalName, companyId, etc.)
-      const freshLegalName = driverData.profile?.legalName || driverData.legalName || undefined;
-      const freshCompanyId = driverData.companyId || undefined;
-      const freshCompanyName = driverData.companyName || undefined;
-      const needsUpdate =
-        freshLegalName !== session.legalName ||
-        freshCompanyId !== session.companyId ||
-        freshCompanyName !== session.companyName;
-
-      if (needsUpdate) {
-        console.log("[DriverAuth-JSA] Refreshing session data from RTDB");
-        if (freshLegalName) await SecureStore.setItemAsync("jsa_legalName", freshLegalName);
-        if (freshCompanyId) await SecureStore.setItemAsync("jsa_companyId", freshCompanyId);
-        if (freshCompanyName) await SecureStore.setItemAsync("jsa_companyName", freshCompanyName);
-      }
-
-      return true;
-    }
-
-    // Check legacy structure (nested by deviceId)
-    for (const key of Object.keys(driverData)) {
-      const entry = driverData[key];
-      if (entry.displayName?.toLowerCase() === session.displayName.toLowerCase()) {
-        if (entry.active === false) {
-          console.log("[DriverAuth-JSA] Driver deactivated (legacy), clearing session...");
-          await clearDriverSession();
-          return false;
-        }
-        return true;
-      }
-    }
-
-    console.log("[DriverAuth-JSA] Driver name not found in approved list");
-    await clearDriverSession();
-    return false;
-  } catch (error) {
-    console.error("[DriverAuth-JSA] Error revalidating session:", error);
-    // Don't clear session on network error - allow offline use
-    return true;
-  }
-};
-
-/**
- * Clear driver session (logout)
- */
-export const clearDriverSession = async (): Promise<void> => {
-  await SecureStore.deleteItemAsync("jsa_driverId");
-  await SecureStore.deleteItemAsync("jsa_driverName");
-  await SecureStore.deleteItemAsync("jsa_passcodeHash");
-  await SecureStore.deleteItemAsync("jsa_isAdmin");
-  await SecureStore.deleteItemAsync("jsa_isViewer");
-  await SecureStore.deleteItemAsync("jsa_driverVerifiedAt");
-  await SecureStore.deleteItemAsync("jsa_companyId");
-  await SecureStore.deleteItemAsync("jsa_companyName");
-  await SecureStore.deleteItemAsync("jsa_legalName");
-  await SecureStore.deleteItemAsync("jsa_authMethod");
-  // Cascade-logout baseline — must be cleared so the next login's
-  // saveDriverSession seeds a fresh snapshot from RTDB rather than
-  // carrying forward a stale baseline from the prior session.
-  await SecureStore.deleteItemAsync("jsa_lastConsumedLogoutAt");
-  await clearPendingRegistration();
-  // vc51.9B defence in depth: a VERIFIED logout (the only path here —
-  // ambiguous network failures never reach clearDriverSession) must not
-  // leak the prior driver's period or pending request into the next
-  // session. Cached shift ids are hints, never authority — and a hint
-  // from a logged-out session is pure poison. Saved/historical JSAs
-  // (@jsa/saves, @jsa/activeJsas) are deliberately preserved.
-  try {
-    await AsyncStorage.multiRemove([
-      "wellbuilt-current-shift-id",
-      "@jsa/currentShiftVerified",
-      "@jsa/wbtReadRequest",
-      "jsa_autofill",
-      "jsa_returnTo",
-      "jsa_resume",
-      "@jsa/freshGovernedSubmitted",
-      "@jsa/governedLaunchContext",
-      "@jsa/governedLaunchOwnership",
-      "@jsa/governedUiStage",
-      "@jsa/truckNumber",
-      "@jsa/trailerNumber",
-      "@jsa/standaloneContacts",
-    ]);
-  } catch (err) {
-    console.warn("[logout] period-cache clear failed (non-fatal):", err);
-  }
-};
-
+// Legacy credential sessions are retired. Authentication state is restored only
+// from an exact governed Firebase/session/claims/baseline binding.
 // --- Profile / Vehicle Info ---
 
 export interface AssignedCustomer {
@@ -363,9 +16,7 @@ export interface AssignedCustomer {
 }
 
 /**
- * Fetch driver's full profile from Firebase RTDB.
- * Reads truck#, trailer#, legalName, and assignedCustomers.
- * Same RTDB paths as WB T — profile/ for vehicle info, root for assignedCustomers.
+ * Fetch the authenticated driver's canonical governed profile.
  */
 export const fetchDriverProfile = async (): Promise<{
   truckNumber: string;
@@ -395,75 +46,10 @@ export const fetchDriverProfile = async (): Promise<{
       driverId: canonical.driverId, uid: governed.uid,
     };
   }
-  const session = await getDriverSession();
-  if (!session) return null;
-
-  try {
-    const hash = session.passcodeHash;
-    const driverData = await firebaseGet(`${DRIVERS_APPROVED}/${hash}`);
-    if (!driverData) return null;
-
-    const profile = driverData.profile || {};
-    const assignedCustomers: AssignedCustomer[] = [];
-    if (Array.isArray(driverData.assignedCustomers)) {
-      for (const c of driverData.assignedCustomers) {
-        if (c && typeof c.name === 'string' && typeof c.companyId === 'string') {
-          assignedCustomers.push({ name: c.name, companyId: c.companyId });
-        }
-      }
-    }
-
-    // Signature: base64 PNG from profile (same path WB T / WB S use)
-    const sig = profile.signature || undefined;
-
-    return {
-      truckNumber: profile.truckNumber || driverData.truckNumber || '',
-      trailerNumber: profile.trailerNumber || driverData.trailerNumber || '',
-      legalName: profile.legalName || driverData.legalName || undefined,
-      signature: sig && typeof sig === 'string' && sig.length > 50 ? sig : undefined,
-      assignedCustomers,
-    };
-  } catch (err) {
-    console.warn('[DriverAuth-JSA] Failed to fetch driver profile:', err);
-    return null;
-  }
+  return null;
 };
 
 // --- Registration ---
-
-/**
- * Check if a passcode is available (not already in use)
- */
-export const isPasscodeAvailable = async (
-  passcode: string,
-  name?: string
-): Promise<{ available: boolean; reason?: string }> => {
-  try {
-    const hash = await hashPasscode(passcode, name);
-
-    // Check if passcode is already approved
-    const existingDriver = await firebaseGet(`${DRIVERS_APPROVED}/${hash}`);
-    if (existingDriver) {
-      return { available: false, reason: "This passcode is already in use" };
-    }
-
-    // Check pending registrations
-    const pendingDrivers = await firebaseGet(DRIVERS_PENDING);
-    if (pendingDrivers) {
-      for (const key of Object.keys(pendingDrivers)) {
-        const pending = pendingDrivers[key];
-        if (pending.passcodeHash === hash) {
-          return { available: false, reason: "This passcode has a pending registration" };
-        }
-      }
-    }
-
-    return { available: true };
-  } catch (error) {
-    console.error("[DriverAuth-JSA] Error checking passcode availability:", error);
-    return { available: false, reason: "Connection error" };
-  }
-};
 
 function functionsCallableBase(): string {
   const fromEnv = (process.env as { EXPO_PUBLIC_FUNCTIONS_BASE?: string }).EXPO_PUBLIC_FUNCTIONS_BASE;
@@ -508,7 +94,7 @@ function classifyRegistrationError(error: unknown): string {
 }
 
 /**
- * Governed pending registration for both company and independent JSA flows.
+ * Governed pending registration for company-bound JSA flows.
  * Calls requestDriverRegistration only. Never POSTs drivers/pending, never
  * stores a passcode hash, never mints Auth or an approved session.
  */
@@ -553,23 +139,6 @@ async function requestPendingRegistration(params: {
 }
 
 /**
- * Request a pending standalone/free-tier registration.
- * Uses requestDriverRegistration (pending-only). Never calls the retired
- * registerStandaloneDriver endpoint. Does not create Auth/credential/profile.
- */
-export const registerStandalone = async (params: {
-  passcode: string;
-  displayName: string;
-  legalName?: string;
-}): Promise<{ success: boolean; pending?: boolean; pendingId?: string; error?: string }> => {
-  return requestPendingRegistration({
-    passcode: params.passcode,
-    displayName: params.displayName,
-    legalName: params.legalName,
-  });
-};
-
-/**
  * Request a pending company registration through requestDriverRegistration.
  * Does not write drivers/pending from the client and does not store a hash.
  */
@@ -595,7 +164,6 @@ export const getSecurePendingId = async (): Promise<string | null> => {
 };
 
 export const getPendingRegistration = async (): Promise<{
-  passcodeHash: string;
   displayName: string;
   companyName?: string;
 } | null> => {
@@ -604,7 +172,7 @@ export const getPendingRegistration = async (): Promise<{
   const secureId = await SecureStore.getItemAsync("jsa_pendingSecureId");
 
   if (secureId && displayName) {
-    return { passcodeHash: '', displayName, companyName: companyName || undefined };
+    return { displayName, companyName: companyName || undefined };
   }
   return null;
 };

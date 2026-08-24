@@ -32,7 +32,7 @@ import {
   preloadCompanyWells,
   WellRecord,
 } from "../../services/wellData";
-import { fetchDriverProfile, getDriverSession } from "../../services/driverAuth";
+import { fetchDriverProfile } from "../../services/driverAuth";
 import { resolveActivity } from "../../components/jsa/locationActivity";
 import { wbDiagLog } from "../../services/wbDiagLog";
 import {
@@ -358,7 +358,7 @@ export default function JsaHomeScreen() {
   const refreshShiftIdFromServer = React.useCallback(async (): Promise<string | null> => {
     if (refreshShiftIdInFlight.current) return refreshShiftIdInFlight.current;
     const work = (async (): Promise<string | null> => {
-      const driverHash = session?.passcodeHash || null;
+      const driverHash = session?.driverId || null;
       const existing = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
       const pendingCtx = await loadReadRequestContext().catch(() => null);
       const returnTo = await AsyncStorage.getItem('jsa_returnTo').catch(() => null);
@@ -551,7 +551,7 @@ export default function JsaHomeScreen() {
     refreshShiftIdInFlight.current = work;
     work.finally(() => { refreshShiftIdInFlight.current = null; });
     return work;
-  }, [session?.passcodeHash, session?.companyId]);
+  }, [session?.driverId, session?.companyId]);
 
   // Read the active shiftId — minted by WB S at Start Shift, passed via
   // SSO deep link in start.tsx / login.tsx. JSA scope is per-shift now:
@@ -680,7 +680,7 @@ export default function JsaHomeScreen() {
   // today's UTC date — same behavior as before per-shift rollout.
   // Date-keyed docs are NOT read in SSO mode.
   const fetchJsaDayStatus = React.useCallback(async () => {
-    if (!session?.passcodeHash) return;
+    if (!session?.driverId) return;
     // Refresh shiftId from server first — AsyncStorage is stale across
     // shift boundaries when WB JSA is launched without a fresh SSO.
     await refreshShiftIdFromServer();
@@ -708,7 +708,7 @@ export default function JsaHomeScreen() {
               compositeFilter: {
                 op: 'AND',
                 filters: [
-                  { fieldFilter: { field: { fieldPath: 'driverHash' }, op: 'EQUAL', value: { stringValue: session.passcodeHash } } },
+                  { fieldFilter: { field: { fieldPath: 'driverHash' }, op: 'EQUAL', value: { stringValue: session.driverId } } },
                   { fieldFilter: { field: { fieldPath: 'shiftId' }, op: 'EQUAL', value: { stringValue: shiftIdInStorage } } },
                 ],
               },
@@ -739,7 +739,7 @@ export default function JsaHomeScreen() {
           source: 'tabs/index.fetchJsaDayStatus',
           result: 'ok',
           reason: 'sso shift mode — collection runQuery by shiftId',
-          driverHash: session.passcodeHash,
+          driverHash: session.driverId,
           shiftId: shiftIdInStorage || undefined,
           counts: { matchedDocs: docs.length },
           extra: { mode: 'sso' },
@@ -747,7 +747,7 @@ export default function JsaHomeScreen() {
       } else {
         // Standalone mode: single-doc fetch by today's UTC date.
         const dateScope = new Date().toISOString().slice(0, 10);
-        const docId = `${session.passcodeHash}_${dateScope}`;
+        const docId = `${session.driverId}_${dateScope}`;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10000);
         const resp = await fetch(
@@ -766,7 +766,7 @@ export default function JsaHomeScreen() {
           source: 'tabs/index.fetchJsaDayStatus',
           result: 'ok',
           reason: 'standalone date fallback — single-doc fetch',
-          driverHash: session.passcodeHash,
+          driverHash: session.driverId,
           counts: { matchedDocs: docs.length },
           extra: { mode: 'standalone', dateScope, docId },
         });
@@ -961,7 +961,7 @@ export default function JsaHomeScreen() {
     } catch (err) {
       console.warn('[JSA] Failed to fetch jsa_day_status:', err);
     }
-  }, [session?.passcodeHash, refreshShiftIdFromServer]);
+  }, [session?.driverId, refreshShiftIdFromServer]);
 
   // Pre-populate locations from jsa_day_status (jobs done before JSA)
   // If driver deferred JSA and worked jobs, those locations auto-appear here.
@@ -1081,7 +1081,7 @@ export default function JsaHomeScreen() {
         source: 'tabs/index.hydrateAllJsas',
         result: 'ok',
         reason: existing.length > 0 ? 'matched saves found for current scope' : 'no matched saves for current scope',
-        driverHash: session?.passcodeHash,
+        driverHash: session?.driverId,
         shiftId: scope !== today ? scope : undefined,
         counts: {
           matched: existing.length,
@@ -1096,7 +1096,7 @@ export default function JsaHomeScreen() {
         source: 'tabs/index.hydrateAllJsas',
         result: 'error',
         reason: (err as any)?.message || String(err).slice(0, 200),
-        driverHash: session?.passcodeHash,
+        driverHash: session?.driverId,
       });
     }
     // Signal to the autofill effect that it can safely decide where to route
@@ -1160,8 +1160,7 @@ export default function JsaHomeScreen() {
         return;
       }
 
-      const session = await getDriverSession().catch(() => null);
-      const driverHash = session?.passcodeHash;
+      const driverHash = session?.driverId;
       if (!driverHash) {
         setTodaysJsaSave(null);
         return;

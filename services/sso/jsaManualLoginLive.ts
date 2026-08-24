@@ -6,20 +6,25 @@ import {
   createManualLoginCoordinator,
   executeManualLoginAttempt,
   manualInspectionMatches,
+  type ManualInstallationOwner,
   type ManualLoginResult,
 } from './jsaManualLogin';
 import {
   inspectGovernedIdentityStartupDetailed,
 } from './jsaIdentityStartupLive';
 import {
+  currentGovernedAuthUid,
+  governedIdentityEpochIsCurrent,
   persistAfterExchange,
-  signOutGovernedAuth,
+  reserveGovernedIdentityEpoch,
+  runGovernedIdentityMutation,
+  signOutGovernedAuthWithinMutation,
 } from './jsaGovernedAuthLive';
 import {
   clearGovernedSessionIfGeneration,
   loadGovernedSession,
 } from './jsaRuntime';
-import { clearCanonicalIdentityState } from './jsaCanonicalProfile';
+import { clearCanonicalIdentityStateIfOwned } from './jsaCanonicalProfile';
 
 const tokenizer = createManualAttemptTokenizer({
   randomBytes: (count) => Crypto.getRandomBytesAsync(count),
@@ -27,11 +32,20 @@ const tokenizer = createManualAttemptTokenizer({
 });
 const coordinator = createManualLoginCoordinator<ManualLoginResult>();
 
-async function clearFailedInstallation(): Promise<void> {
-  const installed = await loadGovernedSession();
-  try { await signOutGovernedAuth(); } catch { /* result remains failed closed */ }
-  if (installed) await clearGovernedSessionIfGeneration(installed.generation);
-  try { await clearCanonicalIdentityState(); } catch { /* no readiness */ }
+async function clearInstallationIfOwned(owner: ManualInstallationOwner): Promise<void> {
+  await runGovernedIdentityMutation(async () => {
+    const installed = await loadGovernedSession();
+    const exact = installed?.generation === owner.generation
+      && installed.uid === owner.uid
+      && installed.driverId === owner.driverId
+      && installed.companyId === owner.companyId
+      && currentGovernedAuthUid() === owner.uid;
+    if (!exact) return;
+    if (!(await signOutGovernedAuthWithinMutation())) throw new Error('owned_auth_cleanup_failed');
+    await clearGovernedSessionIfGeneration(owner.generation);
+    if (await loadGovernedSession()) throw new Error('owned_session_cleanup_failed');
+    if (!(await clearCanonicalIdentityStateIfOwned(owner))) throw new Error('owned_baseline_cleanup_failed');
+  });
 }
 
 async function runManualLogin(
@@ -39,7 +53,9 @@ async function runManualLogin(
   passcode: string,
   stillCurrent: () => boolean,
 ): Promise<ManualLoginResult> {
-  return executeManualLoginAttempt({ displayName, passcode, stillCurrent }, {
+  const identityEpoch = reserveGovernedIdentityEpoch();
+  const current = () => stillCurrent() && governedIdentityEpochIsCurrent(identityEpoch);
+  return executeManualLoginAttempt({ displayName, passcode, stillCurrent: current }, {
     call: async (request) => {
       const callable = httpsCallable(
         getFunctions(getApp()),
@@ -49,17 +65,20 @@ async function runManualLogin(
       // Passcode exists only in this governed callable request and local call stack.
       return (await callable(request)).data;
     },
-    install: async (payload, current) => { await persistAfterExchange(payload, { stillCurrent: current }); },
-    inspect: async (payload) => {
+    install: async (payload, attemptCurrent) => {
+      const installed = await persistAfterExchange(payload, { stillCurrent: attemptCurrent, identityEpoch });
+      return { generation: installed.generation, uid: installed.uid, driverId: installed.driverId, companyId: installed.companyId };
+    },
+    inspect: async (payload, owner) => {
       const inspection = await inspectGovernedIdentityStartupDetailed();
       const installed = await loadGovernedSession();
-      return manualInspectionMatches(payload, {
+      return installed?.generation === owner.generation && manualInspectionMatches(payload, {
         state: inspection.state,
         binding: inspection.binding,
         sessionBinding: installed?.binding,
       });
     },
-    cleanup: clearFailedInstallation,
+    cleanup: clearInstallationIfOwned,
   });
 }
 

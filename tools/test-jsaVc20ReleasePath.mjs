@@ -63,7 +63,7 @@ check('Settings awaits logout and routes only to login', /await logout\(\)/.test
 check('all AuthContext logout uses logoutJsaCompletely', auth.includes('logoutJsaCompletely'));
 const fetchProfileBody = driver.slice(driver.indexOf('export const fetchDriverProfile'));
 check('governed profile never falls back to approved hash', fetchProfileBody.includes('if (governed)')
-  && fetchProfileBody.indexOf('if (governed)') < fetchProfileBody.indexOf('const session = await getDriverSession()'));
+  && !/getDriverSession|drivers\/approved|passcodeHash/.test(fetchProfileBody));
 check('client-authoritative approved profile writes removed from Settings',
   !/drivers\/approved|method:\s*['"]PATCH['"]|FIREBASE_DB/.test(settings));
 check('governed profile updates use authenticated callable', canonical.includes("'updateDriverProfile'"));
@@ -71,7 +71,7 @@ check('foreground cascade uses listener and immediate resume read without hydrat
   layout.includes('startGovernedLogoutWatcher') && layout.includes('checkGovernedLogoutSignalOnce')
   && !layout.includes('3_000') && !layout.includes('canonicalLogoutWasSignaled'));
 check('9 standalone remains separate from governed canonical profile',
-  settings.includes('if (!governed)') && driver.includes('const session = await getDriverSession()'));
+  settings.includes('if (!governed)') && !/getDriverSession|revalidateDriverSession/.test(driver));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -28,7 +28,10 @@ export async function inspectGovernedIdentityStartupDetailed(): Promise<Governed
     firebaseUid: user?.uid ?? null,
     tokenDriverId,
     tokenCompanyId,
-    baselineBound: session && user ? await governedBaselineReady({ uid: session.uid, driverId: session.driverId, companyId: session.companyId }) : undefined,
+    baselineBound: session && user ? await governedBaselineReady(
+      { uid: session.uid, driverId: session.driverId, companyId: session.companyId },
+      session.generation,
+    ) : undefined,
   });
   return {
     state,

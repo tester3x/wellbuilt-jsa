@@ -35,10 +35,9 @@ check(
   'primary submitRegistration uses requestDriverRegistration helper',
   /export const submitRegistration[\s\S]*requestPendingRegistration/.test(auth),
 );
-check(
-  'independent registerStandalone uses the same helper',
-  /export const registerStandalone[\s\S]*requestPendingRegistration/.test(auth),
-);
+check('independent registration is unavailable without a governed no-company contract',
+  !/export const registerStandalone/.test(auth)
+    && /Independent registration is temporarily unavailable/.test(login));
 check(
   'helper calls requestDriverRegistration',
   /callHttpsFunction[\s\S]*'requestDriverRegistration'/.test(auth)
@@ -75,17 +74,15 @@ check(
 );
 check(
   'no auto-approved standalone claim',
-  !/— auto-approved/.test(ctx + login) && /never auto-approved|pending-only/.test(ctx),
+  !/— auto-approved/.test(ctx + login) && !/registerStandalone/.test(ctx),
 );
 check(
   'five-character passcode rejected in helper',
   /JSA_PASSCODE_MIN_LEN = 6/.test(auth) && /Passcode must be 6/.test(auth + login),
 );
 check('LoginScreen company submit uses register()', /handleRegister[\s\S]*await register\(/.test(login));
-check(
-  'LoginScreen independent uses registerStandalone()',
-  /handleStandaloneRegister[\s\S]*await registerStandalone\(/.test(login),
-);
+check('LoginScreen makes no false independent registration promise',
+  !/handleStandaloneRegister|registerStandalone/.test(login));
 
 // Pins refreshed against Codex-approved governed source bc961573e12f0de789827b529b38d606d4be7173.
 const frozen = {
