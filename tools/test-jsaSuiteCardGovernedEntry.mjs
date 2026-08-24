@@ -5,6 +5,7 @@ import {
   createSuiteCardSingleFlight,
   decideSuiteCardEntry,
 } from '../services/sso/jsaSuiteCardContract.ts';
+import { decideRecovery } from '../services/sso/jsaRequestLifecycle.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const source = (path) => readFileSync(join(ROOT, path), 'utf8');
@@ -37,7 +38,11 @@ check('legacy Suite card identity fields are ignored and never sent to authentic
   && /hash\/name\/truck\/trailer\/shiftId are never consumed/.test(login));
 check('Suite card uses wellbuilt-jsa PKCE authorize URL',
   /buildAuthorizeUrl\(attempt\)/.test(live) && /mintAttempt/.test(live));
-check('off-shift governed session retains History and Settings but hides new-JSA form',
+check('active shift without WB-T request is authenticated but cannot manufacture a JSA request',
+  /No Active JSA Request/.test(home)
+  && /Open the current job in WellBuilt Tickets to begin its JSA/.test(home)
+  && /mayLabelActive \? "No Active JSA Request" : "Active Shift Required"/.test(home));
+check('truly off-shift governed session retains History and Settings but hides new-JSA form',
   /Active Shift Required/.test(home) && /hasGovernedIdentity \|\| isSsoMode/.test(home)
   && /Saved JSAs, History, and Settings remain available/.test(home));
 check('active exact period retains governed JSA action',
@@ -48,6 +53,27 @@ check('Suite card clears stale request ownership without clearing identity or sa
   /clearGovernedRequestStateForSuiteCard/.test(live)
   && /clearLaunchContext\(\)/.test(runtime)
   && !/clearGovernedRequestStateForSuiteCard[\s\S]{0,700}(clearGovernedSession|clearAuthRecoveryLatch|STORAGE_KEYS\.saves)/.test(runtime));
+check('Suite card preserves pending completion and verified completion-return state',
+  !/clearGovernedRequestStateForSuiteCard[\s\S]{0,500}(clearPendingComplete|clearFreshSubmittedMarker)/.test(runtime));
+{
+  const pending = { requestId: 'request-a', action: 'read_and_acknowledged' };
+  const matching = decideRecovery({
+    phase: 'local_saved_pending_complete',
+    launch: { requestId: 'request-a' },
+    context: { requestId: 'request-a', state: 'pending' },
+    pendingComplete: pending,
+  });
+  const different = decideRecovery({
+    phase: 'local_saved_pending_complete',
+    launch: { requestId: 'request-b' },
+    context: { requestId: 'request-b', state: 'pending' },
+    pendingComplete: pending,
+  });
+  check('later exact WB-T request retries its retained pending completion',
+    matching.next === 'retry_complete' && matching.requestId === 'request-a');
+  check('different WB-T request cannot consume retained pending completion',
+    different.next === 'fail_closed');
+}
 
 console.log(`\nRESULT passed=${passed} failed=${failed} total=${passed + failed}`);
 process.exit(failed ? 1 : 0);

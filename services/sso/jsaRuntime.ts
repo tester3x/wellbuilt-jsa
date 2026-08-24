@@ -431,15 +431,15 @@ export async function clearLocalGovernedLaunchState(): Promise<void> {
  * Drop only transient request/navigation ownership so an obsolete request
  * from an older release cannot capture the new governed card session.
  * Sessions, Firebase Auth, local/history saves, active JSAs, and artifact
- * recovery queues are deliberately outside this operation.
+ * recovery queues are deliberately outside this operation. Pending completion
+ * and the fresh-submission marker are also retained: both are request-bound
+ * recovery evidence and can only be consumed by their exact WB-T request.
  */
 export async function clearGovernedRequestStateForSuiteCard(): Promise<void> {
   await Promise.all([
     clearLaunchContext(),
     clearRequestContext(),
-    clearPendingComplete(),
     clearGovernedUiStage(),
-    clearFreshSubmittedMarker(),
     AsyncStorage.removeItem(GOVERNED_LAUNCH_OWNERSHIP_KEY),
     AsyncStorage.removeItem(GOVERNED_TERMINAL_FAILURE_KEY),
     AsyncStorage.removeItem('jsa_autofill'),

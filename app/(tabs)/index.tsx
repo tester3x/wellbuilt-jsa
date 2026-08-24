@@ -2556,9 +2556,11 @@ export default function JsaHomeScreen() {
             them straight to /steps). */}
         {workflowIsolation.mountForm && hasGovernedIdentity && !isSsoMode && (
           <View style={[styles.card, { borderColor: colors.border, borderWidth: 1 }]}>
-            <Text style={styles.cardTitle}>{t("Active Shift Required")}</Text>
+            <Text style={styles.cardTitle}>{t(mayLabelActive ? "No Active JSA Request" : "Active Shift Required")}</Text>
             <Text style={styles.cardSubtitle}>
-              {t("You are securely signed in. Start a shift in WellBuilt before creating a new shift-bound JSA. Saved JSAs, History, and Settings remain available.")}
+              {t(mayLabelActive
+                ? "Open the current job in WellBuilt Tickets to begin its JSA. Saved JSAs, History, and Settings remain available."
+                : "You are securely signed in. Start a shift in WellBuilt before creating a new shift-bound JSA. Saved JSAs, History, and Settings remain available.")}
             </Text>
           </View>
         )}
