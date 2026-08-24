@@ -114,6 +114,7 @@ export default function JsaHomeScreen() {
   // WB T stamps already in jsa_day_status. In standalone mode (no shiftId)
   // the driver fills the full form and manages their own JSA.
   const [isSsoMode, setIsSsoMode] = useState(false);
+  const hasGovernedIdentity = session?.authKind === 'governed';
   const [ssoShiftId, setSsoShiftId] = useState<string | null>(null);
   const [authoritySurface, setAuthoritySurface] = useState<ShiftSurface | null>(null);
   const [mayLabelActive, setMayLabelActive] = useState(false);
@@ -2553,7 +2554,16 @@ export default function JsaHomeScreen() {
             AND hidden in SSO mode (driver doesn't fill the form — WB T
             acts as the JSA secretary; the SSO CTA card above takes
             them straight to /steps). */}
-        {(jsaCompletedToday && activeJsaIndex >= 0) || isSsoMode || !workflowIsolation.mountForm ? null : (
+        {workflowIsolation.mountForm && hasGovernedIdentity && !isSsoMode && (
+          <View style={[styles.card, { borderColor: colors.border, borderWidth: 1 }]}>
+            <Text style={styles.cardTitle}>{t("Active Shift Required")}</Text>
+            <Text style={styles.cardSubtitle}>
+              {t("You are securely signed in. Start a shift in WellBuilt before creating a new shift-bound JSA. Saved JSAs, History, and Settings remain available.")}
+            </Text>
+          </View>
+        )}
+
+        {(jsaCompletedToday && activeJsaIndex >= 0) || hasGovernedIdentity || isSsoMode || !workflowIsolation.mountForm ? null : (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t("Job Details")}</Text>
           <Text style={styles.cardSubtitle}>

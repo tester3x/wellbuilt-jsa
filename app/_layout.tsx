@@ -90,7 +90,7 @@ function NavigationStack() {
 /** Inner component that gates on auth state + handles SSO deep links */
 function AppContent() {
   const colorScheme = useColorScheme();
-  const { mode, session, isAuthenticated, ssoLogin, logout } = useAuth();
+  const { mode, session, isAuthenticated, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [ssoInProgress, setSsoInProgress] = useState(true); // suppress login overlay until we check initial URL
@@ -507,19 +507,13 @@ function AppContent() {
 
         const parsed = Linking.parse(event.url);
         if (parsed.path === 'login' && parsed.queryParams?.hash && parsed.queryParams?.name) {
-          const { loadLaunchContext } = await import('../services/sso/jsaRuntime');
-          const governedLaunch = await loadLaunchContext();
-          if (governedLaunch) {
-            await markGovernedReturnRequired('wbt');
-            router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'malformed' } } as any);
-            return;
-          }
-          const hash = parsed.queryParams.hash as string;
-          const name = parsed.queryParams.name as string;
-          console.log('[JSA] SSO deep link received for:', name);
-          ssoLogin(hash, name);
-          // SSO login comes from WB S — store returnTo so "Return to Work" goes back
-          AsyncStorage.setItem('jsa_returnTo', 'wellbuilt-suite').catch(() => {});
+          const { beginSuiteCardAuthorization } = await import('../services/sso/jsaSuiteCardLive');
+          const result = await beginSuiteCardAuthorization();
+          if (result === 'usable') router.replace('/(tabs)');
+          else if (result === 'fail_closed') {
+            router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'unauthenticated' } } as any);
+          } else setSsoInProgress(true);
+          return;
         }
 
         // Governed WB-T launch — shared start owner. Never hash/name login.
@@ -559,7 +553,8 @@ function AppContent() {
             return;
           }
           if (parsed.queryParams.hash && parsed.queryParams.name) {
-            ssoOk = await ssoLogin(parsed.queryParams.hash as string, parsed.queryParams.name as string);
+            const { beginSuiteCardAuthorization } = await import('../services/sso/jsaSuiteCardLive');
+            ssoOk = (await beginSuiteCardAuthorization()) !== 'fail_closed';
           }
           const explicitShift = typeof parsed.queryParams.shiftId === 'string'
             ? parsed.queryParams.shiftId
@@ -669,8 +664,9 @@ function AppContent() {
         const qp = parsed.queryParams || {};
         let ssoOk = false;
         if (qp.hash && qp.name) {
-          // SSO login included — suppress login overlay while auth settles
-          ssoOk = await ssoLogin(qp.hash as string, qp.name as string);
+          // Legacy identity fields are ignored; use governed Suite PKCE.
+          const { beginSuiteCardAuthorization } = await import('../services/sso/jsaSuiteCardLive');
+          ssoOk = (await beginSuiteCardAuthorization()) !== 'fail_closed';
         }
         // Persist returnTo immediately on cold start too (mirrors warm-
         // start handler above). start.tsx also writes this, but it only
@@ -690,18 +686,20 @@ function AppContent() {
       // SSO login deep link — login.tsx handles the actual auth,
       // but we keep the overlay suppressed until auth state settles
       if (url.includes('login') && url.includes('hash=')) {
-        console.log('[JSA] Cold start SSO deep link detected — suppressing login overlay');
-        // SSO login comes from WB S — store returnTo so "Return to Work" goes back
-        AsyncStorage.setItem('jsa_returnTo', 'wellbuilt-suite').catch(() => {});
-        // login.tsx route will call ssoLogin; wait for auth state to update
-        setTimeout(() => setSsoInProgress(false), 5000); // safety fallback
+        console.log('[JSA] Cold start Suite card launch — starting governed authorization');
+        const { beginSuiteCardAuthorization } = await import('../services/sso/jsaSuiteCardLive');
+        const result = await beginSuiteCardAuthorization();
+        if (result === 'usable') router.replace('/(tabs)');
+        else if (result === 'fail_closed') {
+          router.replace({ pathname: '/governed-status', params: { mode: 'fail', refusal: 'unauthenticated' } } as any);
+        } else setSsoInProgress(true);
         return;
       }
       setSsoInProgress(false);
     });
 
     return () => subscription.remove();
-  }, [ssoLogin, logout]);
+  }, [logout]);
 
   // IMPORTANT: Always render the Stack so Expo Router can match deep link routes.
   // If we return null or a plain View here, deep links like jsaapp://login?hash=...
