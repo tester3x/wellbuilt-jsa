@@ -34,6 +34,7 @@ import {
   classifyInitializeAuthError,
   consumeRecoveryLatchForCurrentOwner,
   finalizeGovernedInstallation,
+  finalizeInstalledIdentityOrCleanup,
   installGovernedAuthSession,
   newSessionGeneration,
   sessionGenerationOf,
@@ -43,11 +44,14 @@ import {
 } from './jsaGovernedAuth';
 import type { ExchangePayload } from './jsaSession';
 import {
+  clearInstallationFinalizedMarkerIfGeneration,
   governedLatchMutator,
   loadAttempt,
   loadAuthRecoveryLatch,
   loadGovernedSession,
   mintAttempt,
+  persistInstallationFinalizedMarker,
+  persistInstallationFailureMarker,
   saveAuthRecoveryLatch,
   saveGovernedSession,
   publishGovernedSessionReady,
@@ -75,6 +79,7 @@ export function runGovernedIdentityMutation<T>(operation: () => Promise<T>): Pro
 }
 
 export function reserveGovernedIdentityEpoch(): number { return identityMutations.reserve(); }
+export function currentGovernedIdentityEpoch(): number { return identityMutations.current(); }
 export function governedIdentityEpochIsCurrent(epoch: number): boolean { return identityMutations.isCurrent(epoch); }
 
 function reactNativePersistence(): Persistence {
@@ -212,28 +217,40 @@ export async function persistAfterExchange(
       stillCurrent: current,
     });
     if (!result.ok) throw new Error(result.reason);
-    const finalized = await finalizeGovernedInstallation({
-      stillCurrent: current,
-      attachRecovery: () => attachRetryGenerationForCurrentOwner({
+    const finalized = await finalizeInstalledIdentityOrCleanup({
+      finalize: () => finalizeGovernedInstallation({
         stillCurrent: current,
-        loadAttempt,
-        loadLatch: strictLoadAuthRecoveryLatch,
-        generation,
-        attach: (expected, retryGeneration, ownerCurrent) =>
-          governedLatchMutator().attachRetryGeneration(expected, retryGeneration, ownerCurrent),
+        attachRecovery: () => attachRetryGenerationForCurrentOwner({
+          stillCurrent: current,
+          loadAttempt,
+          loadLatch: strictLoadAuthRecoveryLatch,
+          generation,
+          attach: (expected, retryGeneration, ownerCurrent) =>
+            governedLatchMutator().attachRetryGeneration(expected, retryGeneration, ownerCurrent),
+        }),
+        verifyExactIdentity: async () => {
+          const installed = await strictLoadGovernedSession();
+          return installed?.generation === generation
+            && installed.uid === payload.uid
+            && installed.driverId === payload.driverId
+            && installed.companyId === payload.companyId
+            && currentGovernedAuthUid() === payload.uid;
+        },
+        persistFinalizedMarker: () => persistInstallationFinalizedMarker({
+          status: 'finalized', generation, uid: payload.uid,
+          driverId: payload.driverId, companyId: payload.companyId,
+        }),
+        publishReady: publishGovernedSessionReady,
       }),
-      verifyExactIdentity: async () => {
-        const installed = await strictLoadGovernedSession();
-        return installed?.generation === generation
-          && installed.uid === payload.uid
-          && installed.driverId === payload.driverId
-          && installed.companyId === payload.companyId
-          && currentGovernedAuthUid() === payload.uid;
-      },
-      publishReady: publishGovernedSessionReady,
+      persistFailureMarker: () => persistInstallationFailureMarker({
+          generation, uid: payload.uid, driverId: payload.driverId, companyId: payload.companyId,
+      }),
+      cleanupExactInstallation: () => cleanupOwnedInstallationWithinMutation({
+        generation, uid: payload.uid, driverId: payload.driverId, companyId: payload.companyId,
+      }),
     });
-    if (finalized !== 'not_applicable' && finalized !== 'applied') {
-      throw new Error(`post_install_${finalized}`);
+    if (!finalized.ok) {
+      throw new Error(`post_install_${finalized.finalization}_cleanup_${finalized.cleanup}`);
     }
     return result.session;
   });
@@ -255,6 +272,7 @@ export async function cleanupOwnedInstallationWithinMutation(
       }
     },
     clearBaselineIfOwned: clearCanonicalIdentityStateIfOwned,
+    clearFinalizedMarkerIfOwned: clearInstallationFinalizedMarkerIfGeneration,
   });
 }
 

@@ -23,7 +23,9 @@ export const LOCAL_IDENTITY_ASYNC_KEYS = [
   '@jsa/truckNumber', '@jsa/trailerNumber', '@jsa/standaloneContacts',
 ] as const;
 
-export const GOVERNED_SECURE_KEYS = ['jsa_governed_session', 'jsa_pkce_verifier'] as const;
+export const GOVERNED_SECURE_KEYS = [
+  'jsa_governed_session', 'jsa_governed_installation_finalized', 'jsa_pkce_verifier',
+] as const;
 
 export const GOVERNED_ASYNC_KEYS = [
   '@jsa/pkceAttemptMeta', '@jsa/authRecoveryLatch', '@jsa/wbtReadRequest',

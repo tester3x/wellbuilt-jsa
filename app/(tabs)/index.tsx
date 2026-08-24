@@ -72,7 +72,7 @@ import {
 } from "../../services/sso/jsaGovernedJobFields";
 import { terminalFailureMatches } from "../../services/sso/jsaGovernedAuth";
 import { awaitCurrentHistoryOwner, createHistoryLookupOwnership } from "../../services/sso/jsaHistoryLookupOwnership";
-import { commitOwnedShiftRefresh, createShiftRefreshOwnership } from "../../services/sso/jsaShiftRefreshOwnership";
+import { createShiftRefreshCoordinator, type ShiftRefreshResult } from "../../services/sso/jsaShiftRefreshOwnership";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -136,6 +136,8 @@ export default function JsaHomeScreen() {
   const [activeJsaIndex, setActiveJsaIndex] = useState(0);
   const dismissedIdsRef = useRef<Set<string>>(new Set());
   const [hydrationDone, setHydrationDone] = useState(false);
+  const hydrationSequenceRef = useRef(0);
+  const dayStatusSequenceRef = useRef(0);
   const autofillConsumedRef = useRef(false);
 
   // Operator the driver is currently working under, captured from the SSO
@@ -353,38 +355,55 @@ export default function JsaHomeScreen() {
   // event. Date is LOCAL (matches WB S shiftTracking.dateString — UTC
   // would skew across midnight). In-flight cache prevents triple-fetch
   // when the three loaders all fire on the same launch.
-  const shiftRefreshOwnershipRef = useRef(createShiftRefreshOwnership());
+  const shiftRefreshCoordinatorRef = useRef(createShiftRefreshCoordinator());
+  useEffect(() => {
+    shiftRefreshCoordinatorRef.current.invalidate();
+    historyOwnershipRef.current.invalidate();
+    hydrationSequenceRef.current++;
+    dayStatusSequenceRef.current++;
+    return () => {
+      shiftRefreshCoordinatorRef.current.invalidate();
+      historyOwnershipRef.current.invalidate();
+      hydrationSequenceRef.current++;
+      dayStatusSequenceRef.current++;
+    };
+  }, [session?.uid, session?.driverId, session?.companyId, isSsoMode]);
   // vc51.9B: the TYPED verdict from the last refresh — auto-navigation and
   // the "Current" banner label consume it; 'unverified' never presents a
   // record as current (cached state is a hint, never authority).
   const [shiftVerdict, setShiftVerdict] = useState<ShiftVerdictKind>('none');
   const [verifiedShiftId, setVerifiedShiftId] = useState<string | null>(null);
-  const refreshShiftIdFromServer = React.useCallback(async (
-    caller?: { historyRequestSequence: number; stillCurrent(): boolean },
-  ): Promise<string | null> => {
-    const refreshOwnership = shiftRefreshOwnershipRef.current;
-    const refreshSequence = refreshOwnership.reserve();
-    const work = (async (): Promise<string | null> => {
+  const refreshShiftIdFromServer = React.useCallback(async (): Promise<ShiftRefreshResult<string | null>> => {
+    const coordinator = shiftRefreshCoordinatorRef.current;
+    const { currentGovernedIdentityEpoch } = await import('../../services/sso/jsaGovernedAuthLive');
+    const identityEpoch = currentGovernedIdentityEpoch();
+    const work = async (): Promise<ShiftRefreshResult<string | null>> => {
       const { strictLoadGovernedSession } = await import('../../services/sso/jsaRuntime');
       const governedOwner = await strictLoadGovernedSession();
-      if (!refreshOwnership.isSequenceCurrent(refreshSequence)) throw new Error('shift_refresh_superseded');
+      if (currentGovernedIdentityEpoch() !== identityEpoch) {
+        return { kind: 'superseded', owner: {
+          identityEpoch, sessionGeneration: governedOwner?.generation ?? null,
+          uid: governedOwner?.uid ?? null, driverId: governedOwner?.driverId ?? null,
+          companyId: governedOwner?.companyId ?? null, expectedShiftId: null,
+        } };
+      }
       const existing = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
-      const refreshOwner = refreshOwnership.bind(refreshSequence, {
+      const refreshOwner = {
+        identityEpoch,
         sessionGeneration: governedOwner?.generation ?? null,
         uid: governedOwner?.uid ?? null,
         driverId: governedOwner?.driverId ?? null,
         companyId: governedOwner?.companyId ?? null,
         expectedShiftId: existing,
-        historyRequestSequence: caller?.historyRequestSequence ?? null,
-      });
-      const owned = () => !!refreshOwner && refreshOwnership.isCurrent(refreshOwner)
-        && (!caller || caller.stillCurrent())
+      };
+      const owned = () => currentGovernedIdentityEpoch() === refreshOwner.identityEpoch
         && (governedOwner
           ? governedOwner.uid === session?.uid
             && governedOwner.driverId === session?.driverId
             && governedOwner.companyId === session?.companyId
           : !session);
-      if (!owned()) throw new Error('shift_refresh_superseded');
+      if (!owned()) return { kind: 'superseded', owner: refreshOwner };
+      return coordinator.run(refreshOwner, owned, async (commit) => {
       const driverHash = governedOwner?.driverId || null;
       const pendingCtx = await loadReadRequestContext().catch(() => null);
       if (!owned()) throw new Error('shift_refresh_superseded');
@@ -422,16 +441,12 @@ export default function JsaHomeScreen() {
               }
             : null,
         });
-        const authorityCommitted = await commitOwnedShiftRefresh(owned, [
-          async () => {
+        const committed = await commit(async () => {
             if (!(await persistShiftAuthorityDecisionIfOwned(decision, owned))) {
               throw new Error('shift_refresh_superseded');
             }
-          },
-          () => setMayLabelActive(decision.mayLabelActive),
-          () => setAuthoritySurface(decision.surface),
-        ]);
-        if (!authorityCommitted) throw new Error('shift_refresh_superseded');
+          setMayLabelActive(decision.mayLabelActive);
+          setAuthoritySurface(decision.surface);
         try {
           const { loadLaunchContext, loadGovernedTerminalFailure, loadRequestContext } = await import('../../services/sso/jsaRuntime');
           const { loadUsableGovernedSession } = await import('../../services/sso/jsaGovernedAuthLive');
@@ -487,11 +502,8 @@ export default function JsaHomeScreen() {
           if (!owned()) throw new Error('shift_refresh_superseded');
           setGovernedJobPopulate({ kind: 'none', reason: 'unset' });
         }
-        const verdictCommitted = await commitOwnedShiftRefresh(owned, [
-          () => setShiftVerdict(decision.mayLabelActive ? shiftVerdictKind : (decision.kind === 'stale_cached' ? 'verified_closed' : decision.kind === 'origin_day_unverified' || decision.kind === 'authority_unavailable' ? 'unverified' : 'none')),
-          () => setVerifiedShiftId(decision.mayLabelActive ? decision.activeShiftId : null),
-        ]);
-        if (!verdictCommitted) throw new Error('shift_refresh_superseded');
+        setShiftVerdict(decision.mayLabelActive ? shiftVerdictKind : (decision.kind === 'stale_cached' ? 'verified_closed' : decision.kind === 'origin_day_unverified' || decision.kind === 'authority_unavailable' ? 'unverified' : 'none'));
+        setVerifiedShiftId(decision.mayLabelActive ? decision.activeShiftId : null);
         if (decision.surface === 'unverified_gate') {
           console.log('[JSA-shift-refresh] current shift unverified — fail closed');
         } else if (decision.mayLabelActive) {
@@ -500,6 +512,9 @@ export default function JsaHomeScreen() {
           console.log('[JSA-shift-refresh] no current shift (' + decision.kind + ')');
         }
         return decision.mayLabelActive ? decision.activeShiftId : null;
+        });
+        if (committed === undefined) throw new Error('shift_refresh_superseded');
+        return committed;
       };
 
       if (!driverHash) {
@@ -608,8 +623,9 @@ export default function JsaHomeScreen() {
           'unverified',
         );
       }
-    })();
-    return work;
+      });
+    };
+    return work();
   }, [session?.driverId, session?.companyId]);
 
   // Read the active shiftId — minted by WB S at Start Shift, passed via
@@ -740,9 +756,15 @@ export default function JsaHomeScreen() {
   // Date-keyed docs are NOT read in SSO mode.
   const fetchJsaDayStatus = React.useCallback(async () => {
     if (!session?.driverId) return;
+    const consumerSequence = ++dayStatusSequenceRef.current;
     // Refresh shiftId from server first — AsyncStorage is stale across
     // shift boundaries when WB JSA is launched without a fresh SSO.
-    await refreshShiftIdFromServer();
+    const refreshed = await refreshShiftIdFromServer();
+    if (refreshed.kind !== 'applied' || consumerSequence !== dayStatusSequenceRef.current) return;
+    const { currentGovernedIdentityEpoch } = await import('../../services/sso/jsaGovernedAuthLive');
+    const ownsConsumer = () => consumerSequence === dayStatusSequenceRef.current
+      && currentGovernedIdentityEpoch() === refreshed.owner.identityEpoch;
+    if (!ownsConsumer()) return;
     const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
 
     // Detect SSO shift mode by direct AsyncStorage check (don't go through
@@ -832,7 +854,7 @@ export default function JsaHomeScreen() {
         });
       }
 
-      if (docs.length === 0) return;
+      if (!ownsConsumer() || docs.length === 0) return;
 
       // Collapse merged-state across all matched docs:
       //   jsaCompletedToday = TRUE if ANY doc has jsaCompleted=true
@@ -896,6 +918,7 @@ export default function JsaHomeScreen() {
       console.log(`[JSA-current-shift] existingSubmitted=${jsaCompletedToday}`);
 
       // Check completion status — if JSA signed in Firestore but no active JSAs loaded, hydrate from saved data
+      if (!ownsConsumer()) return;
       if (jsaCompletedToday) {
         const completedAt = mostRecentCompletedAt;
         if (completedAt) setJsaCompletedTime(completedAt);
@@ -978,9 +1001,11 @@ export default function JsaHomeScreen() {
       // deleted wells back into the form is exactly the regression that sent
       // us here. Stamped wells still get merged into an existing active JSA
       // (paper-doc display), just not into the fresh form.
+      if (!ownsConsumer()) return;
       const { loadLaunchContext } = await import('../../services/sso/jsaRuntime');
       const { shouldApplyLegacyJobHydration } = await import('../../services/sso/jsaGovernedJobFields');
       const mayHydrateLegacy = shouldApplyLegacyJobHydration(!!(await loadLaunchContext()));
+      if (!ownsConsumer()) return;
       if (allStamped.size > 0 && mayHydrateLegacy) {
         if (activeJsas.length > 0) {
           // Add to the most recent active JSA
@@ -1029,23 +1054,21 @@ export default function JsaHomeScreen() {
     fetchJsaDayStatus();
   }, [fetchJsaDayStatus]);
 
-  // Auto-refresh jsa_day_status when app comes to foreground (picks up WB T stamps)
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        fetchJsaDayStatus();
-        hydrateAllJsas();
-      }
-    });
-    return () => sub.remove();
-  }, [fetchJsaDayStatus, hydrateAllJsas]);
-
   // Unified JSA hydration — loads persisted tabs + merges new saves
   const hydrateAllJsas = React.useCallback(async () => {
+    const consumerSequence = ++hydrationSequenceRef.current;
+    let ownsConsumer = () => consumerSequence === hydrationSequenceRef.current;
+    let refreshApplied = false;
     try {
       // Refresh shiftId from server first — keeps scope authoritative
       // even when WB JSA is launched without a fresh SSO deep link.
-      await refreshShiftIdFromServer();
+      const refreshed = await refreshShiftIdFromServer();
+      if (refreshed.kind !== 'applied' || !ownsConsumer()) return;
+      const { currentGovernedIdentityEpoch } = await import('../../services/sso/jsaGovernedAuthLive');
+      ownsConsumer = () => consumerSequence === hydrationSequenceRef.current
+        && currentGovernedIdentityEpoch() === refreshed.owner.identityEpoch;
+      if (!ownsConsumer()) return;
+      refreshApplied = true;
       // Load dismissed IDs
       const dismissedRaw = await AsyncStorage.getItem('@jsa/dismissedIds');
       if (dismissedRaw) {
@@ -1122,6 +1145,7 @@ export default function JsaHomeScreen() {
         return !sig && !sigImg;
       });
 
+      if (!ownsConsumer()) return;
       if (existing.length > 0) {
         setActiveJsas(existing);
         setJsaCompletedTime(existing[0].signedAt);
@@ -1150,6 +1174,7 @@ export default function JsaHomeScreen() {
         extra: { scope, scopeIsDate: scope === today },
       });
     } catch (err) {
+      if (!ownsConsumer()) return;
       wbDiagLog({
         area: 'jsa',
         event: 'hydrateAllJsas.result',
@@ -1161,8 +1186,19 @@ export default function JsaHomeScreen() {
     }
     // Signal to the autofill effect that it can safely decide where to route
     // the deep-link params (existing tab vs new form).
-    setHydrationDone(true);
+    if (refreshApplied && ownsConsumer()) setHydrationDone(true);
   }, [activeJsaIndex, getJsaScope, refreshShiftIdFromServer]);
+
+  // Auto-refresh jsa_day_status when app comes to foreground (picks up WB T stamps)
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        fetchJsaDayStatus();
+        hydrateAllJsas();
+      }
+    });
+    return () => sub.remove();
+  }, [fetchJsaDayStatus, hydrateAllJsas]);
 
   // Hydrate on mount AND when screen gains focus (e.g. returning from submit)
   useFocusEffect(
@@ -1215,11 +1251,30 @@ export default function JsaHomeScreen() {
       }
     };
     try {
-      await refreshShiftIdFromServer({
-        historyRequestSequence: sequence,
-        stillCurrent: () => ownership.isSequenceCurrent(sequence),
-      });
+      let refreshed = await refreshShiftIdFromServer();
       if (!stillLatest()) return;
+      if (refreshed.kind === 'superseded') {
+        refreshed = await refreshShiftIdFromServer();
+        if (!stillLatest()) return;
+      }
+      if (refreshed.kind !== 'applied') {
+        const unavailableOwner = ownership.bind(sequence, {
+          sessionGeneration: refreshed.owner.sessionGeneration,
+          uid: refreshed.owner.uid,
+          driverId: refreshed.owner.driverId,
+          companyId: refreshed.owner.companyId,
+          shiftId: refreshed.owner.expectedShiftId,
+        });
+        const { currentGovernedIdentityEpoch } = await import('../../services/sso/jsaGovernedAuthLive');
+        if (unavailableOwner && currentGovernedIdentityEpoch() === refreshed.owner.identityEpoch) {
+          owner = unavailableOwner;
+          ownership.publish(owner, () => {
+            setHistoryLookup('unavailable');
+            setTodaysJsaSave(null);
+          });
+        }
+        return;
+      }
       const { strictLoadGovernedSession } = await import('../../services/sso/jsaRuntime');
       if (!stillLatest()) return;
       const governed = await strictLoadGovernedSession();
@@ -1348,14 +1403,6 @@ export default function JsaHomeScreen() {
       if (owner) await publish('unavailable', null);
     }
   }, [refreshShiftIdFromServer, session, isSsoMode]);
-  useEffect(() => {
-    historyOwnershipRef.current.invalidate();
-    shiftRefreshOwnershipRef.current.invalidate();
-    return () => {
-      historyOwnershipRef.current.invalidate();
-      shiftRefreshOwnershipRef.current.invalidate();
-    };
-  }, [session?.uid, session?.driverId, session?.companyId, isSsoMode]);
   useEffect(() => { loadTodaysSave(); }, [loadTodaysSave]);
   useFocusEffect(useCallback(() => { loadTodaysSave(); }, [loadTodaysSave]));
   useEffect(() => {

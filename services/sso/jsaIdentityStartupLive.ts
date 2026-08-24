@@ -1,5 +1,5 @@
 import { awaitGovernedAuthReady, getGovernedAuth } from './jsaGovernedAuthLive';
-import { hasRawGovernedSession, loadGovernedSession } from './jsaRuntime';
+import { hasRawGovernedSession, installationFinalizedFor, installationMarkerStatus, loadGovernedSession } from './jsaRuntime';
 import { classifyGovernedStartup, type GovernedStartupState } from './jsaIdentityStartupContract';
 import { governedBaselineReady } from './jsaLogoutWatcherLive';
 import type { LogoutWatcherBinding } from './jsaLogoutWatcherContract';
@@ -28,6 +28,11 @@ export async function inspectGovernedIdentityStartupDetailed(): Promise<Governed
     firebaseUid: user?.uid ?? null,
     tokenDriverId,
     tokenCompanyId,
+    installationMarkerState: await installationMarkerStatus(),
+    installationFinalized: session ? await installationFinalizedFor({
+      status: 'finalized', generation: session.generation, uid: session.uid,
+      driverId: session.driverId, companyId: session.companyId,
+    }) : undefined,
     baselineBound: session && user ? await governedBaselineReady(
       { uid: session.uid, driverId: session.driverId, companyId: session.companyId },
       session.generation,

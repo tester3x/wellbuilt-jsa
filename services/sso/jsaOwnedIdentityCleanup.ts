@@ -3,7 +3,8 @@ import type { JsaGovernedSession } from './jsaSession';
 
 export type OwnedCleanupFailure =
   | 'session_mismatch' | 'firebase_uid_mismatch' | 'baseline_mismatch'
-  | 'firebase_signout_failed' | 'session_delete_failed' | 'baseline_delete_failed';
+  | 'firebase_signout_failed' | 'session_delete_failed' | 'baseline_delete_failed'
+  | 'finalized_marker_delete_failed';
 
 export interface OwnedIdentityCleanupDeps {
   loadSession(): Promise<JsaGovernedSession | null>;
@@ -12,6 +13,7 @@ export interface OwnedIdentityCleanupDeps {
   signOutFirebase(): Promise<boolean>;
   clearSessionGeneration(generation: string): Promise<void>;
   clearBaselineIfOwned(owner: ManualInstallationOwner): Promise<boolean>;
+  clearFinalizedMarkerIfOwned?(generation: string): Promise<boolean>;
 }
 
 export type OwnedCleanupResult =
@@ -70,6 +72,15 @@ export async function cleanupOwnedIdentity(
     }
   } catch {
     return { ok: false, mutated: true, failure: 'baseline_delete_failed' };
+  }
+  if (deps.clearFinalizedMarkerIfOwned) {
+    try {
+      if (!(await deps.clearFinalizedMarkerIfOwned(owner.generation))) {
+        return { ok: false, mutated: true, failure: 'finalized_marker_delete_failed' };
+      }
+    } catch {
+      return { ok: false, mutated: true, failure: 'finalized_marker_delete_failed' };
+    }
   }
   return { ok: true, mutated: true };
 }

@@ -768,6 +768,7 @@ export async function finalizeGovernedInstallation(deps: {
   stillCurrent(): boolean;
   attachRecovery(): Promise<RecoveryLatchOutcome>;
   verifyExactIdentity(): Promise<boolean>;
+  persistFinalizedMarker(): Promise<void>;
   publishReady(): void;
 }): Promise<RecoveryLatchOutcome | 'identity_mismatch'> {
   if (!deps.stillCurrent()) return 'owner_superseded';
@@ -777,8 +778,36 @@ export async function finalizeGovernedInstallation(deps: {
   const exact = await deps.verifyExactIdentity();
   if (!deps.stillCurrent()) return 'owner_superseded';
   if (!exact) return 'identity_mismatch';
+  try {
+    await deps.persistFinalizedMarker();
+  } catch {
+    return deps.stillCurrent() ? 'storage_failure' : 'owner_superseded';
+  }
+  if (!deps.stillCurrent()) return 'owner_superseded';
   deps.publishReady();
   return latchOutcome;
+}
+
+export async function finalizeInstalledIdentityOrCleanup(deps: {
+  finalize(): Promise<RecoveryLatchOutcome | 'identity_mismatch'>;
+  persistFailureMarker(): Promise<void>;
+  cleanupExactInstallation(): Promise<{ ok: true } | { ok: false; failure: string }>;
+}): Promise<
+  | { ok: true; latch: 'not_applicable' | 'applied' }
+  | { ok: false; finalization: Exclude<RecoveryLatchOutcome | 'identity_mismatch', 'not_applicable' | 'applied'>; cleanup: 'complete' | string }
+> {
+  let finalization: RecoveryLatchOutcome | 'identity_mismatch';
+  try {
+    finalization = await deps.finalize();
+  } catch {
+    finalization = 'storage_failure';
+  }
+  if (finalization === 'not_applicable' || finalization === 'applied') {
+    return { ok: true, latch: finalization };
+  }
+  try { await deps.persistFailureMarker(); } catch { /* missing finalized proof is protected */ }
+  const cleanup = await deps.cleanupExactInstallation();
+  return { ok: false, finalization, cleanup: cleanup.ok ? 'complete' : cleanup.failure };
 }
 
 export async function consumeRecoveryLatchForCurrentOwner(deps: {

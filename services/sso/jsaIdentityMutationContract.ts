@@ -4,6 +4,7 @@ export function createGovernedIdentityMutationCoordinator() {
   let epoch = 0;
   return {
     reserve(): number { return ++epoch; },
+    current(): number { return epoch; },
     isCurrent(candidate: number): boolean { return candidate === epoch; },
     run<T>(operation: () => Promise<T>): Promise<T> {
       const result = tail.then(operation, operation);

@@ -41,10 +41,10 @@ check('no SecureStore token persist', !/setItemAsync|SecureStore/.test(diag));
 check('no RTDB fallback', !/drivers\/pending|firebasePost/.test(diag));
 check('still fire-and-forget', /void submitDiagnostic/.test(diag));
 
-// Pins refreshed for the governed manual-login correction above approved source 964a311640c324752a63b6f2578bb20dfbbcde6a.
+// Pins refreshed for the source-audited governed identity correction above f5a8087fd4f37b3a7f8906ef73c94c377c56a634.
 const frozen = {
-  'services/sso/jsaGovernedAuthLive.ts': '4a999c9caedd230b8e39137d412bc8cfdd4b4e80986a2b3052815fd4f34e777f',
-  'services/sso/jsaGovernedAuth.ts': '6e2e518180901cd3df1e6b4a52f67b20a59ae2614cfe1c050603da23c008d221',
+  'services/sso/jsaGovernedAuthLive.ts': 'f95faaaadb74f061f170a531b15748c7ac5325e1c4339cf44d69aa400b6d208b',
+  'services/sso/jsaGovernedAuth.ts': '63d442b780be412e37b13b2ae8bc8dcda413a4cc0688d694b25d02493160ef5f',
   'services/sso/jsaArtifactCallables.ts': '127f909e5d7b38a5b830152c2d66f0e1919dfa9adc132a92bef05e1cdbbb8a32',
   'services/sso/jsaRequestCallables.ts': '4dd637a900d74f653272402d8cbd7836d34ebf386bfc2cee1d158a9360fb542c',
   'services/sso/jsaRequestLifecycle.ts': '04978ae1fa34510c6a92a917e6c6d0fee71203fd0cf49795ae429df887042e02',

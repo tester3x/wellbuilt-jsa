@@ -3,11 +3,14 @@ import {
   consumeRecoveryLatchForCurrentOwner,
   createSerializedLatchMutator,
   finalizeGovernedInstallation,
+  finalizeInstalledIdentityOrCleanup,
 } from '../services/sso/jsaGovernedAuth.ts';
-import { createShiftRefreshOwnership, commitOwnedShiftRefresh } from '../services/sso/jsaShiftRefreshOwnership.ts';
+import { createShiftRefreshCoordinator } from '../services/sso/jsaShiftRefreshOwnership.ts';
+import { classifyGovernedStartup, strictStartupPresentation } from '../services/sso/jsaIdentityStartupContract.ts';
 import { strictClearRawSessionIfGeneration } from '../services/sso/jsaStrictSessionCleanup.ts';
 import { runStrictRecoverySessionCleanup } from '../services/sso/jsaStrictRecoveryCleanup.ts';
 import { obtainAuthoritativeContext } from '../services/sso/jsaRequestLifecycle.ts';
+import { cleanupOwnedIdentity } from '../services/sso/jsaOwnedIdentityCleanup.ts';
 
 let passed = 0; let failed = 0;
 const check = (name, ok) => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`); ok ? passed++ : failed++; };
@@ -17,37 +20,160 @@ const latch = (overrides = {}) => ({
   failedGeneration: 'GA', retryGeneration: null, ...overrides,
 });
 
-// Exact live-facing shift owner: B gets a distinct network flight and A cannot commit.
+const shiftOwner = (generation, epoch, overrides = {}) => ({
+  identityEpoch: epoch, sessionGeneration: generation, uid: 'uA', driverId: 'dA', companyId: 'cA',
+  expectedShiftId: 'shift-old', ...overrides,
+});
+
+// The production coordinator coalesces the real home-screen fan-out for one exact owner.
 {
-  const ownership = createShiftRefreshOwnership();
-  const state = { storageShift: null, verified: false, surface: 'none', verdict: 'none', job: null, history: null };
-  let networkStarts = 0;
-  const heldA = deferred(); networkStarts++;
-  const ownerA = ownership.bind(ownership.reserve(), {
-    sessionGeneration: 'GA', uid: 'uA', driverId: 'dA', companyId: 'cA',
-    expectedShiftId: 'shift-A-old', historyRequestSequence: 1,
+  const coordinator = createShiftRefreshCoordinator(); const held = deferred();
+  const owner = shiftOwner('GA', 1); let epoch = 1; let networkStarts = 0; let durableCommits = 0;
+  const operation = async (commit) => {
+    networkStarts++; await held.promise;
+    return commit(async () => { durableCommits++; return 'shift-A'; });
+  };
+  const day = coordinator.run(owner, () => epoch === 1, operation);
+  const hydration = coordinator.run(owner, () => epoch === 1, operation);
+  const history = coordinator.run(owner, () => epoch === 1, operation);
+  held.resolve(); const results = await Promise.all([day, hydration, history]);
+  const ui = { day: false, hydrationDone: false, history: 'checking' };
+  if (results[0].kind === 'applied') ui.day = true;
+  if (results[1].kind === 'applied') ui.hydrationDone = true;
+  if (results[2].kind === 'applied') ui.history = 'found';
+  check('mount/focus day-status hydration and history share one exact-owner authoritative refresh',
+    networkStarts === 1 && durableCommits === 1 && results.every((r) => r.kind === 'applied'));
+  check('coalesced history leaves checking and hydration completes only from applied owner',
+    ui.day && ui.hydrationDone && ui.history === 'found');
+}
+
+const installedOwner = { generation: 'GI', uid: 'uid-I', driverId: 'driver-I', companyId: 'company-I' };
+const installedState = () => ({
+  firebaseUid: installedOwner.uid,
+  session: { ...installedOwner, audience: 'wellbuilt-jsa' },
+  baseline: { ...installedOwner },
+  marker: null,
+  ready: 0,
+});
+const cleanupDeps = (state, failure = null) => ({
+  loadSession: async () => state.session,
+  currentFirebaseUid: () => state.firebaseUid,
+  baselineOwned: async (owner) => !!state.baseline
+    && ['generation', 'uid', 'driverId', 'companyId'].every((key) => state.baseline[key] === owner[key]),
+  signOutFirebase: async () => {
+    if (failure === 'firebase') throw new Error('firebase');
+    state.firebaseUid = null; return true;
+  },
+  clearSessionGeneration: async (generation) => {
+    if (failure === 'session') throw new Error('session');
+    if (state.session?.generation === generation) state.session = null;
+  },
+  clearBaselineIfOwned: async () => {
+    if (failure === 'baseline') throw new Error('baseline');
+    state.baseline = null; return true;
+  },
+  clearFinalizedMarkerIfOwned: async () => { state.marker = null; return true; },
+});
+
+// This is the same finalization/cleanup orchestration called by persistAfterExchange for
+// both manual login and the SSO callback. A post-install mismatch cannot survive restart.
+for (const [name, finalization] of [
+  ['active latch mismatch', 'active_latch_mismatch'],
+  ['latch storage failure', 'storage_failure'],
+  ['owner supersession', 'owner_superseded'],
+]) {
+  const state = installedState();
+  const result = await finalizeInstalledIdentityOrCleanup({
+    finalize: async () => finalization,
+    persistFailureMarker: async () => { state.marker = { status: 'failed', ...installedOwner }; },
+    cleanupExactInstallation: () => cleanupOwnedIdentity(installedOwner, cleanupDeps(state)),
   });
-  const flightA = heldA.promise.then(() => commitOwnedShiftRefresh(
-    () => ownership.isCurrent(ownerA),
-    [
-      () => { state.storageShift = 'shift-A-new'; state.verified = true; },
-      () => { state.surface = 'verified'; },
-      () => { state.verdict = 'server_open'; },
-      () => { state.job = 'A-job'; },
-      () => { state.history = 'A-history'; },
-    ],
-  ));
-  const heldB = deferred(); networkStarts++;
-  const ownerB = ownership.bind(ownership.reserve(), {
-    sessionGeneration: 'GB', uid: 'uB', driverId: 'dB', companyId: 'cB',
-    expectedShiftId: null, historyRequestSequence: 2,
+  const startup = classifyGovernedStartup({
+    rawSessionPresent: !!state.session,
+    firebaseUid: state.firebaseUid,
+    session: state.session,
+    authority: null,
+    installationMarkerState: state.marker?.status ?? 'missing',
   });
-  heldA.resolve(); const aCommitted = await flightA;
-  check('deferred Driver A shift refresh cannot mutate Driver B storage or UI and B does not join A',
-    !aCommitted && ownership.isCurrent(ownerB) && networkStarts === 2
-      && state.storageShift === null && !state.verified && state.surface === 'none'
-      && state.verdict === 'none' && state.job === null && state.history === null);
-  heldB.resolve();
+  check(`post-install ${name} performs exact cleanup and is not restart-usable`,
+    !result.ok && result.cleanup === 'complete' && !state.firebaseUid && !state.session
+      && !state.baseline && strictStartupPresentation(startup).governedReady === false);
+}
+
+{
+  const state = installedState();
+  const result = await finalizeInstalledIdentityOrCleanup({
+    finalize: async () => { throw new Error('latch-read'); },
+    persistFailureMarker: async () => { state.marker = { status: 'failed', ...installedOwner }; },
+    cleanupExactInstallation: () => cleanupOwnedIdentity(installedOwner, cleanupDeps(state, 'firebase')),
+  });
+  const startup = classifyGovernedStartup({
+    rawSessionPresent: true,
+    firebaseUid: state.firebaseUid,
+    session: state.session,
+    tokenDriverId: installedOwner.driverId,
+    tokenCompanyId: installedOwner.companyId,
+    baselineBound: true,
+    installationFinalized: false,
+    installationMarkerState: 'failed',
+  });
+  check('finalization exception plus cleanup failure remains protected and retryable',
+    !result.ok && result.cleanup === 'firebase_signout_failed' && state.firebaseUid === installedOwner.uid
+      && state.session?.generation === installedOwner.generation && state.baseline
+      && startup === 'installation_not_finalized' && strictStartupPresentation(startup).governedReady === false);
+}
+
+{
+  const state = installedState(); let ready = 0; const heldAttach = deferred(); let current = true;
+  const running = finalizeInstalledIdentityOrCleanup({
+    finalize: () => finalizeGovernedInstallation({
+      stillCurrent: () => current,
+      attachRecovery: async () => heldAttach.promise,
+      verifyExactIdentity: async () => true,
+      persistFinalizedMarker: async () => { state.marker = { status: 'finalized', ...installedOwner }; },
+      publishReady: () => { ready++; },
+    }),
+    persistFailureMarker: async () => { state.marker = { status: 'failed', ...installedOwner }; },
+    cleanupExactInstallation: () => cleanupOwnedIdentity(installedOwner, cleanupDeps(state)),
+  });
+  current = false; heldAttach.resolve('applied');
+  const result = await running;
+  check('deferred latch supersession publishes no readiness and cleans the exact installation',
+    !result.ok && result.finalization === 'owner_superseded' && result.cleanup === 'complete'
+      && ready === 0 && !state.firebaseUid && !state.session && !state.baseline);
+}
+
+// Different owner gets a distinct flight; durable commit lane orders A before B.
+{
+  const coordinator = createShiftRefreshCoordinator(); let epoch = 1; let starts = 0; const state = { shift: null };
+  const heldNetworkA = deferred(); const heldWriteA = deferred();
+  const ownerA = shiftOwner('GA', 1);
+  const flightA = coordinator.run(ownerA, () => epoch === 1, async (commit) => {
+    starts++; await heldNetworkA.promise;
+    return commit(async () => { await heldWriteA.promise; state.shift = 'shift-A'; return 'shift-A'; });
+  });
+  epoch = 2;
+  const ownerB = shiftOwner('GB', 2, { uid: 'uB', driverId: 'dB', companyId: 'cB', expectedShiftId: null });
+  const flightB = coordinator.run(ownerB, () => epoch === 2, async (commit) => {
+    starts++; return commit(async () => { state.shift = 'shift-B'; return 'shift-B'; });
+  });
+  heldNetworkA.resolve(); await Promise.resolve(); heldWriteA.resolve();
+  const [a, b] = await Promise.all([flightA, flightB]);
+  check('Driver B starts a distinct flight and deferred Driver A storage cannot settle over B',
+    starts === 2 && a.kind === 'superseded' && b.kind === 'applied' && state.shift === 'shift-B');
+}
+
+{
+  const coordinator = createShiftRefreshCoordinator(); let epoch = 1; let writes = 0; const held = deferred();
+  const a = coordinator.run(shiftOwner('GA', 1), () => epoch === 1, async (commit) => {
+    await held.promise; return commit(async () => { writes++; return 'A'; });
+  });
+  epoch = 2;
+  const b = coordinator.run(shiftOwner('GB', 2), () => epoch === 2, async (commit) =>
+    commit(async () => 'B'));
+  held.resolve();
+  check('same UID driver company with a new generation and epoch invalidates old publication',
+    (await a).kind === 'superseded' && (await b).kind === 'applied' && writes === 0);
 }
 
 // Recovery uses strict conditional deletion and cannot reconcile after unverifiable absence.
@@ -87,6 +213,7 @@ for (const scenario of ['delete_throws', 'raw_remains', 'readback_throws', 'gene
     stillCurrent: () => current,
     attachRecovery: async () => heldAttach.promise,
     verifyExactIdentity: async () => true,
+    persistFinalizedMarker: async () => {},
     publishReady: () => { ready++; },
   });
   current = false; heldAttach.resolve('applied');

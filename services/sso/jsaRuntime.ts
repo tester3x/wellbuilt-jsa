@@ -42,6 +42,7 @@ import { strictClearRawSessionIfGeneration } from './jsaStrictSessionCleanup';
 const ATTEMPT_META_KEY = '@jsa/pkceAttemptMeta';
 const VERIFIER_KEY = 'jsa_pkce_verifier';
 const SESSION_KEY = 'jsa_governed_session';
+export const INSTALLATION_FINALIZED_KEY = 'jsa_governed_installation_finalized';
 const governedSessionSignal = createRevisionSignal();
 export const AUTH_RECOVERY_LATCH_KEY = '@jsa/authRecoveryLatch';
 export const GOVERNED_TERMINAL_FAILURE_KEY = '@jsa/governedTerminalFailure';
@@ -171,6 +172,71 @@ export async function strictClearGovernedSessionIfGeneration(used: string): Prom
     const parsed = validatePersistedGovernedSession(JSON.parse(raw));
     return parsed?.generation ?? null;
   });
+}
+
+export interface InstallationFinalizedMarker {
+  status: 'finalized' | 'failed';
+  generation: string;
+  uid: string;
+  driverId: string;
+  companyId: string;
+}
+
+function parseInstallationFinalizedMarker(raw: string): InstallationFinalizedMarker | null {
+  const value = JSON.parse(raw) as Partial<InstallationFinalizedMarker>;
+  return value && (value.status === 'finalized' || value.status === 'failed')
+    && typeof value.generation === 'string' && typeof value.uid === 'string'
+    && typeof value.driverId === 'string' && typeof value.companyId === 'string'
+    ? value as InstallationFinalizedMarker : null;
+}
+
+export async function persistInstallationFinalizedMarker(
+  marker: InstallationFinalizedMarker,
+): Promise<void> {
+  const raw = JSON.stringify(marker);
+  await SecureStore.setItemAsync(INSTALLATION_FINALIZED_KEY, raw);
+  if (await SecureStore.getItemAsync(INSTALLATION_FINALIZED_KEY) !== raw) {
+    throw new Error('installation_finalized_marker_unverified');
+  }
+}
+
+export async function persistInstallationFailureMarker(
+  marker: Omit<InstallationFinalizedMarker, 'status'>,
+): Promise<void> {
+  const value: InstallationFinalizedMarker = { ...marker, status: 'failed' };
+  const raw = JSON.stringify(value);
+  await SecureStore.setItemAsync(INSTALLATION_FINALIZED_KEY, raw);
+  if (await SecureStore.getItemAsync(INSTALLATION_FINALIZED_KEY) !== raw) {
+    throw new Error('installation_failure_marker_unverified');
+  }
+}
+
+export async function installationMarkerStatus(): Promise<'finalized' | 'failed' | 'missing' | 'unreadable'> {
+  try {
+    const raw = await SecureStore.getItemAsync(INSTALLATION_FINALIZED_KEY);
+    if (!raw) return 'missing';
+    return parseInstallationFinalizedMarker(raw)?.status ?? 'unreadable';
+  } catch { return 'unreadable'; }
+}
+
+export async function installationFinalizedFor(marker: InstallationFinalizedMarker): Promise<boolean> {
+  try {
+    const raw = await SecureStore.getItemAsync(INSTALLATION_FINALIZED_KEY);
+    if (!raw) return false;
+    const stored = parseInstallationFinalizedMarker(raw);
+    return !!stored && stored.status === 'finalized'
+      && stored.generation === marker.generation && stored.uid === marker.uid
+      && stored.driverId === marker.driverId && stored.companyId === marker.companyId;
+  } catch { return false; }
+}
+
+export async function clearInstallationFinalizedMarkerIfGeneration(generation: string): Promise<boolean> {
+  const raw = await SecureStore.getItemAsync(INSTALLATION_FINALIZED_KEY);
+  if (raw === null) return true;
+  const marker = parseInstallationFinalizedMarker(raw);
+  if (!marker || marker.generation !== generation) return false;
+  await SecureStore.deleteItemAsync(INSTALLATION_FINALIZED_KEY);
+  return (await SecureStore.getItemAsync(INSTALLATION_FINALIZED_KEY)) === null;
 }
 
 export async function markGovernedTerminalFailure(requestId: string): Promise<void> {
