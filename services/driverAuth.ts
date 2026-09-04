@@ -172,7 +172,36 @@ export const verifyLogin = async (
   companyName?: string;
   error?: string;
 }> => {
-  console.log("[DriverAuth-JSA] Verifying login for:", displayName);
+  try {
+    const callable = httpsCallable(functions, "authenticateDriver", { timeout: 15_000 });
+    const response = await callable({ displayName: displayName.trim(), passcode });
+    const data = (response.data || {}) as Record<string, any>;
+    if (typeof data.driverId !== "string" || typeof data.displayName !== "string" || !data.customToken) {
+      return { valid: false, error: "Secure sign-in returned an incomplete identity" };
+    }
+    return {
+      valid: true,
+      driverId: data.driverId,
+      displayName: data.displayName,
+      legalName: typeof data.legalName === "string" ? data.legalName : undefined,
+      // Historical storage field; canonical flows store the opaque driver ID,
+      // never a client-derived credential hash.
+      passcodeHash: data.driverId,
+      isAdmin: data.isAdmin === true,
+      isViewer: data.isViewer === true,
+      companyId: typeof data.companyId === "string" ? data.companyId : undefined,
+      companyName: typeof data.companyName === "string" ? data.companyName : undefined,
+    };
+  } catch (error: any) {
+    const message = typeof error?.message === "string" && /deactivated/i.test(error.message)
+      ? "This account has been deactivated"
+      : "Invalid name or passcode";
+    return { valid: false, error: message };
+  }
+
+  /* Legacy implementation retained below temporarily for migration reference;
+     canonical execution always returns above. */
+  console.log("[DriverAuth-JSA] Verifying legacy login for:", displayName);
 
   try {
     const hash = await hashPasscode(passcode, displayName);
