@@ -15,8 +15,9 @@
 
 import * as SecureStore from "expo-secure-store";
 import * as Crypto from "expo-crypto";
+import { getAuth, signInWithCustomToken } from "firebase/auth";
 import { httpsCallable } from "firebase/functions";
-import { functions } from "./firebase";
+import { app, functions } from "./firebase";
 
 // Firebase configuration (same project as WB M / WB S: wellbuilt-sync)
 const FIREBASE_DATABASE_URL = "https://wellbuilt-sync-default-rtdb.firebaseio.com";
@@ -179,6 +180,9 @@ export const verifyLogin = async (
     if (typeof data.driverId !== "string" || typeof data.displayName !== "string" || !data.customToken) {
       return { valid: false, error: "Secure sign-in returned an incomplete identity" };
     }
+    // Establish the authenticated Firebase session used by Firestore rules.
+    // The credential stays in Firebase Auth memory and is never persisted by us.
+    await signInWithCustomToken(getAuth(app), data.customToken);
     return {
       valid: true,
       driverId: data.driverId,
