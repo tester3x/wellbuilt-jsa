@@ -1,4 +1,5 @@
 import { initializeApp } from "firebase/app";
+import { getFunctions } from "firebase/functions";
 import {
   collection,
   deleteDoc,
@@ -23,7 +24,8 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
+export const functions = getFunctions(app);
 const db = getFirestore(app);
 
 // Collection name for JSAs

@@ -27,7 +27,7 @@ const VALID_PASSCODE_REGEX = /^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]+
 
 const validatePasscode = (code: string): { valid: boolean; error?: string } => {
   if (!code.trim()) return { valid: false, error: "Please create a passcode" };
-  if (code.length < 4) return { valid: false, error: "Passcode must be at least 4 characters" };
+  if (code.length < 6) return { valid: false, error: "Passcode must be at least 6 characters" };
   if (code.length > 12) return { valid: false, error: "Passcode must be 12 characters or less" };
   if (!VALID_PASSCODE_REGEX.test(code)) return { valid: false, error: "Passcode contains invalid characters" };
   return { valid: true };
@@ -52,7 +52,7 @@ export default function LoginScreen() {
   const [displayName, setDisplayName] = useState("");
   const [legalName, setLegalName] = useState("");
   const [passcode, setPasscode] = useState("");
-  const [companyName, setCompanyName] = useState("");
+  const [companyCode, setCompanyCode] = useState("");
   const [showPasscode, setShowPasscode] = useState(false);
   const [passcodeError, setPasscodeError] = useState("");
 
@@ -76,7 +76,7 @@ export default function LoginScreen() {
 
   const canSubmit =
     mode === "register"
-      ? !!(passcode.trim() && displayName.trim() && legalName.trim() && companyName.trim() && !passcodeError)
+      ? !!(passcode.trim() && displayName.trim() && legalName.trim() && companyCode.trim() && !passcodeError)
       : !!(passcode.trim() && displayName.trim() && !passcodeError);
 
   const handleLogin = async () => {
@@ -87,8 +87,8 @@ export default function LoginScreen() {
   const handleRegister = async () => {
     const validation = validatePasscode(passcode);
     if (!validation.valid) return;
-    if (!displayName.trim() || !legalName.trim() || !companyName.trim()) return;
-    await register(displayName, passcode, companyName, legalName);
+    if (!displayName.trim() || !legalName.trim() || !companyCode.trim()) return;
+    await register(displayName, passcode, companyCode, legalName);
   };
 
   const handleStandaloneRegister = async () => {
@@ -101,7 +101,7 @@ export default function LoginScreen() {
   const handleSwitchToRegister = () => {
     setPasscode("");
     setLegalName("");
-    setCompanyName("");
+    setCompanyCode("");
     setShowPasscode(false);
     switchToRegister();
   };
@@ -109,7 +109,7 @@ export default function LoginScreen() {
   const handleSwitchToLogin = () => {
     setPasscode("");
     setLegalName("");
-    setCompanyName("");
+    setCompanyCode("");
     setShowPasscode(false);
     switchToLogin();
   };
@@ -273,20 +273,20 @@ export default function LoginScreen() {
                 />
                 <Text style={styles.hint}>Used on printed JSA forms and signatures</Text>
 
-                <Text style={styles.label}>Company</Text>
+                <Text style={styles.label}>Company Join Code</Text>
                 <TextInput
                   ref={companyRef}
                   style={styles.input}
-                  value={companyName}
-                  onChangeText={setCompanyName}
-                  placeholder="Your company name"
+                  value={companyCode}
+                  onChangeText={(text) => setCompanyCode(text.toUpperCase())}
+                  placeholder="Code from your employer"
                   placeholderTextColor="#999"
-                  autoCapitalize="words"
+                  autoCapitalize="characters"
                   returnKeyType="next"
                   blurOnSubmit={false}
                   onSubmitEditing={() => passcodeRef.current?.focus()}
                 />
-                <Text style={styles.hint}>Enter the company name your employer gave you</Text>
+                <Text style={styles.hint}>Your employer provides this code</Text>
               </>
             )}
 

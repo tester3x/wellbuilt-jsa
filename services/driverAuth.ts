@@ -15,6 +15,8 @@
 
 import * as SecureStore from "expo-secure-store";
 import * as Crypto from "expo-crypto";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "./firebase";
 
 // Firebase configuration (same project as WB M / WB S: wellbuilt-sync)
 const FIREBASE_DATABASE_URL = "https://wellbuilt-sync-default-rtdb.firebaseio.com";
@@ -614,36 +616,27 @@ export const registerStandalone = async (params: {
 export const submitRegistration = async (params: {
   passcode: string;
   displayName: string;
-  companyName?: string;
+  companyCode: string;
   legalName?: string;
 }): Promise<{ success: boolean; error?: string }> => {
-  console.log("[DriverAuth-JSA] Submitting registration for:", params.displayName, "company:", params.companyName);
+  console.log("[DriverAuth-JSA] Submitting governed registration for:", params.displayName);
 
   try {
-    const hash = await hashPasscode(params.passcode, params.displayName);
-
-    const registrationData: Record<string, string> = {
+    const callable = httpsCallable(functions, "requestDriverRegistration", { timeout: 15_000 });
+    const result = await callable({
       displayName: params.displayName,
-      passcodeHash: hash,
-      requestedAt: new Date().toISOString(),
-      source: 'wbjsa',
-    };
-    if (params.companyName) {
-      registrationData.companyName = params.companyName;
-    }
-    if (params.legalName) {
-      registrationData.legalName = params.legalName;
-    }
-
-    await firebasePost(DRIVERS_PENDING, registrationData);
+      passcode: params.passcode,
+      companyCode: params.companyCode,
+      legalName: params.legalName || params.displayName,
+      source: "wbjsa",
+    });
+    const pendingId = (result.data as any)?.pendingId;
+    if (typeof pendingId !== "string" || !pendingId) throw new Error("Registration did not return an id");
 
     // Save pending registration locally
-    await SecureStore.setItemAsync("jsa_pendingPasscodeHash", hash);
+    await SecureStore.setItemAsync("jsa_pendingId", pendingId);
     await SecureStore.setItemAsync("jsa_pendingDisplayName", params.displayName);
     await SecureStore.setItemAsync("jsa_pendingRegistrationTime", Date.now().toString());
-    if (params.companyName) {
-      await SecureStore.setItemAsync("jsa_pendingCompanyName", params.companyName);
-    }
 
     console.log("[DriverAuth-JSA] Registration submitted successfully");
     return { success: true };
@@ -657,16 +650,14 @@ export const submitRegistration = async (params: {
  * Get pending registration info
  */
 export const getPendingRegistration = async (): Promise<{
-  passcodeHash: string;
+  pendingId: string;
   displayName: string;
-  companyName?: string;
 } | null> => {
-  const passcodeHash = await SecureStore.getItemAsync("jsa_pendingPasscodeHash");
+  const pendingId = await SecureStore.getItemAsync("jsa_pendingId");
   const displayName = await SecureStore.getItemAsync("jsa_pendingDisplayName");
-  const companyName = await SecureStore.getItemAsync("jsa_pendingCompanyName");
 
-  if (passcodeHash && displayName) {
-    return { passcodeHash, displayName, companyName: companyName || undefined };
+  if (pendingId && displayName) {
+    return { pendingId, displayName };
   }
   return null;
 };
@@ -683,25 +674,10 @@ export const checkRegistrationStatus = async (): Promise<
   }
 
   try {
-    // Check if approved
-    const driver = await firebaseGet(`${DRIVERS_APPROVED}/${pending.passcodeHash}`);
-    if (driver) {
-      return "approved";
-    }
-
-    // Check if still in pending
-    const pendingDrivers = await firebaseGet(DRIVERS_PENDING);
-    if (pendingDrivers) {
-      for (const key of Object.keys(pendingDrivers)) {
-        const registration = pendingDrivers[key];
-        if (registration.passcodeHash === pending.passcodeHash) {
-          return "pending";
-        }
-      }
-    }
-
-    // Not in approved, not in pending = rejected
-    return "rejected";
+    const callable = httpsCallable(functions, "checkDriverRegistrationStatus", { timeout: 15_000 });
+    const result = await callable({ pendingId: pending.pendingId });
+    const status = (result.data as any)?.status;
+    return status === "approved" || status === "rejected" || status === "pending" ? status : "pending";
   } catch (error) {
     console.error("[DriverAuth-JSA] Error checking registration status:", error);
     return "pending";
@@ -717,34 +693,8 @@ export const completeRegistration = async (): Promise<{
   displayName?: string;
   error?: string;
 }> => {
-  const pending = await getPendingRegistration();
-  if (!pending) {
-    return { success: false, error: "No pending registration" };
-  }
-
-  try {
-    const driverData = await firebaseGet(`${DRIVERS_APPROVED}/${pending.passcodeHash}`);
-
-    if (!driverData) {
-      return { success: false, error: "Driver not found in approved list" };
-    }
-
-    const displayName = driverData.displayName || pending.displayName;
-    const isAdmin = driverData.isAdmin === true;
-    const isViewer = driverData.isViewer === true;
-    const companyId = driverData.companyId || undefined;
-    const companyName = driverData.companyName || undefined;
-
-    await saveDriverSession(pending.passcodeHash, displayName, pending.passcodeHash, isAdmin, isViewer, companyId, companyName);
-    return {
-      success: true,
-      driverId: pending.passcodeHash,
-      displayName,
-    };
-  } catch (error) {
-    console.error("[DriverAuth-JSA] Error completing registration:", error);
-    return { success: false, error: "Connection error" };
-  }
+  await clearPendingRegistration();
+  return { success: false, error: "Registration approved. Sign in with your new login." };
 };
 
 /**
@@ -752,6 +702,7 @@ export const completeRegistration = async (): Promise<{
  */
 export const clearPendingRegistration = async (): Promise<void> => {
   await SecureStore.deleteItemAsync("jsa_pendingPasscodeHash");
+  await SecureStore.deleteItemAsync("jsa_pendingId");
   await SecureStore.deleteItemAsync("jsa_pendingDisplayName");
   await SecureStore.deleteItemAsync("jsa_pendingRegistrationTime");
   await SecureStore.deleteItemAsync("jsa_pendingCompanyName");

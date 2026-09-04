@@ -11,7 +11,6 @@ import {
   saveDriverSession,
   submitRegistration,
   registerStandalone as registerStandaloneService,
-  isPasscodeAvailable,
   getPendingRegistration,
   checkRegistrationStatus,
   completeRegistration,
@@ -46,7 +45,7 @@ interface AuthContextValue {
   /** Sign in with name + passcode */
   login: (displayName: string, passcode: string) => Promise<boolean>;
   /** Register a new driver (company flow — pending approval) */
-  register: (displayName: string, passcode: string, companyName?: string, legalName?: string) => Promise<boolean>;
+  register: (displayName: string, passcode: string, companyCode: string, legalName?: string) => Promise<boolean>;
   /** Register as standalone/free-tier driver — auto-approved */
   registerStandalone: (displayName: string, passcode: string, legalName?: string) => Promise<boolean>;
   /** Complete registration after admin approval */
@@ -91,14 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const status = await checkRegistrationStatus();
           if (status === "approved") {
             if (pollRef.current) clearInterval(pollRef.current);
-            const result = await completeRegistration();
-            if (result.success) {
-              const driverSession = await getDriverSession();
-              setSession(driverSession);
-              setMode("authenticated");
-            } else {
-              setMode("approved");
-            }
+            setMode("approved");
           } else if (status === "rejected") {
             if (pollRef.current) clearInterval(pollRef.current);
             setMode("rejected");
@@ -191,22 +183,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const register = useCallback(async (displayName: string, passcode: string, companyName?: string, legalName?: string): Promise<boolean> => {
+  const register = useCallback(async (displayName: string, passcode: string, companyCode: string, legalName?: string): Promise<boolean> => {
     setMode("registering");
     setError("");
 
     try {
-      const available = await isPasscodeAvailable(passcode.trim(), displayName.trim());
-      if (!available.available) {
-        setMode("register");
-        setError(available.reason || "This passcode is not available");
-        return false;
-      }
-
       const result = await submitRegistration({
         passcode: passcode.trim(),
         displayName: displayName.trim(),
-        companyName: companyName?.trim() || undefined,
+        companyCode: companyCode.trim(),
         legalName: legalName?.trim() || undefined,
       });
 
@@ -264,26 +249,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const completeReg = useCallback(async (): Promise<boolean> => {
-    setMode("verifying");
-
-    try {
-      const result = await completeRegistration();
-      if (result.success) {
-        const driverSession = await getDriverSession();
-        setSession(driverSession);
-        setMode("authenticated");
-        return true;
-      } else {
-        setMode("error");
-        setError(result.error || "Could not complete registration");
-        return false;
-      }
-    } catch (err) {
-      console.error("[AuthContext-JSA] Complete registration error:", err);
-      setMode("error");
-      setError("Connection error. Please try again.");
-      return false;
-    }
+    await clearPendingRegistration();
+    setMode("login");
+    setError("Registration approved. Sign in with the passcode you created.");
+    return true;
   }, []);
 
   const cancelRegistration = useCallback(async () => {
