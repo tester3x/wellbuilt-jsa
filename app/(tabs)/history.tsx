@@ -96,7 +96,10 @@ export default function HistoryTabScreen() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          setHistory(parsed);
+          const session = await (await import('../../services/sso/jsaGovernedAuthLive')).loadUsableGovernedSession();
+          const owned = session ? parsed.filter((r:any)=>r.companyId===session.companyId && (r.driverId===session.driverId || r.driverHash===session.driverId)) : [];
+          setHistory(owned);
+          try { setHistory(await (await import('../../services/standaloneJsa')).syncStandaloneHistory()); } catch { /* Keep owner-scoped offline records visible. */ }
         }
       } else {
         setHistory([]);
@@ -151,6 +154,13 @@ export default function HistoryTabScreen() {
   };
 
   const handleDeleteItem = (item: HistoryItem) => {
+    if ((item as any).workflow === 'standalone') {
+      Alert.alert(t('Close JSA'), t('Close this JSA? The signed report will remain in Saved JSAs.'), [
+        {text:t('Cancel'),style:'cancel'},
+        {text:t('Close JSA'),onPress:async()=>{try { await (await import('../../services/standaloneJsa')).closeStandaloneJsa(item); await loadHistory(); } catch { Alert.alert(t('Error'),t('JSA was not closed. Please retry.')); }}}
+      ]);
+      return;
+    }
     Alert.alert(
       t("Delete JSA"),
       t("Are you sure you want to delete this JSA? This action cannot be undone."),
@@ -231,7 +241,7 @@ export default function HistoryTabScreen() {
               onPress={(e) => { e.stopPropagation(); handleDeleteItem(item); }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={[styles.actionText, { color: colors.error }]}>{t("Delete")}</Text>
+              <Text style={[styles.actionText, { color: colors.error }]}>{t((item as any).workflow === 'standalone' ? ((item as any).state === 'closed' ? 'Closed' : 'Close JSA') : 'Delete')}</Text>
             </TouchableOpacity>
           </View>
         </View>

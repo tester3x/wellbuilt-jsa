@@ -115,6 +115,7 @@ export default function JsaHomeScreen() {
   // the driver fills the full form and manages their own JSA.
   const [isSsoMode, setIsSsoMode] = useState(false);
   const hasGovernedIdentity = session?.authKind === 'governed';
+  const [standaloneAllowed, setStandaloneAllowed] = useState(false);
   const [ssoShiftId, setSsoShiftId] = useState<string | null>(null);
   const [authoritySurface, setAuthoritySurface] = useState<ShiftSurface | null>(null);
   const [mayLabelActive, setMayLabelActive] = useState(false);
@@ -473,6 +474,12 @@ export default function JsaHomeScreen() {
           });
           if (!owned()) throw new Error('shift_refresh_superseded');
           setGovernedJobPopulate(job);
+          let independentAccess = false;
+          if (!launch && usable) {
+            try { independentAccess = await (await import('../../services/standaloneJsa')).standaloneAccess(); } catch {}
+            if (!owned()) throw new Error('shift_refresh_superseded');
+          }
+          setStandaloneAllowed(independentAccess);
           const jobFailed = job.kind === 'fail_closed'
             && (job.reason !== 'no_context' || !!usable);
           if (!owned()) throw new Error('shift_refresh_superseded');
@@ -641,7 +648,8 @@ export default function JsaHomeScreen() {
     try {
       const verified = await isCurrentShiftVerified();
       const id = await AsyncStorage.getItem('wellbuilt-current-shift-id');
-      if (id && verified) {
+      const launch = await (await import('../../services/sso/jsaRuntime')).loadLaunchContext();
+      if (launch && id && verified) {
         console.log('[JSA-scope] resolved=shiftId scope=' + id + ' fallbackUsed=false');
         wbDiagLog({
           area: 'jsa',
@@ -2549,18 +2557,16 @@ export default function JsaHomeScreen() {
             AND hidden in SSO mode (driver doesn't fill the form — WB T
             acts as the JSA secretary; the SSO CTA card above takes
             them straight to /steps). */}
-        {workflowIsolation.mountForm && hasGovernedIdentity && !isSsoMode && (
+        {workflowIsolation.mountForm && hasGovernedIdentity && !isSsoMode && !standaloneAllowed && (
           <View style={[styles.card, { borderColor: colors.border, borderWidth: 1 }]}>
-            <Text style={styles.cardTitle}>{t(mayLabelActive ? "No Active JSA Request" : "Active Shift Required")}</Text>
+            <Text style={styles.cardTitle}>{t("JSA access could not be verified")}</Text>
             <Text style={styles.cardSubtitle}>
-              {t(mayLabelActive
-                ? "Open the current job in WellBuilt Tickets to begin its JSA. Saved JSAs, History, and Settings remain available."
-                : "You are securely signed in. Start a shift in WellBuilt before creating a new shift-bound JSA. Saved JSAs, History, and Settings remain available.")}
+              {t("Standalone JSAs do not require a shift. Company access could not be confirmed. Return to Suite and reopen JSA to retry.")}
             </Text>
           </View>
         )}
 
-        {(jsaCompletedToday && activeJsaIndex >= 0) || hasGovernedIdentity || isSsoMode || !workflowIsolation.mountForm ? null : (
+        {(jsaCompletedToday && activeJsaIndex >= 0) || !hasGovernedIdentity || !standaloneAllowed || isSsoMode || !workflowIsolation.mountForm ? null : (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t("Job Details")}</Text>
           <Text style={styles.cardSubtitle}>

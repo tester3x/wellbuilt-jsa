@@ -74,10 +74,13 @@ export async function syncToCloud(): Promise<{
     const localJSAs: FirebaseJSA[] = localData ? JSON.parse(localData) : [];
 
     // Add deviceId to each JSA
-    const jsasWithDevice = localJSAs.map((jsa) => ({
+    const jsasWithDevice = localJSAs.filter((jsa: any) => jsa.workflow !== 'standalone').map((jsa) => ({
       ...jsa,
       deviceId,
     }));
+
+    const { syncStandaloneHistory } = await import('./standaloneJsa');
+    await syncStandaloneHistory();
 
     // Upload to cloud
     const uploadResult = await uploadAllJSAs(jsasWithDevice);

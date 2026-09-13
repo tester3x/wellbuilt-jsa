@@ -427,7 +427,10 @@ export default function SignoffScreen() {
       // AsyncStorage save (replayed by syncToCloud) AND the direct Firestore
       // writes below. Historically the jsas collection docs had no driverHash
       // at all, so "all JSAs by Mike" couldn't be queried server-side.
-      const sessionForPayload = await loadGovernedSession().catch(() => null);
+      const sessionForPayload = await (await import('../services/sso/jsaGovernedAuthLive')).loadUsableGovernedSession();
+      if (!sessionForPayload) throw new Error('Sign in to WellBuilt JSA first.');
+      const independent = !resolved.hasLaunch && frozenJob.source === 'nav_params';
+      if (independent && !await (await import('../services/standaloneJsa')).standaloneAccess()) throw new Error('Company JSA access is unavailable.');
       const driverHashForPayload = sessionForPayload?.driverId || '';
       const companyIdForPayload =
         sessionForPayload?.companyId
@@ -447,7 +450,7 @@ export default function SignoffScreen() {
       //
       // The choice is stamped into a diagnostic so a post-mortem can prove
       // the write side and the close-job read side picked the same scope.
-      const shiftIdInStorage = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+      const shiftIdInStorage = independent ? null : await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
       const dateForPayload = new Date().toISOString().slice(0, 10);
       const scopeSource: 'shiftId' | 'date' = shiftIdInStorage ? 'shiftId' : 'date';
       const shiftIdForPayload = shiftIdInStorage || dateForPayload;
@@ -473,7 +476,7 @@ export default function SignoffScreen() {
       const { adaptGovernedSnapshot } = await import('../services/sso/jsaArtifactSnapshot');
       const { decideGovernedReturn } = await import('../services/sso/jsaReturn');
       const { failClosedCopy } = await import('../services/sso/jsaRequestLifecycle');
-      const governedCtx = await loadRequestContext();
+      const governedCtx = resolved.hasLaunch ? await loadRequestContext() : null;
       const pendingComplete = await loadPendingComplete();
       skipForcedSubmitted = !!governedCtx;
       if (governedCtx?.state === 'completed' && governedCtx.action) {
@@ -489,7 +492,7 @@ export default function SignoffScreen() {
       const payload = {
         id: (pendingComplete && governedActive && pendingComplete.requestId === governedCtx.requestId)
           ? pendingComplete.localRecordId
-          : Date.now().toString(),
+          : independent ? `standalone_${String(params.jsaSessionId || Date.now())}` : Date.now().toString(),
         timestamp: new Date().toISOString(),
         driverName: params.driverName ?? "",
         // Linkage fields — required for server-side queries by driver.
@@ -497,7 +500,8 @@ export default function SignoffScreen() {
         driverId: driverHashForPayload,
         driverLegalName: driverLegalNameForPayload,
         companyId: companyIdForPayload,
-        shiftId: shiftIdForPayload,
+        shiftId: independent ? null : shiftIdForPayload,
+        ...(independent ? { workflow: 'standalone' } : {}),
         operator: operatorForPayload,
         operatorSlug,
         scope: scopeForPayload,
@@ -556,7 +560,9 @@ export default function SignoffScreen() {
         try {
           const existing = await AsyncStorage.getItem(STORAGE_KEYS.saves);
           const list = existing ? JSON.parse(existing) : [];
-          const nextList = Array.isArray(list) ? [payload, ...list] : [payload];
+          const retained = independent && Array.isArray(list) ? list.find((x:any)=>x.id===payload.id && x.driverId===payload.driverId && x.companyId===payload.companyId) : null;
+          if (retained) payloadForComplete = retained;
+          const nextList = retained ? list : Array.isArray(list) ? [payload, ...list] : [payload];
           await AsyncStorage.setItem(STORAGE_KEYS.saves, JSON.stringify(nextList));
           localSaveOk = true;
         } catch (error) {
@@ -564,7 +570,7 @@ export default function SignoffScreen() {
           localSaveOk = false;
         }
       }
-      if (governedActive && !localSaveOk) {
+      if (!localSaveOk) {
         Alert.alert(
           t('Not saved') || 'Not saved',
           failClosedCopy('local_save_failed'),
@@ -652,7 +658,7 @@ export default function SignoffScreen() {
       // expired/absent context runs the ordinary flow (and is cleared so
       // it can never be satisfied by a later unrelated submission).
       const { loadReadRequestContext, isReadRequestContextUsable, clearReadRequestContext, writeReadReceipt } = await import('../services/wbtReadRequest');
-      const readCtxAtSubmit = await loadReadRequestContext();
+      const readCtxAtSubmit = independent ? null : await loadReadRequestContext();
       const receiptFlow = isReadRequestContextUsable(readCtxAtSubmit, Date.now());
       if (readCtxAtSubmit && !receiptFlow) {
         console.warn('[JSA][wbtReadRequest] stored request expired before submit — ordinary flow, no receipt');
@@ -673,6 +679,10 @@ export default function SignoffScreen() {
       // duplicate logical submission or receipt can exist.
       let coreJsasOk = false;
       const runCloudPersist = async (): Promise<{ jsasOk: boolean }> => {
+        if (independent) {
+          const saved = await (await import('../services/standaloneJsa')).persistStandaloneJsa(payloadForComplete);
+          return { jsasOk: !!saved?.record?.id };
+        }
         const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
         const API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
         const driverHash = driverHashForPayload;
@@ -1413,7 +1423,7 @@ export default function SignoffScreen() {
       let scheme: string | null = null;
       let origin: 'wbs' | 'wbt' | 'wbew' | 'standalone' = 'standalone';
       try {
-        const returnTo = await AsyncStorage.getItem('jsa_returnTo');
+        const returnTo = independent ? null : await AsyncStorage.getItem('jsa_returnTo');
         switch (returnTo) {
           case 'wbt':
           case 'wellbuilt-tickets':

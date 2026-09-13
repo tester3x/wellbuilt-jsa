@@ -38,13 +38,10 @@ check('legacy Suite card identity fields are ignored and never sent to authentic
   && /hash\/name\/truck\/trailer\/shiftId are never consumed/.test(login));
 check('Suite card uses wellbuilt-jsa PKCE authorize URL',
   /buildAuthorizeUrl\(attempt\)/.test(live) && /mintAttempt/.test(live));
-check('active shift without WB-T request is authenticated but cannot manufacture a JSA request',
-  /No Active JSA Request/.test(home)
-  && /Open the current job in WellBuilt Tickets to begin its JSA/.test(home)
-  && /mayLabelActive \? "No Active JSA Request" : "Active Shift Required"/.test(home));
-check('truly off-shift governed session retains History and Settings but hides new-JSA form',
-  /Active Shift Required/.test(home) && /hasGovernedIdentity \|\| isSsoMode/.test(home)
-  && /Saved JSAs, History, and Settings remain available/.test(home));
+check('ordinary company-authorized access exposes standalone creation without a shift',
+  /standaloneAllowed/.test(home) && /standaloneAccess/.test(home) && !/Active Shift Required/.test(home));
+check('a cached shift alone cannot select required JSA workflow',
+  /if \(launch && id && verified\)/.test(home));
 check('active exact period retains governed JSA action',
   /isSsoMode && mayLabelActive/.test(home) && /Read Safety Steps/.test(home));
 check('no local or governed history deletion was introduced',
