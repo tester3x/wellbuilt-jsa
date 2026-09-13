@@ -842,9 +842,12 @@ check('signoff maps signatureImage not signature as the PNG',
   const routeSrc = readFileSync(join(root, 'services/sso/jsaGovernedRoute.ts'), 'utf8');
   const authLive = readFileSync(join(root, 'services/sso/jsaGovernedAuthLive.ts'), 'utf8');
   const helper = live.slice(live.indexOf('settleGovernedArtifactQueueIfAuthenticated'));
+  // Inspect this effect, not neighboring auth/UI effects that move as the
+  // root layout grows. Settlement must remain independent of UI auth state.
+  const settleCall = layout.indexOf('settleGovernedArtifactQueueIfAuthenticated');
   const layoutKick = layout.slice(
-    layout.indexOf('settleGovernedArtifactQueueIfAuthenticated') - 500,
-    layout.indexOf('settleGovernedArtifactQueueIfAuthenticated') + 450,
+    layout.lastIndexOf('useEffect(() => {', settleCall),
+    layout.indexOf('}, []);', settleCall) + '}, []);'.length,
   );
   check('4C-11 root lifecycle owns authenticated settlement, not governed-status',
     layout.includes('settleGovernedArtifactQueueIfAuthenticated')

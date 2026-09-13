@@ -1,6 +1,6 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
@@ -80,6 +80,8 @@ import { useTheme } from "../contexts/ThemeContext";
 
 export default function JsaHomeScreen() {
   const router = useRouter();
+  const { welcomeReadRequestId } = useLocalSearchParams<{ welcomeReadRequestId?: string }>();
+  const welcomeReadConsumed = useRef('');
   const { session, logout } = useAuth();
   const { accent, logoUrl, companyName: themeCompanyName, jobTypes } = useTheme();
 
@@ -1479,6 +1481,19 @@ export default function JsaHomeScreen() {
     });
   }, [todaysJsaSave, router]);
 
+  useEffect(() => {
+    if (!welcomeReadRequestId || welcomeReadConsumed.current === welcomeReadRequestId) return;
+    if (!hydrationDone || !workflowIsolation.mountForm || governedJobPopulate.kind !== 'populate') return;
+    if (governedJobPopulate.requestId !== welcomeReadRequestId) return;
+    const handoff = applyGovernedJobHandoff({ populate: governedJobPopulate, wellsParam: '[]', wellNameParam: '', jobActivityParam: '' });
+    if (handoff.source !== 'governed_snapshot') return;
+    welcomeReadConsumed.current = welcomeReadRequestId;
+    router.setParams({ welcomeReadRequestId: undefined });
+    router.push({ pathname: '/steps', params: { driverName, truckNumber, date,
+      wells: handoff.wells, wellName: handoff.wellName, jobActivityName: handoff.jobActivityName,
+      jsaSessionId: Date.now().toString() } });
+  }, [welcomeReadRequestId, hydrationDone, workflowIsolation.mountForm, governedJobPopulate, driverName, truckNumber, date, router]);
+
   const autoRoutedRef = useRef(false);
   useEffect(() => {
     if (autoRoutedRef.current) return;
@@ -1488,6 +1503,7 @@ export default function JsaHomeScreen() {
       try {
         if (historyBlocksNewJsa) return;
         if (!isSsoMode) return; // Standalone entry stays at Job Details; saved records are opened explicitly.
+        if (governedJobPopulate.kind === 'populate') return; // Welcome owns the verified request's read entry.
         // Pending deep-link autofill or resume? Let those flows route.
         const autofill = await AsyncStorage.getItem('jsa_autofill');
         if (autofill) {
@@ -1549,7 +1565,7 @@ export default function JsaHomeScreen() {
         console.warn('[JSA][auto-route] check failed:', err);
       }
     })();
-  }, [hydrationDone, todaysJsaSave, openTodaysJsa, isSsoMode, shiftVerdict, verifiedShiftId, historyBlocksNewJsa]);
+  }, [hydrationDone, todaysJsaSave, openTodaysJsa, isSsoMode, shiftVerdict, verifiedShiftId, historyBlocksNewJsa, governedJobPopulate]);
 
   // Debug: log the open-mode decision on every state change that affects it.
   // Field-test signal for proving how WB JSA resolved the driver's situation:

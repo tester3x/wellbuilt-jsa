@@ -30,7 +30,6 @@ import {
   isCurrentShiftVerified,
   readGovernedReturnTarget,
   markGovernedReturnRequired,
-  subscribeShiftVerified,
 } from '../services/shiftAuthorityStore';
 import { WBT_READ_REQUEST_KEY } from '../services/wbtReadRequest';
 import {
@@ -118,10 +117,14 @@ function AppContent() {
   // with wells stamped but never signed off.
   const [unfinished, setUnfinished] = useState<UnfinishedJsa[]>([]);
   const [showUnfinished, setShowUnfinished] = useState(false);
-  // Welcome modal — friendly greeting, shown once per calendar day on first
-  // auth/foreground. Suppressed when the unfinished-JSA nag is showing.
+  // Welcome is scoped to this authenticated entry or required read request.
+  // Suppressed while the unfinished-JSA modal is showing.
   const [showWelcome, setShowWelcome] = useState(false);
   const [welcomeName, setWelcomeName] = useState('');
+  const [welcomeRequestId, setWelcomeRequestId] = useState<string | null>(null);
+  const welcomeKeyRef = useRef('');
+  const welcomeInspectionRef = useRef(0);
+  const [welcomeOwner, setWelcomeOwner] = useState('');
   const [unauthSurface, setUnauthSurface] = useState<'legacy_login' | 'unverified_gate'>('legacy_login');
   const [returnTarget, setReturnTarget] = useState<GovernedReturnTarget>('suite');
   const [governedSessionReady, setGovernedSessionReady] = useState(false);
@@ -210,14 +213,29 @@ function AppContent() {
     }
   };
 
-  const maybeShowWelcome = async () => {
+  const maybeShowWelcome = async (inspection: number) => {
     try {
       if (!session) return;
-      // Welcome/Get Started must not expose an unverified cached shift.
-      if (!(await isCurrentShiftVerified())) return;
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const shownDate = await AsyncStorage.getItem('@jsa/welcomeShownDate');
-      if (shownDate === todayStr) return; // already shown today
+      if (pathname !== '/' && pathname !== '/(tabs)') return;
+      const { loadUsableGovernedSession } = await import('../services/sso/jsaGovernedAuthLive');
+      const { loadLaunchContext, loadRequestContext, loadGovernedTerminalFailure } = await import('../services/sso/jsaRuntime');
+      const { decideGovernedJobPopulate } = await import('../services/sso/jsaGovernedJobFields');
+      const owner = await loadUsableGovernedSession();
+      if (!owner || owner.uid !== session.uid || owner.generation !== session.generation) return;
+      const launch = await loadLaunchContext();
+      const context = await loadRequestContext();
+      const failure = await loadGovernedTerminalFailure();
+      const populated = decideGovernedJobPopulate({ launchRequestId: launch?.requestId, context, explicitFailure: terminalFailureMatches(failure, launch?.requestId ?? null) });
+      if (launch && populated.kind !== 'populate') return;
+      if (!launch && !(await (await import('../services/standaloneJsa')).standaloneAccess())) return;
+      const current = await loadUsableGovernedSession();
+      if (!current || current.uid !== owner.uid || current.generation !== owner.generation) return;
+      if (welcomeInspectionRef.current !== inspection) return;
+      const key = `${owner.uid}:${owner.generation}:${launch?.requestId || 'standalone'}`;
+      if (welcomeKeyRef.current === key) return;
+      welcomeKeyRef.current = key;
+      setWelcomeOwner(`${owner.uid}:${owner.generation}`);
+      setWelcomeRequestId(populated.kind === 'populate' ? populated.requestId : null);
       const fullName = session.legalName || session.displayName || '';
       const firstName = fullName.trim().split(/\s+/)[0] || '';
       setWelcomeName(firstName);
@@ -325,7 +343,6 @@ function AppContent() {
   useEffect(() => {
     if (isAuthenticated) {
       checkUnfinishedJsas();
-      maybeShowWelcome();
     } else {
       setShowWelcome(false);
       resolveUnauthSurface();
@@ -333,10 +350,11 @@ function AppContent() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    return subscribeShiftVerified(() => {
-      maybeShowWelcome();
-    });
-  }, []);
+    const inspection = ++welcomeInspectionRef.current;
+    if (!isAuthenticated || (pathname !== '/' && pathname !== '/(tabs)')) setShowWelcome(false);
+    else void maybeShowWelcome(inspection);
+    return () => { ++welcomeInspectionRef.current; };
+  }, [isAuthenticated, session?.uid, session?.generation, pathname, governedSessionReady]);
 
   useEffect(() => {
     resolveUnauthSurface();
@@ -708,16 +726,16 @@ function AppContent() {
         <View style={{ flex: 1 }}>
           <NavigationStack />
 
-          {/* Welcome greeting — shown once per day, unless an unfinished-JSA
+          {/* Welcome greeting — scoped to the authenticated entry/request, unless an unfinished-JSA
               nag is also pending (compliance takes priority). */}
           {isAuthenticated && (
             <WelcomeModal
-              visible={showWelcome && !showUnfinished}
+              visible={showWelcome && !showUnfinished && welcomeOwner === `${session?.uid}:${session?.generation}`}
               driverFirstName={welcomeName}
+              nextStep={welcomeRequestId ? 'read' : 'details'}
               onDismiss={() => {
-                const todayStr = new Date().toISOString().slice(0, 10);
-                AsyncStorage.setItem('@jsa/welcomeShownDate', todayStr).catch(() => {});
                 setShowWelcome(false);
+                if (welcomeRequestId) router.setParams({ welcomeReadRequestId: welcomeRequestId });
               }}
             />
           )}

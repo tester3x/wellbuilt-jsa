@@ -1,6 +1,5 @@
-// WelcomeModal — lightweight greeting on first app open of the day.
-// JSA logo + time-of-day greeting + driver's first name + date + Get Started.
-// Shown once per calendar day (tracked in AsyncStorage).
+// WelcomeModal — greeting for an authenticated app entry or required read request.
+// Continue opens job details for standalone entry, or the supplied job's reading.
 // Suppressed when unfinished-JSA modal is showing — compliance nag takes priority.
 
 import React from 'react';
@@ -18,6 +17,7 @@ interface Props {
   visible: boolean;
   driverFirstName: string;
   onDismiss: () => void;
+  nextStep?: 'read' | 'details';
 }
 
 function greeting(): string {
@@ -44,6 +44,7 @@ export default function WelcomeModal({
   visible,
   driverFirstName,
   onDismiss,
+  nextStep = 'details',
 }: Props) {
   return (
     <Modal visible={visible} transparent animationType="fade">
@@ -60,8 +61,11 @@ export default function WelcomeModal({
           </Text>
           <Text style={styles.subtitle}>Welcome to WellBuilt JSA</Text>
           <Text style={styles.date}>{todayLong()}</Text>
+          <Text style={[styles.subtitle, { textAlign: 'center', marginBottom: 16 }]}>
+            {nextStep === 'read' ? 'Your job details are ready. Continue to read your JSA.' : 'Add your job and locations, then read your JSA.'}
+          </Text>
           <TouchableOpacity style={styles.btn} onPress={onDismiss}>
-            <Text style={styles.btnText}>Get Started</Text>
+            <Text style={styles.btnText}>Continue</Text>
           </TouchableOpacity>
         </View>
       </View>
