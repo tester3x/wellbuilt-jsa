@@ -1,3 +1,4 @@
+import MoreMenu from '../../components/MoreMenu';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -245,6 +246,7 @@ export default function HistoryTabScreen() {
         <View style={styles.header}>
           {logoUrl ? <Image source={{ uri: logoUrl }} style={styles.headerLogo} /> : null}
           <Text style={styles.headerTitle}>{t("Saved JSAs")}</Text>
+          <MoreMenu />
         </View>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={accent} />
@@ -263,6 +265,7 @@ export default function HistoryTabScreen() {
             {history.length} {history.length === 1 ? t("record") : t("records")}
           </Text>
         </View>
+        <MoreMenu />
       </View>
 
       {error ? (
@@ -419,3 +422,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+

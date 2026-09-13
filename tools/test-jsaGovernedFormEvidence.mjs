@@ -433,13 +433,16 @@ function memStore(init = {}) {
     && /pairRow: \{[\s\S]{0,80}alignItems:\s*"flex-start"/.test(card);
   const oldSameRowGone = !/styles\.label\}\>\{t\("Location & Activity"\)\}[\s\S]{0,80}valueContainer/.test(card)
     && !/\[\{r\.resolvedActivity\}\]/.test(card)
-    && !card.includes('valueContainer')
-    && !/numberOfLines=\{1\}/.test(card);
+    && !card.includes('valueContainer');
   check('summary title is a full-width row and values are on the next row',
     titleOwnRow && oldSameRowGone);
   check('values row is two independent shrinkable columns',
     twoSiblingCells
     && !/pairRow: \{[\s\S]{0,80}flexWrap:\s*"wrap"/.test(card));
+  // Mike's revised layout keeps each location/type pair to one line.
+  check('location and activity stay single-line without changing their values',
+    /styles\.pairValueLeft\} numberOfLines=\{1\}/.test(card)
+    && /styles\.pairValueRight\} numberOfLines=\{1\}/.test(card));
   check('governed summary does not restore missing activity from route params',
     /jobHandoff\.source === 'nav_params'[\s\S]{0,80}jobActivityName, task/.test(stepsSrc)
     && /jobSource === 'nav_params' \? \(jobActivity \|\| task\) : jobActivity/.test(ppeSrc)

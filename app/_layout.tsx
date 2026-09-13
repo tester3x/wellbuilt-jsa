@@ -14,7 +14,7 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import LoginScreen from '../components/LoginScreen';
-import AppSwitcher from '../components/AppSwitcher';
+import MoreMenu from '../components/MoreMenu';
 import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getUnfinishedJsas, discardJsa, type UnfinishedJsa } from '../services/jsaStatus';
@@ -68,6 +68,7 @@ function NavigationStack() {
         headerTitleStyle: { fontWeight: '600', color: '#FFFFFF' },
         headerBackTitleStyle: { fontSize: 12 },
         contentStyle: { backgroundColor: colors.background },
+        headerRight: () => <MoreMenu />,
       }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
@@ -77,6 +78,7 @@ function NavigationStack() {
       <Stack.Screen name="acknowledge" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="governed-status" options={{ headerShown: false }} />
       <Stack.Screen name="settings" options={{ title: 'Settings', headerBackTitle: 'Back', headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
+      <Stack.Screen name="switcher" options={{ title: 'Switcher', headerBackTitle: 'Back' }} />
       <Stack.Screen name="steps" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="ppe" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="signoff" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
@@ -705,14 +707,6 @@ function AppContent() {
       <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <View style={{ flex: 1 }}>
           <NavigationStack />
-          {/* AppSwitcher — floating WB ecosystem app launcher */}
-          {isAuthenticated && (
-            <AppSwitcher
-              badgeSource={require('../assets/images/app-switcher-badge.png')}
-              selfScheme="jsaapp"
-              getIdentity={async () => null}
-            />
-          )}
 
           {/* Welcome greeting — shown once per day, unless an unfinished-JSA
               nag is also pending (compliance takes priority). */}

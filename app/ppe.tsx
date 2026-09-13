@@ -1,3 +1,4 @@
+import MoreMenu from '../components/MoreMenu';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -259,11 +260,7 @@ export default function PpeScreen() {
         options={{
           title: t("PPE Checklist"),
           headerBackTitle: t("Steps & Hazards"),
-          headerRight: () => (
-            <TouchableOpacity onPress={() => router.replace("/(tabs)")} style={{ paddingHorizontal: 10 }}>
-              <Text style={{ color: accent, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
-            </TouchableOpacity>
-          ),
+          headerRight: () => <MoreMenu />,
         }}
       />
       <KeyboardAvoidingView

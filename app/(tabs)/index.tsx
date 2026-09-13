@@ -1,5 +1,6 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import MoreMenu from '../../components/MoreMenu';
 import { useRouter, useFocusEffect } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -2245,13 +2246,7 @@ export default function JsaHomeScreen() {
                 </Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={styles.menuButton}
-              onPress={() => router.push("/settings" as any)}
-              accessibilityLabel="Open settings"
-            >
-              <Text style={styles.menuIcon}>⚙</Text>
-            </TouchableOpacity>
+            <MoreMenu />
           </View>
         </View>
 
@@ -2799,8 +2794,7 @@ export default function JsaHomeScreen() {
                       >
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                           <Text style={styles.favoriteText} numberOfLines={1}>{well.name}</Text>
-                          <Text style={[styles.wellDetailText, { marginLeft: 8 }]} numberOfLines={1}>[{resolvedActivity}]</Text>
-                          <View style={{ flex: 1 }} />
+                          <Text style={[styles.wellDetailText, { marginLeft: 8, flex: 1, textAlign: 'right' }]} numberOfLines={1}>{resolvedActivity}</Text>
                           <TouchableOpacity onPress={() => removeWellFromList(well.name)} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
                             <Text style={styles.favoriteAdd}>{t("Remove")}</Text>
                           </TouchableOpacity>
@@ -2824,8 +2818,7 @@ export default function JsaHomeScreen() {
                       style={styles.favoriteRow}
                     >
                       <Text style={styles.favoriteText} numberOfLines={1}>{loc}</Text>
-                      <Text style={[styles.wellDetailText, { marginLeft: 8 }]} numberOfLines={1}>[{resolvedActivity}]</Text>
-                      <View style={{ flex: 1 }} />
+                      <Text style={[styles.wellDetailText, { marginLeft: 8, flex: 1, textAlign: 'right' }]} numberOfLines={1}>{resolvedActivity}</Text>
                       <TouchableOpacity onPress={() => removeLocationFromList(loc)} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
                         <Text style={styles.favoriteAdd}>{t("Remove")}</Text>
                       </TouchableOpacity>

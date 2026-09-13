@@ -45,13 +45,13 @@ export function JsaSummaryCard({ driverName, truckNumber, rows, date }: Props) {
             <View key={`r-${i}`} style={styles.pairRow}>
               <View style={styles.pairLeft}>
                 <Text style={styles.pairLabel}>{t("Location")}</Text>
-                <Text style={styles.pairValueLeft}>
+                <Text style={styles.pairValueLeft} numberOfLines={1}>
                   {r.name}
                 </Text>
               </View>
               <View style={styles.pairRight}>
                 <Text style={styles.pairLabel}>{t("Activity")}</Text>
-                <Text style={styles.pairValueRight}>
+                <Text style={styles.pairValueRight} numberOfLines={1}>
                   {r.resolvedActivity}
                 </Text>
               </View>
@@ -125,6 +125,7 @@ const styles = StyleSheet.create({
     flexWrap: "nowrap",
     alignItems: "flex-start",
     gap: 12,
+    paddingVertical: 5,
   },
   pairLeft: {
     flexGrow: 1,

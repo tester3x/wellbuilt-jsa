@@ -66,6 +66,7 @@ const TIER_INCLUDES: Record<string, string[]> = {
 // ── Component ────────────────────────────────────────────────────────────────
 
 interface Props {
+  presentation?: 'floating' | 'list';
   /** If provided, used as the button image. Otherwise shows default icon. */
   badgeSource?: any;
   /** This app's deep link scheme — excluded from the grid. Default: 'wellbuilt-tickets' */
@@ -105,7 +106,7 @@ const FALLBACK_APPS: AppEntry[] = [
   { id: 'wbew', name: 'WellBuilt eQuipment', shortName: 'eQuip', iconUrl: '', deepLinkScheme: 'wbequipment', requiredTier: 'field', sortOrder: 4, enabled: true },
 ];
 
-export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getIdentity }: Props) {
+export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getIdentity, presentation = 'floating' }: Props) {
   const { width: screenW, height: screenH } = useWindowDimensions();
 
   // Scale sizes to screen — phone (~400px) gets smaller, tablet (~800px+) gets current sizes
@@ -522,6 +523,19 @@ export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getI
   }, [visibleApps.length]);
 
   // ── Render ─────────────────────────────────────────────────────────────
+
+  if (presentation === 'list') {
+    return <View style={{ gap: 10 }}>
+      {visibleApps.map(app => <TouchableOpacity key={app.id} accessibilityRole="button"
+        onPress={() => launchApp(app)} style={{ minHeight: 60, padding: 14, borderRadius: 12,
+          backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        {app.iconUrl ? <Image source={{ uri: app.iconUrl }} style={{ width: 36, height: 36 }} resizeMode="contain" /> : null}
+        <Text style={{ color: '#111', fontSize: 16, fontWeight: '600', flex: 1 }}>{app.name}</Text>
+        <Text style={{ color: '#666', fontSize: 22 }}>›</Text>
+      </TouchableOpacity>)}
+      {!visibleApps.length && <Text style={{ padding: 16, color: '#666' }}>Loading Switcher…</Text>}
+    </View>;
+  }
 
   // Always show the button — even if registry hasn't loaded yet.
   // Tapping with no apps just opens/closes (nothing to show).

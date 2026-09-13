@@ -1,3 +1,4 @@
+import MoreMenu from '../components/MoreMenu';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -1561,16 +1562,7 @@ export default function SignoffScreen() {
       <Stack.Screen
         options={{
           title: t("Review & Submit"),
-          headerRight: () => (
-            <View style={{ flexDirection: "row", gap: 12 }}>
-              <TouchableOpacity onPress={() => router.replace("/(tabs)")}>
-                <Text style={styles.headerLink}>{t("Home")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.replace("/(tabs)/history")}>
-                <Text style={styles.headerLink}>{t("History")}</Text>
-              </TouchableOpacity>
-            </View>
-          ),
+          headerRight: () => <MoreMenu />,
           headerBackTitle: t("PPE Checklist"),
         }}
       />

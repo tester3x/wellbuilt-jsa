@@ -1,3 +1,4 @@
+import MoreMenu from '../components/MoreMenu';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -343,11 +344,7 @@ const locationsList = useMemo(() => {
         options={{
           title: t("Steps & Hazards"),
           headerBackTitle: t("Job Details"),
-          headerRight: () => (
-            <TouchableOpacity onPress={() => router.replace("/(tabs)")} style={{ paddingHorizontal: 10 }}>
-              <Text style={{ color: accent, fontWeight: "700", fontSize: 14 }}>{t("Home")}</Text>
-            </TouchableOpacity>
-          ),
+          headerRight: () => <MoreMenu />,
         }}
       />
       <View style={styles.flex}>
