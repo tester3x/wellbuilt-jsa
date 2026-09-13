@@ -42,7 +42,6 @@ export function beginSuiteCardAuthorization(): Promise<SuiteCardAuthorizationRes
       if (!current()) throw new Error('superseded');
       await clearGovernedRequestStateForSuiteCard();
       if (!current()) throw new Error('superseded');
-      if (decision === 'use_session') return null;
       return mintAttempt({
         purpose: 'app_access',
         randomBytes: (count) => Crypto.getRandomBytesAsync(count),

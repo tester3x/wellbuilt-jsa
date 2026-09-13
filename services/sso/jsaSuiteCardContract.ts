@@ -1,10 +1,12 @@
 import type { GovernedStartupState } from './jsaIdentityStartupContract';
 
-export type SuiteCardEntryDecision = 'use_session' | 'authorize' | 'fail_closed';
+export type SuiteCardEntryDecision = 'authorize' | 'fail_closed';
 
 export function decideSuiteCardEntry(state: GovernedStartupState): SuiteCardEntryDecision {
-  if (state === 'usable') return 'use_session';
-  if (state === 'standalone') return 'authorize';
+  // A valid JSA session identifies its previous owner, not necessarily the
+  // person currently signed into Suite on a shared phone. Suite must vouch
+  // for every Suite-card entry; URL name/hash hints are never proof.
+  if (state === 'usable' || state === 'standalone') return 'authorize';
   return 'fail_closed';
 }
 

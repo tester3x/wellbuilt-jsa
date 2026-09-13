@@ -14,7 +14,7 @@ const check = (name, ok) => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`); ok
 const deferred = () => { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; };
 
 check('off-shift standalone state starts governed Suite authorization', decideSuiteCardEntry('standalone') === 'authorize');
-check('exact governed identity reuses its installed session', decideSuiteCardEntry('usable') === 'use_session');
+check('existing JSA identity still requires Suite authorization for the current Suite account', decideSuiteCardEntry('usable') === 'authorize');
 for (const mismatch of ['uid_mismatch', 'authority_mismatch', 'installation_not_finalized', 'baseline_missing_or_mismatched']) {
   check(`${mismatch} fails closed`, decideSuiteCardEntry(mismatch) === 'fail_closed');
 }
