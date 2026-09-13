@@ -1,6 +1,5 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import MoreMenu from '../../components/MoreMenu';
 import { useRouter, useFocusEffect } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -2246,7 +2245,7 @@ export default function JsaHomeScreen() {
                 </Text>
               </TouchableOpacity>
             )}
-            <MoreMenu />
+
           </View>
         </View>
 

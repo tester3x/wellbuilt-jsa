@@ -17,7 +17,9 @@ import {
   Platform,
   Alert,
   AppState,
+  Modal,
 } from 'react-native';
+import { colors } from '../constants/colors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 // WB JSA: Has Firestore via services/firebase
@@ -66,7 +68,9 @@ const TIER_INCLUDES: Record<string, string[]> = {
 // ── Component ────────────────────────────────────────────────────────────────
 
 interface Props {
-  presentation?: 'floating' | 'list';
+  presentation?: 'floating' | 'list' | 'modal';
+  visible?: boolean;
+  onClose?: () => void;
   /** If provided, used as the button image. Otherwise shows default icon. */
   badgeSource?: any;
   /** This app's deep link scheme — excluded from the grid. Default: 'wellbuilt-tickets' */
@@ -106,7 +110,7 @@ const FALLBACK_APPS: AppEntry[] = [
   { id: 'wbew', name: 'WellBuilt eQuipment', shortName: 'eQuip', iconUrl: '', deepLinkScheme: 'wbequipment', requiredTier: 'field', sortOrder: 4, enabled: true },
 ];
 
-export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getIdentity, presentation = 'floating' }: Props) {
+export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getIdentity, presentation = 'floating', visible = false, onClose }: Props) {
   const { width: screenW, height: screenH } = useWindowDimensions();
 
   // Scale sizes to screen — phone (~400px) gets smaller, tablet (~800px+) gets current sizes
@@ -330,6 +334,7 @@ export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getI
   // ── Launch app ─────────────────────────────────────────────────────────
 
   const launchApp = useCallback(async (app: AppEntry) => {
+    onClose?.();
     setIsOpen(false);
     try {
       let url = `${app.deepLinkScheme}://`;
@@ -523,6 +528,27 @@ export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getI
   }, [visibleApps.length]);
 
   // ── Render ─────────────────────────────────────────────────────────────
+
+  if (presentation === 'modal') return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,.65)', alignItems: 'center', justifyContent: 'center', padding: 24 }} onPress={onClose}>
+        <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 380, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.primaryDark, padding: 18 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <Text style={{ color: colors.primaryDark, fontWeight: '800', fontSize: 20 }}>Switcher</Text>
+            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close Switcher" style={{ padding: 12 }}><Text style={{ color: colors.textDark, fontSize: 20 }}>×</Text></Pressable>
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+            {visibleApps.map(app => <TouchableOpacity key={app.id} onPress={() => launchApp(app)} accessibilityRole="button" accessibilityLabel={`Open ${app.name}`}
+              style={{ width: '47%', minHeight: 96, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, borderRadius: 12, gap: 8 }}>
+              {app.iconUrl ? <Image source={{ uri: app.iconUrl }} style={{ width: 48, height: 48 }} resizeMode="contain" /> :
+                <Text style={{ color: colors.primaryDark, fontSize: 24, fontWeight: '800' }}>{(app.shortName || app.name)[0]}</Text>}
+              <Text style={{ color: colors.textDark, fontWeight: '600' }}>{app.shortName || app.name}</Text>
+            </TouchableOpacity>)}
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
 
   if (presentation === 'list') {
     return <View style={{ gap: 10 }}>

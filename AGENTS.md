@@ -9,3 +9,11 @@
 - At the start of work on another computer, fetch and verify the intended remote branch and checkpoint before editing or building. A clean tree alone does not prove the correct starting point. Preserve local changes rather than resetting them.
 - Before release, verify that the source includes the prior approved fixes, run relevant regression checks, and record the exact source commit with the build/deployment identity. Unfinished checkpoints are not deployment authorization.
 - If a push fails, retain the local commit and report the precise failure and unpushed checkpoint. Do not claim it is available on the other computer.
+
+## Shared bottom action bar and Switcher standard
+
+- Default to three buttons: secondary action left, primary/most-used action center, and ... More right. Never exceed four; discuss a four-button standard before adopting it.
+- Keep each app's branding. Consistency means placement and behavior, not identical colors.
+- More holds app-specific secondary options plus shared Settings and Switcher; avoid an oversized menu.
+- Switcher opens a dismissible two-by-two app modal, excluding the current app and respecting the existing app availability filter. No floating Switcher badge.
+- JSA main bar: Saved JSAs | Job Details | ... More. Further app migrations must be verified individually.
