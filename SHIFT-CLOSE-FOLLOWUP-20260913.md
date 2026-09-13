@@ -14,3 +14,9 @@ Next contract work must explicitly support the agreed shift-close behavior: all 
 First validate ordinary Suite entry with the new APK, then a real registered test request from an existing job/customer. Mike has been asked which existing test job/customer to use, or to launch the next real JSA when ready. Full signing/completion requires Mike's actual interaction; do not sign for him.
 
 No server code, Firebase rules, shift records, or JSA completion records were changed by this investigation. Exact deployed Functions source lineage still needs verification before any later server implementation/deployment.
+
+## Later request-display restoration
+
+Read-only archive comparison established the deployed register/get/complete/consume source base: 871ef44886c8bcb6a4f150390861f1dc96c859e9 (235/235 src files match). Pending full-read responses lacked wellName, which this app requires. Earlier restoration 5cd438f1 was reused in isolated C:/dev/jsa-request-well-restore, branch fix/jsa-request-well-restore-20260913. ONLY jsaGetReadRequest was deployed from b38e14e7 and verified at revision jsagetreadrequest-00004-nob. Source and compiled changed modules match; peer revisions unchanged. 138 request checks, 14 SSO spine checks, and 15 emulator direct-database denials passed. Rules and production records were untouched.
+
+This resolves a separate job-display contract regression. Suite's shift-close/lingering-JSA contract is still unfinished. See the isolated backend repository's docs/JSA-WELL-RESTORE-20260913.md for exact evidence. User chose Liquid Gold for testing; queued S24 jobs were inspected without acceptance or modification, and user selection is pending.
