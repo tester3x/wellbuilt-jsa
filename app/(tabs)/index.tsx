@@ -676,27 +676,29 @@ export default function JsaHomeScreen() {
     return dateScope;
   }, []);
 
-  // Resolve SSO vs standalone mode on mount + on focus. SSO mode = a
-  // shiftId is in AsyncStorage. Reruns on focus so a logout-and-relaunch
-  // (which clears shiftId) flips back to standalone correctly.
+  // A verified shift is context, not a request to perform a required JSA.
+  // Suite's ordinary app card clears launch ownership; only an explicit
+  // governed launch may select the shift-bound workflow.
   const resolveMode = React.useCallback(async () => {
     try {
+      const { loadLaunchContext } = await import('../../services/sso/jsaRuntime');
+      const launch = await loadLaunchContext();
       const verified = await isCurrentShiftVerified();
       const id = await AsyncStorage.getItem('wellbuilt-current-shift-id');
-      if (id && verified) {
+      if (launch && id && verified) {
         setIsSsoMode(true);
         setSsoShiftId(id);
-        console.log('[JSA-mode] resolved=sso verified current shift');
+        console.log('[JSA-mode] resolved=sso required launch with verified current shift');
       } else {
         setIsSsoMode(false);
         setSsoShiftId(null);
-        console.log('[JSA-mode] resolved=standalone (no verified shift)');
+        console.log('[JSA-mode] resolved=standalone (no required launch with verified shift)');
       }
     } catch {
       setIsSsoMode(false);
       setSsoShiftId(null);
     }
-  }, []);
+  }, [session?.uid, session?.generation]);
   useEffect(() => { resolveMode(); }, [resolveMode]);
   useFocusEffect(useCallback(() => { resolveMode(); }, [resolveMode]));
 
