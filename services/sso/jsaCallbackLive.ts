@@ -21,6 +21,7 @@ import {
 import { validateExchangePayload } from './jsaSession';
 import { ownAndObtain } from './jsaGovernedLive';
 import { callbackMayOpenApp } from './jsaCallbackDestination';
+import { inspectGovernedIdentityStartupDetailed } from './jsaIdentityStartupLive';
 import {
   loadUsableGovernedSession,
   persistAfterExchange,
@@ -39,6 +40,7 @@ function liveCallbackDeps(): JsaCallbackOwnerDeps {
     saveAttempt: (attempt) => saveAttempt(attempt as any),
     clearAttempt: () => clearAttempt(),
     exchange: async ({ code, verifier }) => {
+      const started = Date.now();
       const { getApp } = await import('firebase/app');
       const { getFunctions, httpsCallable } = await import('firebase/functions');
       const callable = httpsCallable(
@@ -52,10 +54,13 @@ function liveCallbackDeps(): JsaCallbackOwnerDeps {
         code,
         codeVerifier: verifier,
       });
+      console.info(`[JSA-Handoff] stage=exchange ms=${Date.now()-started}`);
       return validateExchangePayload(result.data);
     },
     saveSession: async (payload) => {
+      const started = Date.now();
       await persistAfterExchange(payload as any);
+      console.info(`[JSA-Handoff] stage=install_session ms=${Date.now()-started}`);
     },
     loadSession: () => loadUsableGovernedSession(),
     obtainAfterSession: async () => {
@@ -80,8 +85,8 @@ export async function consumeJsaSsoCallback(url: unknown): Promise<CallbackOwner
 export async function hrefAfterJsaCallback(result: CallbackOwnerResult): Promise<any> {
   const launch = await loadLaunchContext();
   if (result.purpose === 'app_access' && !launch) {
-    const session = await loadUsableGovernedSession();
-    if (callbackMayOpenApp(result,false,!!session)) return '/(tabs)';
+    const inspected = await inspectGovernedIdentityStartupDetailed();
+    if (callbackMayOpenApp(result,false,inspected.state === 'usable')) return '/(tabs)';
   }
   const { recoverGoverned, liveGovernedDeps } = await import('./jsaGovernedLive');
   const { resolveEntryRoute } = await import('./jsaGovernedRoute');
