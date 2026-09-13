@@ -1295,7 +1295,7 @@ export default function JsaHomeScreen() {
         ? await AsyncStorage.getItem('wellbuilt-current-shift-id')
         : null;
       if (!stillLatest()) return;
-      const isShiftMode = !!shiftId;
+      const isShiftMode = isSsoMode && !!shiftId;
       owner = ownership.bind(sequence, {
         sessionGeneration: governed?.generation ?? null,
         uid: governed?.uid ?? session?.uid ?? null,
@@ -1328,7 +1328,8 @@ export default function JsaHomeScreen() {
               && s?.driverId === owner?.driverId
               && s?.companyId === owner?.companyId;
           }
-          return typeof s?.date === 'string' && s.date === today;
+          return s?.companyId === owner?.companyId && s?.driverId === owner?.driverId
+            && s?.workflow === 'standalone' && typeof s?.date === 'string' && s.date === today;
         });
       }
 
@@ -1483,6 +1484,7 @@ export default function JsaHomeScreen() {
     (async () => {
       try {
         if (historyBlocksNewJsa) return;
+        if (!isSsoMode) return; // Standalone entry stays at Job Details; saved records are opened explicitly.
         // Pending deep-link autofill or resume? Let those flows route.
         const autofill = await AsyncStorage.getItem('jsa_autofill');
         if (autofill) {
