@@ -14,6 +14,7 @@ import {
 export interface GovernedDriverPresentation {
   authKind: 'governed';
   uid: string;
+  generation: string;
   driverId: string;
   companyId: string;
   companyName: null;
@@ -75,13 +76,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [pendingName, setPendingName] = useState("");
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const loginAttemptRef = React.useRef(0);
+  const identityReadRef = React.useRef(0);
 
   const governedPresentationSession = (governed: {
-    uid: string; driverId: string; companyId: string;
+    uid: string; generation: string; driverId: string; companyId: string;
     displayName: string | null; legalName: string | null;
   }): GovernedDriverPresentation => ({
     authKind: 'governed',
     uid: governed.uid,
+    generation: governed.generation,
     driverId: governed.driverId,
     displayName: governed.displayName,
     legalName: governed.legalName,
@@ -89,10 +92,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     companyName: null,
   });
 
-  // Check initial state on mount
+  // The ready signal emits its current revision on subscription, then after SSO.
+  // Refresh presentation as well as root routing; an old context cannot own new work.
   useEffect(() => {
-    checkInitialState();
+    let disposed = false;
+    let unsubscribe: (() => void) | undefined;
+    void import('../../services/sso/jsaRuntime').then(({ subscribeGovernedSessionRevision }) => {
+      if (disposed) return;
+      unsubscribe = subscribeGovernedSessionRevision(() => { void checkInitialState(); });
+    }).catch(() => {
+      if (disposed) return;
+      setSession(null);
+      setMode('error');
+      setError('Secure sign-in could not be verified. Retry opening JSA.');
+    });
     return () => {
+      disposed = true;
+      identityReadRef.current++;
+      unsubscribe?.();
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
@@ -127,17 +144,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [mode]);
 
   const checkInitialState = async () => {
+    const read = ++identityReadRef.current;
+    let current = () => read === identityReadRef.current;
+    setSession(null);
+    setMode('checking');
+    setError('');
     try {
+      const { currentGovernedIdentityEpoch } = await import('../../services/sso/jsaGovernedAuthLive');
+      if (!current()) return;
+      const epoch = currentGovernedIdentityEpoch();
+      current = () => read === identityReadRef.current && currentGovernedIdentityEpoch() === epoch;
       const { inspectGovernedIdentityStartupDetailed } = await import('../../services/sso/jsaIdentityStartupLive');
+      if (!current()) return;
       const governedInspection = await inspectGovernedIdentityStartupDetailed();
+      if (!current()) return;
       if (governedInspection.state === 'usable') {
         const { loadGovernedSession } = await import('../../services/sso/jsaRuntime');
         const governed = await loadGovernedSession();
-        if (governed) {
+        if (!current()) return;
+        if (governed && governedInspection.binding
+          && governed.uid === governedInspection.binding.uid
+          && governed.driverId === governedInspection.binding.driverId
+          && governed.companyId === governedInspection.binding.companyId) {
           setSession(governedPresentationSession(governed));
           setMode('authenticated');
           return;
         }
+        setMode('error');
+        setError('Sign-in changed during verification. Return to WellBuilt and retry.');
+        return;
       } else if (governedInspection.state !== 'standalone') {
         // One-sided or mismatched Firebase/session state is never allowed to
         // fall through into legacy or another driver's standalone session.
@@ -149,7 +184,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Standalone means NO governed identity. Retire only obsolete auth keys;
       // pending registration, historical/active JSAs and recovery queues survive.
       const { retireLegacyAuthenticationKeys } = await import('../../services/sso/jsaLegacyAuthRetirementLive');
+      if (!current()) return;
       const retirement = await retireLegacyAuthenticationKeys();
+      if (!current()) return;
       if (!retirement.retired) {
         setSession(null);
         setMode('error');
@@ -159,9 +196,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Check for pending registration
       const pending = await getPendingRegistration();
+      if (!current()) return;
       if (pending) {
         setPendingName(pending.displayName);
         const status = await checkRegistrationStatus();
+        if (!current()) return;
         if (status === "approved") {
           setMode("login");
           setError("Registration approved. Please sign in.");
@@ -175,6 +214,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setMode("login");
     } catch (err) {
+      if (!current()) return;
       console.error("[AuthContext-JSA] Initial check error:", err);
       setSession(null);
       setMode("error");
@@ -183,6 +223,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = useCallback(async (displayName: string, passcode: string): Promise<boolean> => {
+    identityReadRef.current++;
     const attempt = ++loginAttemptRef.current;
     setMode("verifying");
     setError("");
@@ -258,6 +299,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    identityReadRef.current++;
+    loginAttemptRef.current++;
     const { logoutJsaCompletely } = await import("../../services/logoutJsaCompletely");
     return logoutJsaCompletely(() => {
       setSession(null);

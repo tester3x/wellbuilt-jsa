@@ -368,7 +368,7 @@ export default function JsaHomeScreen() {
       hydrationSequenceRef.current++;
       dayStatusSequenceRef.current++;
     };
-  }, [session?.uid, session?.driverId, session?.companyId, isSsoMode]);
+  }, [session?.uid, session?.generation, session?.driverId, session?.companyId, isSsoMode]);
   // vc51.9B: the TYPED verdict from the last refresh — auto-navigation and
   // the "Current" banner label consume it; 'unverified' never presents a
   // record as current (cached state is a hint, never authority).
@@ -400,6 +400,7 @@ export default function JsaHomeScreen() {
       const owned = () => currentGovernedIdentityEpoch() === refreshOwner.identityEpoch
         && (governedOwner
           ? governedOwner.uid === session?.uid
+            && governedOwner.generation === session?.generation
             && governedOwner.driverId === session?.driverId
             && governedOwner.companyId === session?.companyId
           : !session);
@@ -627,7 +628,7 @@ export default function JsaHomeScreen() {
       });
     };
     return work();
-  }, [session?.driverId, session?.companyId]);
+  }, [session?.uid, session?.generation, session?.driverId, session?.companyId]);
 
   // Read the active shiftId — minted by WB S at Start Shift, passed via
   // SSO deep link in start.tsx / login.tsx. JSA scope is per-shift now:
