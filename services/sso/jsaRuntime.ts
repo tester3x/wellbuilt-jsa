@@ -115,6 +115,7 @@ export async function saveAttempt(
     challenge: attempt.challenge,
     createdAtMs: attempt.createdAtMs,
     consumed: attempt.consumed,
+    ...(attempt.purpose === 'app_access' ? {purpose:'app_access'} : {}),
   }));
 }
 
@@ -313,6 +314,7 @@ export function governedLatchMutator() {
 }
 
 export async function mintAttempt(ops: {
+  purpose?: 'app_access';
   randomBytes: (n: number) => Promise<Uint8Array>;
   sha256Hex: (s: string) => Promise<string>;
   nowMs: () => number;
@@ -330,6 +332,7 @@ export async function mintAttempt(ops: {
   const challenge = encodeB64Url32(challengeBytes);
   const attempt: JsaPkceAttempt = {
     state, verifier, challenge, createdAtMs: ops.nowMs(), consumed: false,
+    ...(ops.purpose === 'app_access' ? {purpose:'app_access' as const} : {}),
   };
   await saveAttempt(attempt, ops.stillCurrent);
   return attempt;

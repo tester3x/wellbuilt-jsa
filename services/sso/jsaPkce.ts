@@ -13,6 +13,8 @@ export interface JsaPkceAttempt {
   challenge: string;
   createdAtMs: number;
   consumed: boolean;
+  /** Local navigation intent only; never grants inspection authority. */
+  purpose?: 'app_access';
 }
 
 export type CallbackParse =

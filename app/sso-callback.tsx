@@ -24,11 +24,8 @@ export default function JsaSsoCallbackRoute() {
     ran.current = true;
     void (async () => {
       try {
-        const { reconstructJsaCallbackUrl, consumeJsaSsoCallback } =
+        const { reconstructJsaCallbackUrl, consumeJsaSsoCallback, hrefAfterJsaCallback } =
           await import('../services/sso/jsaCallbackLive');
-        const { recoverGoverned, liveGovernedDeps } =
-          await import('../services/sso/jsaGovernedLive');
-        const { resolveEntryRoute } = await import('../services/sso/jsaGovernedRoute');
         const {
           isJsaStartUrl,
           consumeJsaStart,
@@ -85,8 +82,7 @@ export default function JsaSsoCallbackRoute() {
           } as any);
           return;
         }
-        const decision = await recoverGoverned();
-        const href = await resolveEntryRoute(decision, liveGovernedDeps());
+        const href = await hrefAfterJsaCallback(result);
         router.replace(href as any);
       } catch {
         await markGovernedReturnRequired('suite');

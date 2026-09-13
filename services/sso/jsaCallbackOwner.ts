@@ -45,12 +45,13 @@ export type CallbackOwnerResult = {
   kind: CallbackOwnerKind;
   refusal?: string;
   alreadyExchanged?: boolean;
+  purpose?: 'app_access';
 };
 
 export interface JsaCallbackOwnerDeps {
   nowMs(): number;
   parseUrl(url: unknown): { ok: boolean; status?: string; code?: string; state?: string; reason?: string };
-  loadAttempt(): Promise<{ consumed: boolean; state: string; verifier: string; createdAtMs: number } | null>;
+  loadAttempt(): Promise<{ consumed: boolean; state: string; verifier: string; createdAtMs: number; purpose?: 'app_access' } | null>;
   consume(
     attempt: { consumed: boolean; state: string; verifier: string; createdAtMs: number } | null,
     parsed: { ok: boolean; status?: string; code?: string; state?: string; reason?: string },
@@ -93,7 +94,7 @@ async function runCallback(
     const session = await deps.loadSession();
     if (session) {
       await deps.obtainAfterSession();
-      return { kind: 'duplicate', alreadyExchanged: true };
+      return { kind: 'duplicate', alreadyExchanged: true, ...(attempt.purpose === 'app_access' ? {purpose:'app_access' as const} : {}) };
     }
     return { kind: 'fail_closed', refusal: 'malformed' };
   }
@@ -115,5 +116,5 @@ async function runCallback(
   }
   await deps.clearAttempt();
   await deps.obtainAfterSession();
-  return { kind: 'exchanged' };
+  return { kind: 'exchanged', ...(attempt?.purpose === 'app_access' ? {purpose:'app_access' as const} : {}) };
 }

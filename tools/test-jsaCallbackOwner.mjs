@@ -181,7 +181,8 @@ check('live obtain runs after session persist',
 check('live persist installs Firebase Auth before SecureStore session',
   live.includes('persistAfterExchange') && !live.includes('sessionFromExchange'));
 
-const suiteAdapter = readFileSync(join(root, '..', 'Suite', 'src', 'core', 'services', 'ssoRouteAdapter.ts'), 'utf8');
+const suiteRoot = process.env.WBS_REPO_ROOT || join(root, '..', 'Suite');
+const suiteAdapter = readFileSync(join(suiteRoot, 'src', 'core', 'services', 'ssoRouteAdapter.ts'), 'utf8');
 check('Suite Tickets/eQuipment callback builder is untouched by this repair',
   suiteAdapter.includes('buildAudienceCallbackUrl') && suiteAdapter.includes('SSO_CALLBACK_BY_AUDIENCE'));
 

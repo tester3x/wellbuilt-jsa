@@ -400,6 +400,7 @@ function AppContent() {
         if (decision.action === 'open_suite_authorize') {
           const Crypto = await import('expo-crypto');
           const attempt = await mintAttempt({
+            purpose: 'app_access',
             randomBytes: (n) => Crypto.getRandomBytesAsync(n),
             sha256Hex: async (s) => {
               const hex = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, s);
@@ -488,14 +489,11 @@ function AppContent() {
         }
 
         if (event.url?.includes('sso-callback')) {
-          const { consumeJsaSsoCallback } = await import('../services/sso/jsaCallbackLive');
+          const { consumeJsaSsoCallback, hrefAfterJsaCallback } = await import('../services/sso/jsaCallbackLive');
           const result = await consumeJsaSsoCallback(event.url);
           if (result.kind === 'exchanged' || result.kind === 'duplicate') {
-            const { recoverGoverned, liveGovernedDeps } = await import('../services/sso/jsaGovernedLive');
-            const { resolveEntryRoute } = await import('../services/sso/jsaGovernedRoute');
-            const decision = await recoverGoverned();
             await resolveUnauthSurface();
-            const href = await resolveEntryRoute(decision, liveGovernedDeps());
+            const href = await hrefAfterJsaCallback(result);
             router.replace(href as any);
           } else {
             await markGovernedReturnRequired('suite');
@@ -618,14 +616,11 @@ function AppContent() {
         return;
       }
       if (url.includes('sso-callback')) {
-        const { consumeJsaSsoCallback } = await import('../services/sso/jsaCallbackLive');
+        const { consumeJsaSsoCallback, hrefAfterJsaCallback } = await import('../services/sso/jsaCallbackLive');
         const result = await consumeJsaSsoCallback(url);
         if (result.kind === 'exchanged' || result.kind === 'duplicate') {
-          const { recoverGoverned, liveGovernedDeps } = await import('../services/sso/jsaGovernedLive');
-          const { resolveEntryRoute } = await import('../services/sso/jsaGovernedRoute');
-          const decision = await recoverGoverned();
           await resolveUnauthSurface();
-          const href = await resolveEntryRoute(decision, liveGovernedDeps());
+          const href = await hrefAfterJsaCallback(result);
           router.replace(href as any);
         } else {
           await markGovernedReturnRequired('suite');

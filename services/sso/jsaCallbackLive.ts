@@ -20,6 +20,7 @@ import {
 } from './jsaRuntime';
 import { validateExchangePayload } from './jsaSession';
 import { ownAndObtain } from './jsaGovernedLive';
+import { callbackMayOpenApp } from './jsaCallbackDestination';
 import {
   loadUsableGovernedSession,
   persistAfterExchange,
@@ -66,10 +67,23 @@ function liveCallbackDeps(): JsaCallbackOwnerDeps {
 }
 
 export async function consumeJsaSsoCallback(url: unknown): Promise<CallbackOwnerResult> {
+  const started = Date.now();
   console.log(JSON.stringify({ tag: '[jsa-callback]', event: 'invoked' }));
   const result = await handleJsaSsoCallbackUrl(url, liveCallbackDeps());
+  console.info(`[JSA-Handoff] stage=callback ms=${Date.now()-started} result=${result.kind}`);
   if (result.kind === 'exchanged') {
     console.log(JSON.stringify({ tag: '[jsa-callback]', event: 'session_persisted' }));
   }
   return result;
+}
+
+export async function hrefAfterJsaCallback(result: CallbackOwnerResult): Promise<any> {
+  const launch = await loadLaunchContext();
+  if (result.purpose === 'app_access' && !launch) {
+    const session = await loadUsableGovernedSession();
+    if (callbackMayOpenApp(result,false,!!session)) return '/(tabs)';
+  }
+  const { recoverGoverned, liveGovernedDeps } = await import('./jsaGovernedLive');
+  const { resolveEntryRoute } = await import('./jsaGovernedRoute');
+  return resolveEntryRoute(await recoverGoverned(),liveGovernedDeps());
 }
