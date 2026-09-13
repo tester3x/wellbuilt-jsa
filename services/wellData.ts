@@ -8,14 +8,27 @@ import {
   getDocs,
   orderBy,
   query,
-  where,
 } from 'firebase/firestore';
 
 import { db } from './firebase';
+import { getApp } from 'firebase/app';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+
+async function loadCatalog(params: { type: 'operators' | 'wells' | 'disposals'; operator?: string }): Promise<any[]> {
+  const { loadUsableGovernedSession } = await import('./sso/jsaGovernedAuthLive');
+  const owner = await loadUsableGovernedSession();
+  if (!owner) throw new Error('catalog_authentication_required');
+  const result = await httpsCallable(getFunctions(getApp(), 'us-central1'), 'getWellData', { timeout: 15000 })(params);
+  const current = await loadUsableGovernedSession();
+  if (!current || current.uid !== owner.uid || current.generation !== owner.generation) throw new Error('catalog_account_changed');
+  if (!Array.isArray(result.data)) throw new Error('catalog_invalid_response');
+  return result.data;
+}
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export type WellRecord = {
+  locationKind?: 'swd';
   well_name: string;
   operator: string;
   api_no: string;
@@ -79,6 +92,26 @@ const setCacheTimestamp = async (key: string): Promise<void> => {
 let operatorsCache: OperatorRecord[] = [];
 let aliasesCache: OperatorAlias[] = [];
 let allWellsCache: WellRecord[] = [];
+let disposalsCache: WellRecord[] = [];
+
+/** Shared WB-T SWD catalog; available even without assigned well operators. */
+export const loadDisposals = async (): Promise<WellRecord[]> => {
+  if (disposalsCache.length) return disposalsCache;
+  const key = 'jsa_wellData_disposals';
+  const cached = await AsyncStorage.getItem(key).catch(() => null);
+  if (cached) {
+    try { const rows = JSON.parse(cached); if (Array.isArray(rows)) disposalsCache = rows; } catch {}
+  }
+  if (disposalsCache.length && await isCacheFresh(key)) return disposalsCache;
+  try {
+    disposalsCache = (await loadCatalog({ type: 'disposals' })).map(w => ({ ...w, locationKind: 'swd' as const }));
+    await AsyncStorage.setItem(key, JSON.stringify(disposalsCache));
+    await setCacheTimestamp(key);
+  } catch (error) {
+    if (!disposalsCache.length) throw error;
+  }
+  return disposalsCache;
+};
 
 /**
  * Load all NDIC operators from Firestore (cached 24hr).
@@ -95,10 +128,7 @@ export const loadOperators = async (): Promise<OperatorRecord[]> => {
       }
     }
 
-    const snapshot = await getDocs(
-      query(collection(db, 'operators'), orderBy('name'))
-    );
-    operatorsCache = snapshot.docs.map((d) => d.data() as OperatorRecord);
+    operatorsCache = await loadCatalog({ type: 'operators' });
     await AsyncStorage.setItem(CACHE_KEYS.operators, JSON.stringify(operatorsCache));
     await setCacheTimestamp('operators');
     return operatorsCache;
@@ -169,14 +199,7 @@ export const loadAllWells = async (): Promise<WellRecord[]> => {
  */
 export const loadWellsForOperator = async (operator: string): Promise<WellRecord[]> => {
   try {
-    const snapshot = await getDocs(
-      query(
-        collection(db, 'wells'),
-        where('operator', '==', operator),
-        orderBy('well_name')
-      )
-    );
-    return snapshot.docs.map((d) => d.data() as WellRecord);
+    return await loadCatalog({ type: 'wells', operator });
   } catch (err) {
     console.warn('[wellData] Failed to load wells for operator:', err);
     return [];
@@ -189,6 +212,7 @@ export const loadWellsForOperator = async (operator: string): Promise<WellRecord
 
 let companyWellsCache: WellRecord[] = [];
 let companyWellsLoaded = false;
+let companyOperatorsKey = '';
 
 /**
  * Pre-load wells for the company's assigned operators.
@@ -197,13 +221,16 @@ let companyWellsLoaded = false;
 export const preloadCompanyWells = async (
   operatorNames: string[]
 ): Promise<WellRecord[]> => {
-  if (companyWellsLoaded && companyWellsCache.length > 0) return companyWellsCache;
+  const operatorKey = JSON.stringify([...new Set(operatorNames || [])].sort());
+  if (companyWellsLoaded && companyOperatorsKey === operatorKey && companyWellsCache.length > 0) return companyWellsCache;
+  companyOperatorsKey = operatorKey;
+  allWellsCache = [];
 
   if (!operatorNames || operatorNames.length === 0) {
     // No operators assigned — return empty. Driver types well names manually or
     // picks oil companies in Settings to enable autocomplete. We never load the
     // full 19k well list (3–4 minute wait, terrible UX).
-    console.log('[wellData-JSA] No assigned operators — autocomplete disabled until driver picks oil companies');
+    console.log('[wellData-JSA] No assigned well operators; SWD search remains separate');
     companyWellsCache = [];
     companyWellsLoaded = true;
     return companyWellsCache;
@@ -253,9 +280,7 @@ export const preloadCompanyWells = async (
   companyWellsCache = allWells;
   companyWellsLoaded = true;
   // Also populate allWellsCache so searchWells() works
-  if (allWellsCache.length === 0) {
-    allWellsCache = allWells;
-  }
+  allWellsCache = allWells;
   console.log(`[wellData-JSA] Pre-loaded ${allWells.length} wells for ${resolvedOperators.size} operators`);
   return companyWellsCache;
 };
@@ -301,7 +326,11 @@ export const searchWells = (searchText: string, maxResults = 10): WellRecord[] =
 
   const scored: { well: WellRecord; score: number }[] = [];
 
-  for (const well of allWellsCache) {
+  const seen = new Set<string>();
+  for (const well of [...disposalsCache, ...allWellsCache]) {
+    const key = well.api_no || `${well.well_name}|${well.operator}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     const name = (well.search_name || well.well_name || '').toLowerCase();
     const op = (well.search_operator || well.operator || '').toLowerCase();
     const combined = `${name} ${op}`;

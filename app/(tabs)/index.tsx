@@ -30,6 +30,7 @@ import {
   loadAliases,
   searchWells,
   preloadCompanyWells,
+  loadDisposals,
   WellRecord,
 } from "../../services/wellData";
 import { fetchDriverProfile } from "../../services/driverAuth";
@@ -1599,9 +1600,12 @@ export default function JsaHomeScreen() {
       try {
         await loadOperators();
         await loadAliases();
-        if (driverOperators.length > 0) {
-          // Driver-scoped: load only their assigned operators' wells (~200-400)
-          await preloadCompanyWells(driverOperators);
+        const catalogResults = await Promise.allSettled([
+          preloadCompanyWells(driverOperators),
+          loadDisposals(),
+        ]);
+        for (const result of catalogResults) {
+          if (result.status === 'rejected') console.warn('[JSA] Location catalog unavailable:', result.reason);
         }
         // No operators assigned: skip loading entirely. Driver types well names
         // manually or picks oil companies in Settings. Loading 19k wells is a
@@ -2676,7 +2680,7 @@ export default function JsaHomeScreen() {
             <TextInput
               ref={wellNameRef}
               style={styles.input}
-              placeholder={wellDataLoading ? t("Loading wells...") : t("Search wells or enter location...")}
+              placeholder={wellDataLoading ? t("Loading wells and SWDs...") : t("Search wells / SWDs or enter location...")}
               placeholderTextColor={colors.textMuted}
               value={wellName}
               onChangeText={(text) => {
@@ -2723,7 +2727,7 @@ export default function JsaHomeScreen() {
                       activeOpacity={0.7}
                     >
                       <Text style={styles.dropdownItemText}>{well.well_name}</Text>
-                      <Text style={styles.dropdownItemSub}>{well.operator} • {well.county} Co.</Text>
+                      <Text style={styles.dropdownItemSub}>{well.locationKind === 'swd' ? 'SWD • ' : ''}{well.operator}{well.county ? ` • ${well.county} Co.` : ''}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>

@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
+  findNodeHandle,
   Platform,
   Pressable,
   ScrollView,
@@ -71,6 +72,17 @@ export default function PpeScreen() {
   const [otherInput, setOtherInput] = useState(""); // Current text input for adding new items
   const isLoadedRef = useRef(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const otherInputRef = useRef<TextInput>(null);
+  const revealOtherInput = () => {
+    const input = findNodeHandle(otherInputRef.current);
+    if (input && otherInputRef.current?.isFocused()) {
+      scrollViewRef.current?.scrollResponderScrollNativeHandleToKeyboard(input, 24, true);
+    }
+  };
+  useEffect(() => {
+    const subscription = Keyboard.addListener('keyboardDidShow', revealOtherInput);
+    return () => subscription.remove();
+  }, []);
   const [jobWells, setJobWells] = useState('[]');
   const [jobWellName, setJobWellName] = useState('');
   const [jobActivity, setJobActivity] = useState('');
@@ -265,7 +277,7 @@ export default function PpeScreen() {
       />
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
         <ScrollView
@@ -306,24 +318,30 @@ export default function PpeScreen() {
             })}
 
             {/* Other PPE input */}
-            <View style={styles.listRow}>
-              <View style={[styles.checkbox, styles.checkboxChecked, { borderColor: accent, backgroundColor: accent }]}>
-                <Text style={styles.checkboxMark}>+</Text>
-              </View>
-              <Text style={styles.itemLabel}>{t("Other")}</Text>
+            <View style={styles.otherSection}>
+              <Text style={[styles.itemLabel, { flex: 0 }]}>{t("Other")}</Text>
+              <View style={styles.listRow}>
               <TextInput
+                ref={otherInputRef}
                 style={styles.otherInput}
-                placeholder={t("Type & press Done to add")}
+                placeholder={t("Enter other PPE")}
                 placeholderTextColor={colors.textMuted}
                 value={otherInput}
                 onChangeText={setOtherInput}
                 onSubmitEditing={addOtherItem}
-                onFocus={() => {
-                  scrollViewRef.current?.scrollToEnd({ animated: true });
-                }}
+                onFocus={revealOtherInput}
                 returnKeyType="done"
                 blurOnSubmit={false}
               />
+              <TouchableOpacity
+                accessibilityLabel={t("Add other PPE")}
+                onPress={addOtherItem}
+                disabled={!otherInput.trim()}
+                style={[styles.otherAdd, { backgroundColor: accent, opacity: otherInput.trim() ? 1 : 0.45 }]}
+              >
+                <Text style={styles.nextButtonText}>{t("Add")}</Text>
+              </TouchableOpacity>
+              </View>
             </View>
 
             {/* List of added "other" items */}
@@ -352,6 +370,8 @@ export default function PpeScreen() {
 }
 
 const styles = StyleSheet.create({
+  otherSection: { gap: 8, marginTop: 4 },
+  otherAdd: { minHeight: 44, paddingHorizontal: 16, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
