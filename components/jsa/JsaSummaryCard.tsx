@@ -25,7 +25,7 @@ type Props = {
  * Renders:
  *   1. Driver Name
  *   2. Truck #
- *   3. Location & Activity title on its own full-width row
+ *   3. Location and Activity column headers (once)
  *   4. Value row(s): location left, activity right
  *   5. Date
  */
@@ -39,18 +39,19 @@ export function JsaSummaryCard({ driverName, truckNumber, rows, date }: Props) {
       <Row label={t("Truck #")} value={truckNumber || "-"} />
       <View style={styles.separator} />
       <View style={styles.locationActivitySection}>
-        <Text style={styles.sectionTitle}>{t("Location & Activity")}</Text>
+        <View style={styles.pairRow}>
+          <View style={styles.pairLeft}><Text style={styles.pairLabel}>{t("Location")}</Text></View>
+          <View style={styles.pairRight}><Text style={styles.pairLabel}>{t("Activity")}</Text></View>
+        </View>
         {rows.length > 0 ? (
           rows.map((r, i) => (
             <View key={`r-${i}`} style={styles.pairRow}>
               <View style={styles.pairLeft}>
-                <Text style={styles.pairLabel}>{t("Location")}</Text>
                 <Text style={styles.pairValueLeft} numberOfLines={1}>
                   {r.name}
                 </Text>
               </View>
               <View style={styles.pairRight}>
-                <Text style={styles.pairLabel}>{t("Activity")}</Text>
                 <Text style={styles.pairValueRight} numberOfLines={1}>
                   {r.resolvedActivity}
                 </Text>
@@ -60,11 +61,9 @@ export function JsaSummaryCard({ driverName, truckNumber, rows, date }: Props) {
         ) : (
           <View style={styles.pairRow}>
             <View style={styles.pairLeft}>
-              <Text style={styles.pairLabel}>{t("Location")}</Text>
               <Text style={styles.pairValueLeft}>-</Text>
             </View>
             <View style={styles.pairRight}>
-              <Text style={styles.pairLabel}>{t("Activity")}</Text>
               <Text style={styles.pairValueRight} />
             </View>
           </View>
@@ -113,12 +112,6 @@ const styles = StyleSheet.create({
   },
   locationActivitySection: {
     paddingVertical: 4,
-  },
-  sectionTitle: {
-    color: colors.textMuted,
-    fontSize: 13,
-    alignSelf: "stretch",
-    marginBottom: 6,
   },
   pairRow: {
     flexDirection: "row",

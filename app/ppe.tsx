@@ -1,12 +1,11 @@
 import MoreMenu from '../components/MoreMenu';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
-  findNodeHandle,
+  type KeyboardEvent,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,6 +22,7 @@ import { colors } from "../constants/colors";
 import { PPE_ITEMS, type PpeItem } from "../constants/jsaTemplate";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
+import { keyboardRevealOffset } from '../utils/keyboardRevealOffset';
 
 type Params = {
   driverName?: string;
@@ -73,16 +73,38 @@ export default function PpeScreen() {
   const isLoadedRef = useRef(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const otherInputRef = useRef<TextInput>(null);
-  const revealOtherInput = () => {
-    const input = findNodeHandle(otherInputRef.current);
-    if (input && otherInputRef.current?.isFocused()) {
-      scrollViewRef.current?.scrollResponderScrollNativeHandleToKeyboard(input, 24, true);
-    }
-  };
+  const viewportRef = useRef<View>(null);
+  const scrollOffset = useRef(0);
+  const keyboardTop = useRef<number | null>(null);
+  const revealFrame = useRef<number | null>(null);
+  const [keyboardHeight,setKeyboardHeight] = useState(0);
+  const revealOtherInput = useCallback(() => {
+    if(revealFrame.current!==null)cancelAnimationFrame(revealFrame.current);
+    // Measure after keyboard padding/native resize has committed. Do not use
+    // the legacy scroll-responder keyboard helper (unreliable with Fabric).
+    revealFrame.current=requestAnimationFrame(()=>{
+      revealFrame.current=null;
+      if(!otherInputRef.current?.isFocused() || keyboardTop.current===null)return;
+      viewportRef.current?.measureInWindow((_x,y,_w,height)=>{
+        otherInputRef.current?.measureInWindow((_ix,iy,_iw,ih)=>{
+          if(!otherInputRef.current?.isFocused() || keyboardTop.current===null)return;
+          const next=keyboardRevealOffset(scrollOffset.current,iy+ih,y+height,keyboardTop.current);
+          if(next>scrollOffset.current)scrollViewRef.current?.scrollTo({y:next,animated:true});
+        });
+      });
+    });
+  },[]);
   useEffect(() => {
-    const subscription = Keyboard.addListener('keyboardDidShow', revealOtherInput);
-    return () => subscription.remove();
-  }, []);
+    const updateKeyboard = (event:KeyboardEvent)=>{
+      keyboardTop.current=event.endCoordinates.screenY;
+      setKeyboardHeight(event.endCoordinates.height);
+      revealOtherInput();
+    };
+    const shown = Keyboard.addListener('keyboardDidShow', updateKeyboard);
+    const changed = Keyboard.addListener('keyboardDidChangeFrame', updateKeyboard);
+    const hidden=Keyboard.addListener('keyboardDidHide',()=>{keyboardTop.current=null;setKeyboardHeight(0);});
+    return () => {shown.remove();changed.remove();hidden.remove();if(revealFrame.current!==null)cancelAnimationFrame(revealFrame.current);};
+  }, [revealOtherInput]);
   const [jobWells, setJobWells] = useState('[]');
   const [jobWellName, setJobWellName] = useState('');
   const [jobActivity, setJobActivity] = useState('');
@@ -277,18 +299,22 @@ export default function PpeScreen() {
       />
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        enabled={Platform.OS === 'ios'}
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
+        <View ref={viewportRef} collapsable={false} style={styles.flex} onLayout={revealOtherInput}>
         <ScrollView
           ref={scrollViewRef}
           style={styles.container}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content,Platform.OS==='android' && keyboardHeight>0 && {paddingBottom:150+keyboardHeight}]}
           showsVerticalScrollIndicator={false}
-          keyboardDismissMode="on-drag"
+          keyboardDismissMode="none"
           keyboardShouldPersistTaps="handled"
+          onScroll={event=>{scrollOffset.current=event.nativeEvent.contentOffset.y;}}
+          scrollEventThrottle={16}
+          onContentSizeChange={revealOtherInput}
         >
-          <Pressable onPress={Keyboard.dismiss}>
           {/* Summary */}
           <JsaSummaryCard
             driverName={driverName}
@@ -362,8 +388,8 @@ export default function PpeScreen() {
           <TouchableOpacity style={[styles.nextButton, { backgroundColor: accent }]} onPress={handleNext}>
             <Text style={styles.nextButtonText}>{t("Next")}</Text>
           </TouchableOpacity>
-          </Pressable>
         </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
