@@ -32,3 +32,14 @@ Device verification pending: open a real standalone save, add a known location
 with the driver's own assessment and acknowledgement, reopen and print it;
 verify the original signature and both original/additional locations remain.
 Do not simulate a production acknowledgement on behalf of the driver.
+
+Release checkpoint: client 8c33162455ac1f57f953bf4ad0cda6bb63a514fb.
+Server 14e5908d deployed only with
+`--only functions:dashboard:jsaStandalone`; verified ACTIVE revision
+jsastandalone-00002-xen. Final emulator run: 39 passing checks.
+
+Preview vc36 build 5750ee52-2956-42c9-b65b-0824bb32d445 submitted from that
+client commit. Earlier vc35 was canceled to include the stale-review refresh.
+A local installer waits for exact build/version/source, then installs with -r
+on connected phones, deferring if JSA is foreground to preserve unfinished work.
+Build completion, installation and device verification are not yet claimed.

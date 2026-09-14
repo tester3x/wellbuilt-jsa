@@ -1,5 +1,10 @@
 # Shared development and handoff rules
 
+## Mike's working preference
+
+- After proposing a concrete fix within the authorized task, implement and test it without waiting for another "OK". Report actual progress rather than ending with a plan.
+- When Mike explicitly asks "Thoughts?", "Discuss?", or says to settle the design first, discuss before coding that undecided change.
+
 ## Preserve work independently of release readiness
 
 - Commit and push meaningful checkpoints throughout work, before switching tasks/computers, and before ending a work session. Do not wait for bedtime instructions or for all tests to pass.
