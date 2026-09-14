@@ -21,6 +21,7 @@ export default function AddLocation(){
   const [fields,setFields]=useState({location:'',activity:'',hazards:'',controls:'',ppe:''});
   const [review,setReview]=useState(false),[ack,setAck]=useState(false),[saving,setSaving]=useState(false);
   const [additionId,setAdditionId]=useState('');
+  const [companyFocused,setCompanyFocused]=useState(false),[locationFocused,setLocationFocused]=useState(false);
   useEffect(()=>{let active=true;setRecordFailed(false);
     getStandaloneRecord(id).then(r=>{if(active){setRecord(r);setOperator(r.job.operator || '');setFields(old=>({...old,activity:old.activity||r.job.activity||'',ppe:old.ppe||[...Object.keys(r.snapshot.ppeSelected||{}).filter(k=>r.snapshot.ppeSelected[k]).map(k=>PPE_ITEMS.find(p=>p.id===k)?.label||k),...(r.snapshot.ppeOtherItems||[])].join(', ')}));}}).catch(e=>{if(active){setError(e.message);setRecordFailed(true);}});
     fetchDriverProfile().then(p=>{if(active)setOperators([...new Set((p?.assignedCustomers || []).map(c=>c.name).filter(Boolean))]);}).catch(()=>{if(active)setError('Oil companies could not load. Manual locations remain available.');});
@@ -57,14 +58,21 @@ export default function AddLocation(){
         {!review?<>
           <Text style={styles.label}>Oil company</Text>
           {record.job.operator?<Text>{record.job.operator} · Use a new JSA for another oil company.</Text>:<>
-          <TextInput style={styles.input} placeholder="Search your oil companies" value={operatorQuery} onChangeText={setOperatorQuery}/>
-          <Text>{operator || 'Select a company for well suggestions; SWDs and manual entry are available.'}</Text>
-          {operators.filter(n=>n.toLowerCase().includes(operatorQuery.toLowerCase())).slice(0,15).map(n=><TouchableOpacity key={n} onPress={()=>{setOperator(n);setOperatorQuery(n);update('location','');}} style={styles.option}><Text>{n}</Text></TouchableOpacity>)}
+          <TextInput style={styles.input} placeholder="Search your oil companies" value={operatorQuery} selectTextOnFocus autoCorrect={false}
+            onFocus={()=>setCompanyFocused(true)} onBlur={()=>setTimeout(()=>setCompanyFocused(false),200)}
+            onChangeText={text=>{setOperatorQuery(text);setCompanyFocused(true);if(text!==operator){setOperator('');setAck(false);}}}/>
+          {companyFocused&&<ScrollView style={{maxHeight:220}} nestedScrollEnabled keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          {operators.filter(n=>n.toLowerCase().includes(operatorQuery.toLowerCase())).map(n=><TouchableOpacity key={n} onPress={()=>{setOperator(n);setOperatorQuery(n);setCompanyFocused(false);update('location','');}} style={styles.option}><Text>{n}</Text></TouchableOpacity>)}
+          </ScrollView>}
           </>}
           <Text style={styles.label}>Well / location</Text>
-          <TextInput style={styles.input} value={fields.location} onChangeText={v=>update('location',v)} placeholder="Search or enter a location" maxLength={300}/>
+          <TextInput style={styles.input} value={fields.location} selectTextOnFocus autoCorrect={false}
+            onFocus={()=>setLocationFocused(true)} onBlur={()=>setTimeout(()=>setLocationFocused(false),200)}
+            onChangeText={v=>{update('location',v);setLocationFocused(true);}} placeholder="Search or enter a location" maxLength={300}/>
           {loadingWells&&<ActivityIndicator color={accent}/>}
-          {fields.location.trim().length>=2&&[...wells,...swds].filter(w=>w.well_name.toLowerCase().includes(fields.location.toLowerCase())&&w.well_name!==fields.location).slice(0,10).map((w,i)=><TouchableOpacity key={`${w.well_name}:${i}`} style={styles.option} onPress={()=>update('location',w.well_name)}><Text>{w.well_name}</Text></TouchableOpacity>)}
+          {locationFocused&&fields.location.trim().length>=2&&<ScrollView style={{maxHeight:220}} nestedScrollEnabled keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+          {[...wells,...swds].filter(w=>w.well_name.toLowerCase().includes(fields.location.toLowerCase())&&w.well_name!==fields.location).map((w,i)=><TouchableOpacity key={`${w.well_name}:${i}`} style={styles.option} onPress={()=>{update('location',w.well_name);setLocationFocused(false);}}><Text>{w.well_name}</Text></TouchableOpacity>)}
+          </ScrollView>}
           {([['activity','Activity',200],['hazards','Hazards at this location',2000],['controls','Controls / safe work steps',2000],['ppe','PPE for this work',1000]] as const).map(([key,label,max])=><View key={key}><Text style={styles.label}>{label}</Text><TextInput style={styles.input} multiline={key!=='activity'} maxLength={max} value={fields[key]} onChangeText={v=>update(key,v)}/></View>)}
           {button('Review addition',()=>setReview(true),!valid)}
         </>:<>

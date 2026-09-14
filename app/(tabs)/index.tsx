@@ -1820,6 +1820,7 @@ export default function JsaHomeScreen() {
 
   const handleWellTextChange = (text: string) => {
     setWellName(text);
+    setWellFieldFocused(true);
     if (text.trim().length >= 2) {
       const results = searchWells(text, 0);
       setWellSuggestions(results);
@@ -1850,7 +1851,8 @@ export default function JsaHomeScreen() {
       setAddedWells((prev) => [...prev, entry]);
       setHydrationSource('user_input');
     }
-    setWellName("");
+    setWellName(well.well_name);
+    setWellFieldFocused(false);
     setWellSuggestions([]);
     // Keep jobActivityName — driver is often adding multiple wells for the
     // same activity. Form field stays populated; they clear it manually if
@@ -2157,7 +2159,7 @@ export default function JsaHomeScreen() {
     setWellName("");
     setOtherInfo("");
   };
-  useEffect(()=>{if(newStandalone){handleNewJsa();setSelectedOperator('');}},[newStandalone]);
+  useEffect(()=>{if(newStandalone){handleNewJsa();setSelectedOperator('');setOperatorQuery('');setOperatorQuery('');}},[newStandalone]);
 
   const handleContinue = () => {
     if (!continueJsa) return;
@@ -2703,21 +2705,24 @@ export default function JsaHomeScreen() {
             {!wellDataLoading && !wellDataError && driverOperators.length === 0 && (
               <Text style={{ color: colors.textMuted, marginBottom: 8 }}>No oil companies are set on your WB driver profile. Set up your customer list to enable well suggestions. You can still enter a location manually.</Text>
             )}
-            <TouchableOpacity style={styles.input} onPress={() => setOperatorPickerOpen(value => !value)}>
-              <Text style={{ color: selectedOperator ? colors.textDark : colors.textMuted }}>
-                {selectedOperator || 'Select the company you are hauling for'}
-              </Text>
-            </TouchableOpacity>
+            <TextInput style={styles.input} placeholder="Search your oil companies" value={operatorQuery}
+              selectTextOnFocus autoCorrect={false} placeholderTextColor={colors.textMuted}
+              onFocus={() => setOperatorPickerOpen(true)}
+              onBlur={() => setTimeout(() => setOperatorPickerOpen(false), 200)}
+              onChangeText={text => {
+                setOperatorQuery(text); setOperatorPickerOpen(true);
+                if(text !== selectedOperator) { setSelectedOperator(''); setWellSuggestions([]); }
+              }} />
             {operatorPickerOpen && (
-              <View style={{ marginTop: 8 }}>
-                <TextInput style={styles.input} placeholder="Search oil companies" value={operatorQuery}
-                  onChangeText={setOperatorQuery} placeholderTextColor={colors.textMuted} />
-                {driverOperators.filter(name => name.toLowerCase().includes(operatorQuery.trim().toLowerCase())).slice(0, 15).map(name => (
+              <View style={styles.autocompleteDropdown}>
+                <ScrollView style={{maxHeight:220}} nestedScrollEnabled keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+                {driverOperators.filter(name => name.toLowerCase().includes(operatorQuery.trim().toLowerCase())).map(name => (
                   <TouchableOpacity key={name} style={styles.dropdownItem} onPress={() => {
-                    setSelectedOperator(name); setOperatorPickerOpen(false); setOperatorQuery('');
+                    setSelectedOperator(name); setOperatorPickerOpen(false); setOperatorQuery(name);
                     setWellName(''); setWellSuggestions([]);
                   }}><Text style={{ color: colors.textDark }}>{name}</Text></TouchableOpacity>
                 ))}
+                </ScrollView>
               </View>
             )}
             <Text style={[styles.label, { marginTop: 14 }]}>{t("Well / Location")}</Text>
