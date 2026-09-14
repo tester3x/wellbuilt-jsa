@@ -43,6 +43,9 @@ export async function syncStandaloneHistory(): Promise<any[]> {
   const local = JSON.parse(await AsyncStorage.getItem(STORAGE_KEYS.saves) || '[]');
   for (const item of local) {
     if (item.workflow === 'standalone' && !item.standaloneRecordId && item.driverId === session.driverId && item.companyId === session.companyId) {
+      // Preserve incomplete local saves for review; never let one prevent
+      // downloading or refreshing other signed records. Explicit create still rejects it.
+      if (!adaptGovernedSnapshot(item).ok) continue;
       const saved = await persistStandaloneJsa(item);
       item.standaloneRecordId = saved.record.id;
     }
@@ -84,10 +87,12 @@ export async function closeStandaloneJsa(item:any):Promise<void>{
 /** Resolve only an owned local save, then read the canonical record. Route params are not authority. */
 export async function getStandaloneRecord(localId:string):Promise<any>{
   if(await loadLaunchContext()) throw new Error('Finish the required JSA request first.');
-  const records=await syncStandaloneHistory();
-  const item=records.find(r=>r.id===localId && r.workflow==='standalone');
-  if(!item?.standaloneRecordId)throw new Error('This standalone JSA could not be found.');
-  return (await standaloneCall({operation:'get',recordId:item.standaloneRecordId})).record;
+  // Reading one record must not attempt to publish unrelated pending saves.
+  const { ownJsaRecord } = await import('./jsaRecord');
+  const item = await ownJsaRecord(localId);
+  if(item.workflow!=='standalone')throw new Error('This is a shift JSA. Open it through its shift workflow.');
+  const recordId = item.standaloneRecordId || (await persistStandaloneJsa(item)).record.id;
+  return (await standaloneCall({operation:'get',recordId})).record;
 }
 
 export async function appendStandaloneLocation(record:any,additionId:string,fields:{location:string;operator:string;activity:string;hazards:string;controls:string;ppe:string}):Promise<void>{

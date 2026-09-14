@@ -1,5 +1,5 @@
 const fs=require('fs'),ts=require('typescript'),assert=require('node:assert/strict'),crypto=require('node:crypto');
-const m={exports:{}};let session={uid:'u',generation:'g',driverId:'d',companyId:'c'},launch=null,calls=[];
+const m={exports:{}};let session={uid:'u',generation:'g',driverId:'d',companyId:'c'},launch=null,calls=[],local=[];
 const source=fs.readFileSync('services/standaloneJsa.ts','utf8');const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true}}).outputText;
 new Function('require','module','exports',js)(name=>{
  if(name==='firebase/app')return{getApp:()=>({})};
@@ -7,7 +7,10 @@ new Function('require','module','exports',js)(name=>{
  if(name==='expo-crypto')return{CryptoDigestAlgorithm:{SHA256:'sha256'},digestStringAsync:async(_,s)=>crypto.createHash('sha256').update(s).digest('hex')};
  if(name.endsWith('jsaGovernedAuthLive'))return{loadUsableGovernedSession:async()=>session};
  if(name.endsWith('jsaRuntime'))return{loadLaunchContext:async()=>launch};
- if(name.endsWith('jsaArtifactSnapshot'))return{adaptGovernedSnapshot:raw=>({ok:true,value:{signature:raw.signatureImage}})};
+ if(name.endsWith('jsaArtifactSnapshot'))return{adaptGovernedSnapshot:raw=>({ok:!!raw.signatureImage,value:{signature:raw.signatureImage}})};
+ if(name==='@react-native-async-storage/async-storage')return{getItem:async()=>JSON.stringify(local),setItem:async(_,v)=>{local=JSON.parse(v)}};
+ if(name.endsWith('storageKeys'))return{STORAGE_KEYS:{saves:'saves'}};
+ if(name==='./jsaRecord')return{ownJsaRecord:async id=>{const row=local.find(r=>r.id===id&&r.companyId===session.companyId&&r.driverId===session.driverId);if(!row)throw Error('Not owned');return row;}};
  throw Error(name);
 },m,m.exports);
 (async()=>{
@@ -21,6 +24,15 @@ new Function('require','module','exports',js)(name=>{
  await api.persistStandaloneJsa({...payload,operator:'New customer',assessmentSteps:archive});assert.deepEqual(calls.at(-1).job.assessmentSteps,archive);assert.equal(calls.at(-1).job.operator,'New customer');
  launch={requestId:'required'};await assert.rejects(()=>api.persistStandaloneJsa(payload));assert.equal(await api.standaloneAccess(),false);
  launch=null;await assert.rejects(()=>api.persistStandaloneJsa({...payload,companyId:'other'}));
+ local=[{...payload,id:'incomplete',signatureImage:''},{...payload,id:'selected',standaloneRecordId:'remote-selected'}];
+ calls=[];assert.equal((await api.getStandaloneRecord('selected')).id,'remote-selected');
+ assert.deepEqual(calls,[{operation:'get',recordId:'remote-selected'}]);
+ calls=[];await api.syncStandaloneHistory();assert.deepEqual(calls,[{operation:'list'}]);
+ assert.equal(local.find(r=>r.id==='incomplete').signatureImage,'');
+ await assert.rejects(()=>api.getStandaloneRecord('incomplete'),/incomplete/);
+ local.push({...payload,id:'shift',workflow:'shift'});await assert.rejects(()=>api.getStandaloneRecord('shift'),/shift JSA/);
+ await assert.rejects(()=>api.getStandaloneRecord('missing'),/Not owned/);
+ launch={requestId:'required'};await assert.rejects(()=>api.getStandaloneRecord('selected'),/required JSA/);launch=null;
  session=null;await assert.rejects(()=>api.standaloneCall({operation:'access'}));
- console.log('9 client boundary checks passed: stable old/new retries, archived steps, no client identity/shift fields, required launch and owner mismatch refused.');
+ console.log('Client boundary checks passed, including selected-record isolation, preserved incomplete saves, and shift/owner/required-request rejection.');
 })().catch(e=>{console.error(e);process.exitCode=1});
