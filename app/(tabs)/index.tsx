@@ -2705,7 +2705,8 @@ export default function JsaHomeScreen() {
             {!wellDataLoading && !wellDataError && driverOperators.length === 0 && (
               <Text style={{ color: colors.textMuted, marginBottom: 8 }}>No oil companies are set on your WB driver profile. Set up your customer list to enable well suggestions. You can still enter a location manually.</Text>
             )}
-            <TextInput style={styles.input} placeholder="Search your oil companies" value={operatorQuery}
+            <View style={styles.companySearchField}>
+            <TextInput style={[styles.input, {borderWidth:0}]} placeholder="Search your oil companies" value={operatorQuery}
               selectTextOnFocus autoCorrect={false} placeholderTextColor={colors.textMuted}
               onFocus={() => setOperatorPickerOpen(true)}
               onBlur={() => setTimeout(() => setOperatorPickerOpen(false), 200)}
@@ -2713,8 +2714,8 @@ export default function JsaHomeScreen() {
                 setOperatorQuery(text); setOperatorPickerOpen(true);
                 if(text !== selectedOperator) { setSelectedOperator(''); setWellSuggestions([]); }
               }} />
-            {operatorPickerOpen && (
-              <View style={styles.autocompleteDropdown}>
+            {operatorPickerOpen && driverOperators.some(name => name.toLowerCase().includes(operatorQuery.trim().toLowerCase())) && (
+              <View style={styles.companySearchResults}>
                 <ScrollView style={{maxHeight:220}} nestedScrollEnabled keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
                 {driverOperators.filter(name => name.toLowerCase().includes(operatorQuery.trim().toLowerCase())).map(name => (
                   <TouchableOpacity key={name} style={styles.dropdownItem} onPress={() => {
@@ -2725,6 +2726,7 @@ export default function JsaHomeScreen() {
                 </ScrollView>
               </View>
             )}
+            </View>
             <Text style={[styles.label, { marginTop: 14 }]}>{t("Well / Location")}</Text>
             {!selectedOperator && <Text style={{ color: colors.textMuted, marginBottom: 8 }}>Select an oil company for well suggestions. SWDs and manual locations remain available.</Text>}
             {(wellDataLoading || operatorWellsLoading) && (
@@ -3486,6 +3488,18 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 8,
     maxHeight: 150,
+  },
+  companySearchField: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: '#FFF',
+    overflow: 'hidden',
+  },
+  companySearchResults: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    maxHeight: 220,
   },
   autocompleteDropdown: {
     position: "absolute",
