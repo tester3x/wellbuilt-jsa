@@ -21,3 +21,9 @@ release. TypeScript retains the same four pre-existing unrelated errors.
 Device verification still needs typing into Other with keyboard visible,
 scrolling without dismissing it, and adding/removing an item without advancing
 or signing a JSA. Preserve the user's currently open form during installation.
+
+Pushed source e8ec269f1da4cda133b968307dfb4cb238ed7f4e; Android export passed.
+Preview vc37 build f5050387-c2af-4763-9731-e018d4c6b337 is submitted.
+The local install helper verifies source/version, hashes the downloaded APK,
+and installs with -r only when JSA is not foreground. Build/install/device
+verification are pending; no server deployment for these changes.
