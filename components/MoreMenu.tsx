@@ -14,7 +14,7 @@ export default function MoreMenu({ placement = 'header' }: { placement?: 'header
   const { t } = useLanguage();
   return <>
     <Pressable accessibilityRole="button" accessibilityLabel={t('More')}
-      onPress={() => setVisible(true)} style={[styles.trigger, placement === 'bottom' && { flex: 1, height: 52 }]}>
+      onPress={() => setVisible(true)} style={[styles.trigger, placement === 'bottom' && { width: 88, maxWidth: '100%', height: 52 }]}>
       <Text style={styles.dots}>•••</Text>
       {placement === 'bottom' && <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 16, fontWeight: '600' }}>{t('More')}</Text>}
     </Pressable>

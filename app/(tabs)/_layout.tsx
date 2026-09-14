@@ -5,6 +5,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
 import MoreMenu from '@/components/MoreMenu';
+import BottomActionBar from '@/components/BottomActionBar';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -20,15 +21,14 @@ function BottomBar({ state, navigation }: BottomTabBarProps) {
     return () => { show.remove(); hide.remove(); };
   }, []);
   if (keyboardOpen) return null;
-  return <View style={{ flexDirection: 'row', backgroundColor: colors.card, borderTopColor: colors.border,
-    borderTopWidth: 1, paddingTop: 8, paddingBottom: Math.max(insets.bottom, 8) }}>
+  return <BottomActionBar>
     {([{ name: 'history', label: 'Saved JSAs', icon: 'clock.fill' },
       { name: 'index', label: 'Job Details', icon: 'house.fill' }] as const).map(item => {
       const route = state.routes.find(route => route.name === item.name)!;
       const selected = state.routes[state.index].key === route.key;
       const color = selected ? accent : colors.textMuted;
       return <Pressable key={route.key} accessibilityRole="tab" accessibilityState={{ selected }}
-        accessibilityLabel={t(item.label)} style={{ flex: 1, height: 52, alignItems: 'center', justifyContent: 'center' }}
+        accessibilityLabel={t(item.label)} style={{ width: 88, maxWidth: '100%', height: 52, alignItems: 'center', justifyContent: 'center' }}
         onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
         onPress={() => {
           const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
@@ -39,7 +39,7 @@ function BottomBar({ state, navigation }: BottomTabBarProps) {
       </Pressable>;
     })}
     <MoreMenu placement="bottom" />
-  </View>;
+  </BottomActionBar>;
 }
 
 export default function TabLayout() {
