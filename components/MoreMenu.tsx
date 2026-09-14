@@ -21,7 +21,7 @@ export default function MoreMenu({ placement = 'header' }: { placement?: 'header
     <Modal transparent visible={visible} animationType="fade" onRequestClose={() => setVisible(false)}>
       <Pressable style={styles.backdrop} accessibilityLabel={t('Close menu')} onPress={() => setVisible(false)}>
         <View style={[styles.menu, placement === 'bottom' ? { bottom: Math.max(insets.bottom, 8) + 64 } : { top: insets.top + 52 }]}>
-          {([{ label: 'Job Details', route: '/(tabs)' }, { label: 'Saved JSAs', route: '/(tabs)/history' },
+          {([{ label: 'Open JSAs', route: '/open-jsas' }, { label: 'Job Details', route: '/(tabs)' }, { label: 'Saved JSAs', route: '/(tabs)/history' },
             { label: 'Settings', route: '/settings' }, { label: 'Switcher', route: '/switcher' }] as const).map(item =>
             <Pressable key={item.route} accessibilityRole="button" style={styles.item} onPress={() => {
               setVisible(false);

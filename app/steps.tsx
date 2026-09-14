@@ -151,6 +151,7 @@ export function StepsWorkflow({
 }) {
   const router = useRouter();
   const params = useLocalSearchParams<{
+    operator?:string;
   driverName?: string;
   truckNumber?: string;
   location?: string;
@@ -472,6 +473,8 @@ const locationsList = useMemo(() => {
                             jsaSessionId,
                             stepAcks: JSON.stringify(evidence.stepAcks),
                             stepsAcknowledged: evidence.stepsAcknowledged ? '1' : '0',
+                            assessmentSteps: JSON.stringify(steps),
+                            operator: params.operator,
                           },
                         });
                       });

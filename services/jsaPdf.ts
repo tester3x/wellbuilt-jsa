@@ -2,7 +2,7 @@
 // Called on JSA submit to produce a paper-style PDF for per_load ticket attachment.
 
 import * as Print from 'expo-print';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { buildJsaPdfHtml } from './jsaPdfHtml';
 
 const FIREBASE_PROJECT = 'wellbuilt-sync';

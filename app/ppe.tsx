@@ -25,6 +25,8 @@ import { useTheme } from "./contexts/ThemeContext";
 import { keyboardRevealOffset } from '../utils/keyboardRevealOffset';
 
 type Params = {
+  operator?:string;
+  assessmentSteps?: string;
   driverName?: string;
   truckNumber?: string;
   jobActivityName?: string;
@@ -45,6 +47,8 @@ type Params = {
 
 export default function PpeScreen() {
   const {
+    operator = '',
+    assessmentSteps = '',
     driverName = "",
     truckNumber = "",
     jobActivityName = "",
@@ -276,6 +280,8 @@ export default function PpeScreen() {
         jsaSessionId,
         stepAcks,
         stepsAcknowledged,
+        assessmentSteps,
+        operator,
       },
     });
   };

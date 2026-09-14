@@ -16,8 +16,11 @@ new Function('require','module','exports',js)(name=>{
  await api.persistStandaloneJsa(payload);const first=calls.at(-1);
  assert.deepEqual(Object.keys(first).sort(),['job','operation','recordId','snapshot']);
  await api.persistStandaloneJsa(payload);assert.equal(calls.at(-1).recordId,first.recordId);
+ await api.persistStandaloneJsa({...payload,operator:'Older customer'});assert.deepEqual(calls.at(-1),first);
+ const archive=[{id:'one',title:'Original step',items:[{hazard:'Hazard',controls:'Control'}]}];
+ await api.persistStandaloneJsa({...payload,operator:'New customer',assessmentSteps:archive});assert.deepEqual(calls.at(-1).job.assessmentSteps,archive);assert.equal(calls.at(-1).job.operator,'New customer');
  launch={requestId:'required'};await assert.rejects(()=>api.persistStandaloneJsa(payload));assert.equal(await api.standaloneAccess(),false);
  launch=null;await assert.rejects(()=>api.persistStandaloneJsa({...payload,companyId:'other'}));
  session=null;await assert.rejects(()=>api.standaloneCall({operation:'access'}));
- console.log('7 client boundary checks passed: stable retries, no client identity/shift fields, required launch and owner mismatch refused.');
+ console.log('9 client boundary checks passed: stable old/new retries, archived steps, no client identity/shift fields, required launch and owner mismatch refused.');
 })().catch(e=>{console.error(e);process.exitCode=1});

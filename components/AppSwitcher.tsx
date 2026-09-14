@@ -287,7 +287,7 @@ export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getI
         if (effectiveDb) {
           const snap = await getDocs(collection(effectiveDb, 'app_registry'));
           const entries: AppEntry[] = [];
-          snap.forEach(d => {
+          snap.forEach((d: import('firebase/firestore').QueryDocumentSnapshot) => {
             const data = d.data();
             if (data.enabled !== false) {
               entries.push({ id: d.id, ...data } as AppEntry);

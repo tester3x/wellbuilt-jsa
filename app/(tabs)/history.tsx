@@ -123,34 +123,8 @@ export default function HistoryTabScreen() {
   }, [loadHistory]);
 
   const handleViewDetails = (item: HistoryItem) => {
-    const ppeStr = typeof item.ppeSelected === 'string'
-      ? item.ppeSelected
-      : JSON.stringify({ selected: item.ppeSelected });
-
-    router.push({
-      pathname: "/viewJsa",
-      params: {
-        id: item.id,
-        driverName: item.driverName,
-        truckNumber: item.truckNumber,
-        jobActivityName: item.jobActivityName,
-        pusher: item.pusher,
-        wellName: getWellNames(item),
-        wells: JSON.stringify(item.wells || []),
-        otherInfo: item.otherInfo,
-        location: item.location,
-        task: item.task,
-        date: item.date,
-        ppeSelected: ppeStr,
-        locations: JSON.stringify(item.locations || []),
-        locationAcks: JSON.stringify(item.locationAcks || {}),
-        prepared: JSON.stringify(item.prepared || {}),
-        notes: item.notes,
-        signature: item.signature,
-        signatureImage: item.signatureImage || '',
-        timestamp: item.timestamp,
-      },
-    });
+    router.push({pathname:'/jsa-record',params:{id:item.id}} as any);
+    return;
   };
 
   const handleDeleteItem = (item: HistoryItem) => {

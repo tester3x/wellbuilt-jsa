@@ -35,6 +35,8 @@ import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 
 type Params = {
+  operator?:string;
+  assessmentSteps?: string;
   driverName?: string;
   truckNumber?: string;
   jobActivityName?: string;
@@ -81,6 +83,7 @@ export default function SignoffScreen() {
   const [completeCloudPending, setCompleteCloudPending] = useState(false);
   const [completeOrigin, setCompleteOrigin] = useState<'wbs' | 'wbt' | 'wbew' | 'standalone'>('standalone');
   const [completeReturnScheme, setCompleteReturnScheme] = useState<string | null>(null);
+  const completedRecordId=useRef<string|null>(null);
 
   // Legal acknowledgment default is legalName only. Never displayName.
   useEffect(() => {
@@ -89,8 +92,7 @@ export default function SignoffScreen() {
         const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
         const { legalAcknowledgmentName } = await import('../services/sso/jsaSession');
         const legal = legalAcknowledgmentName(await loadGovernedSession());
-        setGovernedPrintedName(legal);
-        setSignature(legal);
+        if(legal){setGovernedPrintedName(legal);setSignature(legal);}
       } catch {}
     })();
   }, []);
@@ -100,6 +102,7 @@ export default function SignoffScreen() {
     (async () => {
       try {
         const profile = await fetchDriverProfile();
+        if(profile?.legalName?.trim()){setGovernedPrintedName(profile.legalName.trim());setSignature(profile.legalName.trim());}
         if (profile?.signature) {
           setSignatureImage(profile.signature);
           console.log('[JSA-Signoff] Pre-loaded signature from Firebase profile');
@@ -460,6 +463,7 @@ export default function SignoffScreen() {
       // first well's operator field → params.operator (if WB T sent one) →
       // empty string (= shift-default scope, single-operator shift).
       const operatorForPayload = (() => {
+        if(independent && params.operator?.trim())return params.operator.trim();
         const fromWell = (wellsForSave as any[]).find((w: any) => typeof w?.operator === 'string' && w.operator.trim())?.operator;
         if (fromWell) return String(fromWell).trim();
         const fromParam = typeof (params as any).operator === 'string' ? (params as any).operator.trim() : '';
@@ -490,6 +494,7 @@ export default function SignoffScreen() {
         : null;
 
       const payload = {
+        assessmentSteps: params.assessmentSteps ? JSON.parse(params.assessmentSteps) : [],
         id: (pendingComplete && governedActive && pendingComplete.requestId === governedCtx.requestId)
           ? pendingComplete.localRecordId
           : independent ? `standalone_${String(params.jsaSessionId || Date.now())}` : Date.now().toString(),
@@ -537,6 +542,7 @@ export default function SignoffScreen() {
       };
       const { applyGovernedLocalSave } = await import('../services/sso/jsaArtifactSnapshot');
       let payloadForComplete = payload;
+      completedRecordId.current=payload.id;
       let localSaveOk = false;
       if (governedActive && governedCtx) {
         try {
@@ -1142,7 +1148,7 @@ export default function SignoffScreen() {
               driverHash,
               shiftId: shiftIdForPayload || undefined,
               operatorSlug: operatorSlug || undefined,
-              extra: { docId, scope: scopeForPayload, threw: true },
+              extra: { scope: scopeForPayload, threw: true },
             });
           }
         } else {
@@ -1505,7 +1511,7 @@ export default function SignoffScreen() {
     });
     setShowCompleteModal(false);
     dismissStack();
-    router.replace('/(tabs)');
+    router.replace(completedRecordId.current?({pathname:'/jsa-record',params:{id:completedRecordId.current}} as any):'/(tabs)');
   };
   const handleReturnToOrigin = async () => {
     const action = routeAction('return');
@@ -1556,7 +1562,7 @@ export default function SignoffScreen() {
     });
     setShowCompleteModal(false);
     dismissStack();
-    router.replace('/(tabs)');
+    router.replace(completedRecordId.current?({pathname:'/jsa-record',params:{id:completedRecordId.current}} as any):'/(tabs)');
   };
 
   if (jobGate !== 'ready') {
@@ -1682,7 +1688,9 @@ export default function SignoffScreen() {
                 <Text style={{ color: accent, fontSize: 15, fontWeight: '600' }}>{t("Tap to Sign")}</Text>
               </TouchableOpacity>
             )}
-            {/* Typed name fallback — always captured for record */}
+            <Text style={{color:colors.textMuted,marginTop:6}}>Date: {params.date} · Signing time is recorded when you submit.</Text>
+            {/* Only request a name when the verified profile has no legal name. */}
+            {!governedPrintedName &&
             <TextInput
               style={[styles.input, { marginTop: 8 }]}
               placeholder={t("Print full name")}
@@ -1692,6 +1700,7 @@ export default function SignoffScreen() {
               editable={jobSource !== 'governed_snapshot'}
               returnKeyType="done"
             />
+            }
           </View>
 
           <SignatureModal

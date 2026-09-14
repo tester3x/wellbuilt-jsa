@@ -6,6 +6,7 @@ import { useTheme } from './contexts/ThemeContext';
 import { fetchDriverProfile } from '../services/driverAuth';
 import { loadDisposals, loadWellsForOperator, WellRecord } from '../services/wellData';
 import { appendStandaloneLocation, getStandaloneRecord } from '../services/standaloneJsa';
+import { PPE_ITEMS } from '../constants/jsaTemplate';
 
 export default function AddLocation(){
   const { id }=useLocalSearchParams<{id:string}>();
@@ -21,7 +22,7 @@ export default function AddLocation(){
   const [review,setReview]=useState(false),[ack,setAck]=useState(false),[saving,setSaving]=useState(false);
   const [additionId,setAdditionId]=useState('');
   useEffect(()=>{let active=true;setRecordFailed(false);
-    getStandaloneRecord(id).then(r=>{if(active)setRecord(r);}).catch(e=>{if(active){setError(e.message);setRecordFailed(true);}});
+    getStandaloneRecord(id).then(r=>{if(active){setRecord(r);setOperator(r.job.operator || '');setFields(old=>({...old,activity:old.activity||r.job.activity||'',ppe:old.ppe||[...Object.keys(r.snapshot.ppeSelected||{}).filter(k=>r.snapshot.ppeSelected[k]).map(k=>PPE_ITEMS.find(p=>p.id===k)?.label||k),...(r.snapshot.ppeOtherItems||[])].join(', ')}));}}).catch(e=>{if(active){setError(e.message);setRecordFailed(true);}});
     fetchDriverProfile().then(p=>{if(active)setOperators([...new Set((p?.assignedCustomers || []).map(c=>c.name).filter(Boolean))]);}).catch(()=>{if(active)setError('Oil companies could not load. Manual locations remain available.');});
     loadDisposals().then(r=>{if(active)setSwds(r);}).catch(()=>{if(active)setError('SWDs could not load. Manual locations remain available.');});
     Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256,Crypto.randomUUID()).then(v=>{if(active)setAdditionId(v.slice(0,43));});
@@ -55,9 +56,11 @@ export default function AddLocation(){
         <Text style={styles.help}>Add a location when you know it. The original signed JSA stays unchanged. Review conditions before starting the added work.</Text>
         {!review?<>
           <Text style={styles.label}>Oil company</Text>
+          {record.job.operator?<Text>{record.job.operator} · Use a new JSA for another oil company.</Text>:<>
           <TextInput style={styles.input} placeholder="Search your oil companies" value={operatorQuery} onChangeText={setOperatorQuery}/>
           <Text>{operator || 'Select a company for well suggestions; SWDs and manual entry are available.'}</Text>
           {operators.filter(n=>n.toLowerCase().includes(operatorQuery.toLowerCase())).slice(0,15).map(n=><TouchableOpacity key={n} onPress={()=>{setOperator(n);setOperatorQuery(n);update('location','');}} style={styles.option}><Text>{n}</Text></TouchableOpacity>)}
+          </>}
           <Text style={styles.label}>Well / location</Text>
           <TextInput style={styles.input} value={fields.location} onChangeText={v=>update('location',v)} placeholder="Search or enter a location" maxLength={300}/>
           {loadingWells&&<ActivityIndicator color={accent}/>}

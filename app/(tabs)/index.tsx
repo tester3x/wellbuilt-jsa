@@ -79,7 +79,7 @@ import { useTheme } from "../contexts/ThemeContext";
 
 export default function JsaHomeScreen() {
   const router = useRouter();
-  const { welcomeReadRequestId } = useLocalSearchParams<{ welcomeReadRequestId?: string }>();
+  const { welcomeReadRequestId,newStandalone } = useLocalSearchParams<{ welcomeReadRequestId?: string;newStandalone?:string }>();
   const welcomeReadConsumed = useRef('');
   const { session, logout } = useAuth();
   const { accent, logoUrl, companyName: themeCompanyName, jobTypes } = useTheme();
@@ -1453,37 +1453,7 @@ export default function JsaHomeScreen() {
   const openTodaysJsa = React.useCallback(() => {
     const item = todaysJsaSave;
     if (!item) return;
-    const ppeStr = typeof item.ppeSelected === 'string'
-      ? item.ppeSelected
-      : JSON.stringify({ selected: item.ppeSelected });
-    const wellNamesStr = Array.isArray(item.wells)
-      ? item.wells.map((w: any) => (typeof w === 'string' ? w : w?.name)).filter(Boolean).join(', ')
-      : (item.wellName || '');
-    console.log('[JSA][open-mode] opening today\'s submitted JSA', { id: item.id, date: item.date });
-    router.push({
-      pathname: '/viewJsa',
-      params: {
-        id: item.id,
-        driverName: item.driverName,
-        truckNumber: item.truckNumber,
-        jobActivityName: item.jobActivityName,
-        pusher: item.pusher,
-        wellName: wellNamesStr,
-        wells: JSON.stringify(item.wells || []),
-        otherInfo: item.otherInfo,
-        location: item.location,
-        task: item.task,
-        date: item.date,
-        ppeSelected: ppeStr,
-        locations: JSON.stringify(item.locations || []),
-        locationAcks: JSON.stringify(item.locationAcks || {}),
-        prepared: JSON.stringify(item.prepared || {}),
-        notes: item.notes,
-        signature: item.signature,
-        signatureImage: item.signatureImage || '',
-        timestamp: item.timestamp,
-      },
-    });
+    router.push({pathname:'/jsa-record',params:{id:item.id}} as any);
   }, [todaysJsaSave, router]);
 
   useEffect(() => {
@@ -1893,7 +1863,7 @@ export default function JsaHomeScreen() {
     if (!trimmed) return;
     if (!requireActivityOrWarn()) return;
     if (!addedWells.some(w => w.name.toLowerCase() === trimmed.toLowerCase())) {
-      setAddedWells((prev) => [...prev, { name: trimmed, operator: '', county: '', jobType: jobActivityName.trim() }]);
+      setAddedWells((prev) => [...prev, { name: trimmed, operator: selectedOperator, county: '', jobType: jobActivityName.trim() }]);
       setHydrationSource('user_input');
     }
     setWellName("");
@@ -2163,6 +2133,7 @@ export default function JsaHomeScreen() {
         driverName,
         truckNumber,
         jobActivityName: jobHandoff.jobActivityName,
+        operator:selectedOperator,
         pusher,
         wellName: jobHandoff.wellName,
         wells: jobHandoff.wells,
@@ -2186,6 +2157,7 @@ export default function JsaHomeScreen() {
     setWellName("");
     setOtherInfo("");
   };
+  useEffect(()=>{if(newStandalone){handleNewJsa();setSelectedOperator('');}},[newStandalone]);
 
   const handleContinue = () => {
     if (!continueJsa) return;
@@ -2355,7 +2327,7 @@ export default function JsaHomeScreen() {
             ((shiftVerdict === 'server_open' || shiftVerdict === 'verified_open') &&
               !!todaysJsaSave?.shiftId && todaysJsaSave.shiftId === verifiedShiftId);
           const bannerTitle = isVerifiedCurrent
-            ? currentJsaBannerLabel('explicit_shift')
+            ? (todaysJsaSave.workflow === 'standalone' ? 'View submitted JSA' : currentJsaBannerLabel('explicit_shift'))
             : HISTORICAL_JSA_LABEL;
           const bannerSubtitle = isVerifiedCurrent
             ? (todaysJsaSave?.timestamp
@@ -2497,7 +2469,7 @@ export default function JsaHomeScreen() {
           keyboardShouldPersistTaps="handled"
         >
         {/* Living JSA Dashboard — full paper JSA per tab */}
-        {jsaCompletedToday && currentJsa && (
+        {jsaCompletedToday && currentJsa && !newStandalone && (
           <>
             {currentJsa.savedData?.workflow==='standalone' && currentJsa.savedData?.state!=='closed' && (
               <TouchableOpacity style={{padding:16,marginBottom:10,borderRadius:12,backgroundColor:accent}} onPress={()=>router.push({pathname:'/add-location',params:{id:String(currentJsa.savedData.id)}} as any)}>
@@ -2631,7 +2603,7 @@ export default function JsaHomeScreen() {
           </View>
         )}
 
-        {(jsaCompletedToday && activeJsaIndex >= 0) || !hasGovernedIdentity || !standaloneAllowed || isSsoMode || !workflowIsolation.mountForm ? null : (
+        {(jsaCompletedToday && activeJsaIndex >= 0 && !newStandalone) || !hasGovernedIdentity || !standaloneAllowed || isSsoMode || !workflowIsolation.mountForm ? null : (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t("Job Details")}</Text>
           <Text style={styles.cardSubtitle}>

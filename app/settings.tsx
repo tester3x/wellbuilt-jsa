@@ -197,6 +197,7 @@ export default function SettingsScreen() {
         contentContainerStyle={styles.content}
         keyboardDismissMode="on-drag"
       >
+        <TouchableOpacity style={styles.card} onPress={()=>router.push('/printer-settings' as any)}><Text style={styles.cardTitle}>Printers</Text><Text>Thermal and regular paper printers</Text></TouchableOpacity>
         {/* Driver Profile Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t("Driver Profile")}</Text>

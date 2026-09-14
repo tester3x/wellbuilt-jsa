@@ -434,8 +434,8 @@ function memStore(init = {}) {
   const oldSameRowGone = !/styles\.label\}\>\{t\("Location & Activity"\)\}[\s\S]{0,80}valueContainer/.test(card)
     && !/\[\{r\.resolvedActivity\}\]/.test(card)
     && !card.includes('valueContainer');
-  check('summary title is a full-width row and values are on the next row',
-    titleOwnRow && oldSameRowGone);
+  check('summary has one pair of column headers without a duplicate section label',
+    !card.includes('t("Location & Activity")') && card.includes('t("Location")') && card.includes('t("Activity")') && oldSameRowGone);
   check('values row is two independent shrinkable columns',
     twoSiblingCells
     && !/pairRow: \{[\s\S]{0,80}flexWrap:\s*"wrap"/.test(card));

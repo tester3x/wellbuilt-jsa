@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View, TouchableOpacity } from "react-native";
 
 import { cardShadow, colors } from "../../constants/colors";
 import { useLanguage } from "../../app/contexts/LanguageContext";
@@ -16,6 +16,7 @@ type Props = {
    */
   rows: LocationActivityRow[];
   date: string;
+  onAddLocation?:()=>void;
 };
 
 /**
@@ -29,7 +30,7 @@ type Props = {
  *   4. Value row(s): location left, activity right
  *   5. Date
  */
-export function JsaSummaryCard({ driverName, truckNumber, rows, date }: Props) {
+export function JsaSummaryCard({ driverName, truckNumber, rows, date,onAddLocation }: Props) {
   const { t } = useLanguage();
 
   return (
@@ -39,6 +40,7 @@ export function JsaSummaryCard({ driverName, truckNumber, rows, date }: Props) {
       <Row label={t("Truck #")} value={truckNumber || "-"} />
       <View style={styles.separator} />
       <View style={styles.locationActivitySection}>
+        {onAddLocation&&<TouchableOpacity accessibilityLabel="Add location / activity" onPress={onAddLocation} style={{alignSelf:'flex-end',padding:8}}><Text style={{fontWeight:'700',color:'#99710c'}}>＋ Add location / activity</Text></TouchableOpacity>}
         <View style={styles.pairRow}>
           <View style={styles.pairLeft}><Text style={styles.pairLabel}>{t("Location")}</Text></View>
           <View style={styles.pairRight}><Text style={styles.pairLabel}>{t("Activity")}</Text></View>
