@@ -162,8 +162,18 @@ export default function HistoryTabScreen() {
     );
   };
 
-  const handleDuplicate = (item: HistoryItem) => {
-    const today = new Date().toISOString().slice(0, 10);
+  const handleDuplicate = async (item: HistoryItem) => {
+    const {ownOpenJsaRecords}=await import('../../services/jsaRecord');
+    const {recordCustomer}=await import('../../services/jsaDocument');
+    try {
+      const open=await ownOpenJsaRecords();
+      const normalize=(v:string)=>v.trim().toLowerCase();
+      const matching=open.rows.find((r:any)=>normalize(recordCustomer(r))===normalize(recordCustomer(item)) && normalize(getWellNames(r))===normalize(getWellNames(item)) && normalize(getJobType(r))===normalize(getJobType(item)));
+      if(matching){router.push({pathname:'/jsa-record',params:{id:matching.id}} as any);return;}
+      if(open.unverified){Alert.alert('Check existing JSA','Some shift statuses could not be verified. Retry before starting another assessment.');return;}
+    }catch{Alert.alert('Could not check open JSAs','Retry before using this as a starting point.');return;}
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     router.push({
       pathname: "/steps",
       params: {
@@ -208,7 +218,7 @@ export default function HistoryTabScreen() {
               onPress={(e) => { e.stopPropagation(); handleDuplicate(item); }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={[styles.actionText, { color: accent }]}>{t("Duplicate")}</Text>
+              <Text style={[styles.actionText, { color: accent }]}>{t("Use as starting point")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.actionButton}

@@ -2838,7 +2838,7 @@ export default function JsaHomeScreen() {
               ) : null;
             })()}
             {/* Manual add button (no NDIC matches) */}
-            {wellName.trim().length >= 2 && wellSuggestions.length === 0 && !wellDataLoading && (
+            {wellName.trim().length >= 2 && wellSuggestions.length === 0 && !wellDataLoading && !addedWells.some(w=>w.name.trim().toLowerCase()===wellName.trim().toLowerCase()) && (
               <TouchableOpacity
                 style={styles.saveInlineButton}
                 onPress={() => {
