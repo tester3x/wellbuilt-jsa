@@ -37,7 +37,13 @@ export default function AddLocation(){
   const valid=Object.values(fields).every(v=>v.trim());
   const save=async()=>{if(saving||!ack||!valid||!record)return;setSaving(true);
     try{await appendStandaloneLocation(record,additionId,{...Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,v.trim()])) as typeof fields,operator});Alert.alert('Location added','Your acknowledgement is saved with this JSA.',[{text:'Done',onPress:()=>router.back()}]);}
-    catch(e){Alert.alert('Addition not confirmed',e instanceof Error?e.message:'Retry when connected.');}
+    catch(e){
+      const message=e instanceof Error?e.message:'Retry when connected.';
+      if(message.includes('review_latest_record')){
+        try{setRecord(await getStandaloneRecord(id));setAck(false);Alert.alert('JSA updated','Another addition was saved. Review the updated list before acknowledging yours.');}
+        catch{Alert.alert('Reload required','Reopen this JSA when connected to review its latest additions.');}
+      }else Alert.alert('Addition not confirmed',message);
+    }
     finally{setSaving(false);}
   };
   return <KeyboardAvoidingView style={{flex:1,backgroundColor:'#f5f5f5'}} behavior={Platform.OS==='ios'?'padding':'height'}>
@@ -60,6 +66,7 @@ export default function AddLocation(){
           {button('Review addition',()=>setReview(true),!valid)}
         </>:<>
           <Text style={styles.label}>Original JSA</Text><Text>{record.snapshot.printedName} · {record.snapshot.formDate}</Text>
+          {(record.additions || []).length>0&&<View><Text style={styles.label}>Already added</Text>{record.additions.map((a:any)=><Text key={a.id}>{a.location} · {a.activity}</Text>)}</View>}
           {Object.entries(fields).map(([key,value])=><View key={key} style={styles.option}><Text style={styles.label}>{key==='ppe'?'PPE':key.charAt(0).toUpperCase()+key.slice(1)}</Text><Text>{value}</Text></View>)}
           <Text style={styles.help}>If the work or hazards differ from your original assessment, include the new hazards, controls, and PPE above before acknowledging.</Text>
           <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{checked:ack}} disabled={saving} onPress={()=>setAck(!ack)} style={styles.option}><Text>{ack?'☑':'☐'} I have reviewed this location and activity, assessed its hazards, and understand the controls and PPE needed before starting work.</Text></TouchableOpacity>
