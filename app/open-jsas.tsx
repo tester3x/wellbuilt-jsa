@@ -1,11 +1,11 @@
 import React,{useCallback,useState} from 'react';
 import {Alert,ScrollView,Text,TouchableOpacity,View} from 'react-native';
 import {Stack,useFocusEffect,useRouter} from 'expo-router';
-import {ownJsaRecords} from '../services/jsaRecord';
+import {ownOpenJsaRecords} from '../services/jsaRecord';
 import {recordCustomer} from '../services/jsaDocument';
 import {closeStandaloneJsa,syncStandaloneHistory} from '../services/standaloneJsa';
 export default function OpenJsas(){const router=useRouter(),[rows,setRows]=useState<any[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- const load=useCallback(async()=>{try{await syncStandaloneHistory();}catch{/* retain owned local records */}try{setRows((await ownJsaRecords()).filter((r:any)=>r.workflow==='standalone'&&r.state==='open'));}catch(e){setError(String(e));}},[]);
+ const load=useCallback(async()=>{try{await syncStandaloneHistory();}catch{/* retain owned local records */}try{const result=await ownOpenJsaRecords();setRows(result.rows);setError(result.unverified?'Some shift statuses could not be verified. Saved JSAs remain available.':'');}catch(e){setError(String(e));}},[]);
  useFocusEffect(useCallback(()=>{void load();},[load]));
  const close=async(items:any[])=>{if(busy)return;setBusy(true);try{for(const item of items)await closeStandaloneJsa(item);}catch{setError('Some JSAs could not close. The remaining open records are shown below.');}finally{await load();setBusy(false);}};
  const independent=rows.filter(r=>r.workflow==='standalone');

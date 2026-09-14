@@ -16,6 +16,7 @@ type Props = {
    */
   rows: LocationActivityRow[];
   date: string;
+  signedAt?: string;
   onAddLocation?:()=>void;
 };
 
@@ -30,7 +31,7 @@ type Props = {
  *   4. Value row(s): location left, activity right
  *   5. Date
  */
-export function JsaSummaryCard({ driverName, truckNumber, rows, date,onAddLocation }: Props) {
+export function JsaSummaryCard({ driverName, truckNumber, rows, date,signedAt,onAddLocation }: Props) {
   const { t } = useLanguage();
 
   return (
@@ -73,6 +74,7 @@ export function JsaSummaryCard({ driverName, truckNumber, rows, date,onAddLocati
       </View>
       <View style={styles.separator} />
       <Row label={t("Date")} value={date || "-"} />
+      {!!signedAt && <Row label={t("Signed")} value={signedAt} />}
     </View>
   );
 }

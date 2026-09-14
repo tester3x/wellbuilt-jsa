@@ -2329,7 +2329,7 @@ export default function JsaHomeScreen() {
             ((shiftVerdict === 'server_open' || shiftVerdict === 'verified_open') &&
               !!todaysJsaSave?.shiftId && todaysJsaSave.shiftId === verifiedShiftId);
           const bannerTitle = isVerifiedCurrent
-            ? (todaysJsaSave.workflow === 'standalone' ? 'View submitted JSA' : currentJsaBannerLabel('explicit_shift'))
+            ? (todaysJsaSave.workflow === 'standalone' ? (todaysJsaSave.state === 'closed' ? 'Closed JSA' : 'Open JSAs') : 'Open JSAs')
             : HISTORICAL_JSA_LABEL;
           const bannerSubtitle = isVerifiedCurrent
             ? (todaysJsaSave?.timestamp
@@ -2340,7 +2340,7 @@ export default function JsaHomeScreen() {
               : t('Previous period'));
           return (
           <TouchableOpacity
-            onPress={openTodaysJsa}
+            onPress={()=>isVerifiedCurrent&&todaysJsaSave?.state!=='closed'?router.push('/open-jsas' as any):openTodaysJsa()}
             activeOpacity={0.8}
             accessibilityLabel={t(bannerTitle)}
             style={{
