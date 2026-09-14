@@ -26,14 +26,13 @@ import { buildJsaPdfHtml } from "../../services/jsaPdfHtml";
 import { colors } from "../../constants/colors";
 import { STORAGE_KEYS } from "../../constants/storageKeys";
 import {
-  loadOperators,
-  loadAliases,
   searchWells,
   preloadCompanyWells,
   loadDisposals,
   WellRecord,
 } from "../../services/wellData";
 import { fetchDriverProfile } from "../../services/driverAuth";
+import { localCalendarDate } from '../../utils/localCalendarDate';
 import { resolveActivity } from "../../components/jsa/locationActivity";
 import { wbDiagLog } from "../../services/wbDiagLog";
 import {
@@ -95,10 +94,12 @@ export default function JsaHomeScreen() {
   const [addedWells, setAddedWells] = useState<{ name: string; operator: string; county: string; jobType?: string }[]>([]);
   const [wellSuggestions, setWellSuggestions] = useState<WellRecord[]>([]);
   const [wellDataLoading, setWellDataLoading] = useState(false);
+  const [wellDataError, setWellDataError] = useState(false);
+  const [catalogRetry, setCatalogRetry] = useState(0);
   const [jobTypeSuggestions, setJobTypeSuggestions] = useState<string[]>([]);
   const [otherInfo, setOtherInfo] = useState("");
   const [date, setDate] = useState(
-    new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+    localCalendarDate() // YYYY-MM-DD
   );
   const [continueJsa, setContinueJsa] = useState<any | null>(null);
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
@@ -106,6 +107,10 @@ export default function JsaHomeScreen() {
 
   // Driver's assigned operators — read from RTDB assignedCustomers (same as WB T)
   const [driverOperators, setDriverOperators] = useState<string[]>([]);
+  const [selectedOperator, setSelectedOperator] = useState('');
+  const [operatorQuery, setOperatorQuery] = useState('');
+  const [operatorPickerOpen, setOperatorPickerOpen] = useState(false);
+  const [operatorWellsLoading, setOperatorWellsLoading] = useState(false);
 
   // Track whether app was opened via deep link (SSO from WB S or WB T)
   const [deepLinked, setDeepLinked] = useState(false); // set only from validated job context, never returnTo
@@ -666,7 +671,7 @@ export default function JsaHomeScreen() {
         return id;
       }
     } catch {}
-    const dateScope = new Date().toISOString().slice(0, 10);
+    const dateScope = localCalendarDate();
     console.warn('[JSA-scope] resolved=date scope=' + dateScope + ' fallbackUsed=true (no shiftId in AsyncStorage)');
     wbDiagLog({
       area: 'jsa',
@@ -842,7 +847,7 @@ export default function JsaHomeScreen() {
         });
       } else {
         // Standalone mode: single-doc fetch by today's UTC date.
-        const dateScope = new Date().toISOString().slice(0, 10);
+        const dateScope = localCalendarDate();
         const docId = `${session.driverId}_${dateScope}`;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10000);
@@ -1097,7 +1102,7 @@ export default function JsaHomeScreen() {
       // active tabs. Old-shift saves stay in History but don't pollute
       // today's active JSA list.
       const scope = await getJsaScope();
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localCalendarDate();
       const matchesScope = (save: any): boolean => {
         const sShift = typeof save?.shiftId === 'string' ? save.shiftId : '';
         if (sShift) return sShift === scope;
@@ -1322,7 +1327,7 @@ export default function JsaHomeScreen() {
       const stored = await AsyncStorage.getItem(STORAGE_KEYS.saves);
       if (!ownership.isCurrent(owner)) return;
       const list = stored ? JSON.parse(stored) : [];
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localCalendarDate();
 
       let match: any = null;
       if (Array.isArray(list) && list.length > 0) {
@@ -1607,19 +1612,34 @@ export default function JsaHomeScreen() {
 
   // Load NDIC well data — scoped by driver's assignedCustomers from RTDB.
   // Same approach as WB T: driver record has operator names, load only those wells.
-  const { configLoaded } = useTheme();
   useEffect(() => {
-    if (!configLoaded) return; // ThemeContext hasn't loaded yet
     if (!session) return;
+    let cancelled = false;
+    setSelectedOperator('');
+    setOperatorQuery('');
+    setDriverOperators([]);
     const loadWellData = async () => {
       setWellDataLoading(true);
+      setWellDataError(false);
       try {
-        await loadOperators();
-        await loadAliases();
+        // Catalog access uses the authenticated session, not optional theme
+        // configuration. Load SWDs independently of assigned-well hydration.
         const catalogResults = await Promise.allSettled([
-          preloadCompanyWells(driverOperators),
+          (async () => {
+            const profile = await fetchDriverProfile();
+            if (cancelled) return;
+            if (!profile) throw new Error('catalog_profile_unavailable');
+            // Existing profile assignments narrow search; they do not establish
+            // exclusive hauling rights. Never fall back to the full catalog.
+            const names = profile.assignedCustomers
+              .map(c => typeof c?.name === 'string' ? c.name.trim() : '')
+              .filter(Boolean);
+            if (!cancelled) setDriverOperators([...new Set(names)].sort());
+          })(),
           loadDisposals(),
         ]);
+        if (cancelled) return;
+        setWellDataError(catalogResults.some(result => result.status === 'rejected'));
         for (const result of catalogResults) {
           if (result.status === 'rejected') console.warn('[JSA] Location catalog unavailable:', result.reason);
         }
@@ -1627,13 +1647,30 @@ export default function JsaHomeScreen() {
         // manually or picks oil companies in Settings. Loading 19k wells is a
         // 3–4 minute wait and unacceptable UX.
       } catch (err) {
+        if (!cancelled) setWellDataError(true);
         console.warn('[JSA] Failed to load NDIC well data:', err);
       } finally {
-        setWellDataLoading(false);
+        if (!cancelled) setWellDataLoading(false);
       }
     };
     loadWellData();
-  }, [driverOperators, configLoaded, session]);
+    return () => { cancelled = true; };
+  }, [session?.uid, session?.generation, catalogRetry]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setOperatorWellsLoading(!!selectedOperator);
+    setWellSuggestions([]);
+    void preloadCompanyWells(selectedOperator ? [selectedOperator] : [])
+      .catch(() => { if (!cancelled) setWellDataError(true); })
+      .finally(() => { if (!cancelled) setOperatorWellsLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedOperator, session?.uid, session?.generation]);
+
+  // A query entered before the network response must refresh when data arrives.
+  useEffect(() => {
+    setWellSuggestions(searchWells(wellName, 0));
+  }, [wellName, wellDataLoading, operatorWellsLoading, selectedOperator]);
 
   const scrollViewRef = useRef<ScrollView>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -1758,7 +1795,7 @@ export default function JsaHomeScreen() {
       setJobActivityName('');
       setPusher('');
       setOtherInfo('');
-      setDate(new Date().toISOString().slice(0, 10));
+      setDate(localCalendarDate());
       setHydrationSource('post_submit_clear');
       noActivityLoggedRef.current = false;
       await AsyncStorage.removeItem('@jsa/clearFormOnNextFocus').catch(() => {});
@@ -1975,9 +2012,7 @@ export default function JsaHomeScreen() {
             AsyncStorage.removeItem(STORAGE_KEYS.truckNumber).catch(() => {});
           }
           // Set assigned operators for company-scoped well loading
-          if (profileData.assignedCustomers.length > 0) {
-            setDriverOperators(profileData.assignedCustomers.map(c => c.name));
-          }
+          // Operator choices are hydrated by the session-owned catalog effect.
         }
       } catch (error) {
         console.warn("Failed to load saved driver/truck", error);
@@ -2035,7 +2070,7 @@ export default function JsaHomeScreen() {
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed)) {
-            const today = new Date().toISOString().slice(0, 10);
+            const today = localCalendarDate();
             const isDraftShiftMode = !!draftShiftId;
             const matches = parsed.filter(
               (item) =>
@@ -2144,7 +2179,7 @@ export default function JsaHomeScreen() {
     setAddedWells([]);
     setAddedLocations([]);
     setLocationInput("");
-    setDate(new Date().toISOString().slice(0, 10));
+    setDate(localCalendarDate());
     setContinueJsa(null);
     setJobActivityName("");
     setPusher("");
@@ -2182,7 +2217,7 @@ export default function JsaHomeScreen() {
         otherInfo: continueJsa.otherInfo || '',
         location: locationsForParam[0] || continueJsa.location || '',
         locations: JSON.stringify(locationsForParam),
-        date: new Date().toISOString().slice(0, 10),
+        date: localCalendarDate(),
         jsaSessionId: Date.now().toString(),
       },
     });
@@ -2425,7 +2460,7 @@ export default function JsaHomeScreen() {
                         setPusher('');
                         setWellName('');
                         setOtherInfo('');
-                        setDate(new Date().toISOString().slice(0, 10));
+                        setDate(localCalendarDate());
                         // Temporarily hide active JSAs to show form
                         setActiveJsaIndex(-1);
                       }}
@@ -2686,12 +2721,39 @@ export default function JsaHomeScreen() {
               </View>
             )}
 
+            <Text style={[styles.label, { marginTop: 14 }]}>Oil Company</Text>
+            {!wellDataLoading && !wellDataError && driverOperators.length === 0 && (
+              <Text style={{ color: colors.textMuted, marginBottom: 8 }}>No oil companies are set on your WB driver profile. Set up your customer list to enable well suggestions. You can still enter a location manually.</Text>
+            )}
+            <TouchableOpacity style={styles.input} onPress={() => setOperatorPickerOpen(value => !value)}>
+              <Text style={{ color: selectedOperator ? colors.textDark : colors.textMuted }}>
+                {selectedOperator || 'Select the company you are hauling for'}
+              </Text>
+            </TouchableOpacity>
+            {operatorPickerOpen && (
+              <View style={{ marginTop: 8 }}>
+                <TextInput style={styles.input} placeholder="Search oil companies" value={operatorQuery}
+                  onChangeText={setOperatorQuery} placeholderTextColor={colors.textMuted} />
+                {driverOperators.filter(name => name.toLowerCase().includes(operatorQuery.trim().toLowerCase())).slice(0, 15).map(name => (
+                  <TouchableOpacity key={name} style={styles.dropdownItem} onPress={() => {
+                    setSelectedOperator(name); setOperatorPickerOpen(false); setOperatorQuery('');
+                    setWellName(''); setWellSuggestions([]);
+                  }}><Text style={{ color: colors.textDark }}>{name}</Text></TouchableOpacity>
+                ))}
+              </View>
+            )}
             <Text style={[styles.label, { marginTop: 14 }]}>{t("Well / Location")}</Text>
-            {wellDataLoading && (
+            {!selectedOperator && <Text style={{ color: colors.textMuted, marginBottom: 8 }}>Select an oil company for well suggestions. SWDs and manual locations remain available.</Text>}
+            {(wellDataLoading || operatorWellsLoading) && (
               <View style={styles.loadingRow}>
                 <ActivityIndicator size="small" color={accent} />
-                <Text style={styles.loadingText}>{t("Loading NDIC wells...")}</Text>
+                <Text style={styles.loadingText}>{t("Loading wells and SWDs...")}</Text>
               </View>
+            )}
+            {wellDataError && !wellDataLoading && (
+              <TouchableOpacity onPress={() => setCatalogRetry(value => value + 1)} style={{ paddingVertical: 12 }}>
+                <Text style={{ color: accent }}>Some locations could not load. Tap to retry.</Text>
+              </TouchableOpacity>
             )}
             <TextInput
               ref={wellNameRef}
@@ -2995,7 +3057,7 @@ export default function JsaHomeScreen() {
                           setPusher('');
                           setWellName('');
                           setOtherInfo('');
-                          setDate(new Date().toISOString().slice(0, 10));
+                          setDate(localCalendarDate());
                         }
                       },
                     },
@@ -3136,7 +3198,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 96,
   },
   header: {
     flexDirection: "row",

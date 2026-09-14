@@ -202,7 +202,7 @@ export const loadWellsForOperator = async (operator: string): Promise<WellRecord
     return await loadCatalog({ type: 'wells', operator });
   } catch (err) {
     console.warn('[wellData] Failed to load wells for operator:', err);
-    return [];
+    throw err;
   }
 };
 
@@ -213,6 +213,7 @@ export const loadWellsForOperator = async (operator: string): Promise<WellRecord
 let companyWellsCache: WellRecord[] = [];
 let companyWellsLoaded = false;
 let companyOperatorsKey = '';
+let companyLoadEpoch = 0;
 
 /**
  * Pre-load wells for the company's assigned operators.
@@ -223,6 +224,7 @@ export const preloadCompanyWells = async (
 ): Promise<WellRecord[]> => {
   const operatorKey = JSON.stringify([...new Set(operatorNames || [])].sort());
   if (companyWellsLoaded && companyOperatorsKey === operatorKey && companyWellsCache.length > 0) return companyWellsCache;
+  const loadEpoch = ++companyLoadEpoch;
   companyOperatorsKey = operatorKey;
   allWellsCache = [];
 
@@ -240,7 +242,16 @@ export const preloadCompanyWells = async (
   const allWells: WellRecord[] = [];
 
   // Also resolve aliases — some company configs use DBA names
-  const aliases = await loadAliases();
+  // Alias enrichment must not block authenticated catalog reads on an older
+  // direct-Firestore permission or an offline SDK request.
+  let aliases = aliasesCache;
+  if (!aliases.length) {
+    try {
+      const cachedAliases = JSON.parse(await AsyncStorage.getItem(CACHE_KEYS.aliases) || '[]');
+      if (Array.isArray(cachedAliases)) aliases = cachedAliases;
+    } catch {}
+  }
+  let failed = false;
   const resolvedOperators = new Set<string>();
   for (const name of operatorNames) {
     resolvedOperators.add(name);
@@ -260,8 +271,10 @@ export const preloadCompanyWells = async (
         const raw = await AsyncStorage.getItem(cacheKey);
         if (raw) {
           const wells = JSON.parse(raw) as WellRecord[];
-          allWells.push(...wells);
-          continue;
+          if (wells.length) {
+            allWells.push(...wells);
+            continue;
+          }
         }
       }
 
@@ -273,15 +286,18 @@ export const preloadCompanyWells = async (
       await AsyncStorage.setItem(cacheKey, JSON.stringify(wells));
       await setCacheTimestamp(cacheKey);
     } catch (err) {
+      failed = true;
       console.warn(`[wellData-JSA] Failed to load wells for ${operator}:`, err);
     }
   }
 
+  if (loadEpoch !== companyLoadEpoch) return [];
   companyWellsCache = allWells;
-  companyWellsLoaded = true;
+  companyWellsLoaded = !failed;
   // Also populate allWellsCache so searchWells() works
   allWellsCache = allWells;
   console.log(`[wellData-JSA] Pre-loaded ${allWells.length} wells for ${resolvedOperators.size} operators`);
+  if (failed) throw new Error('catalog_wells_incomplete');
   return companyWellsCache;
 };
 
