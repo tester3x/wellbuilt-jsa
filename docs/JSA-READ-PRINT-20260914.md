@@ -12,4 +12,8 @@ Verification: TypeScript passes; Android Metro export passes; document fixtures 
 
 Four pre-existing TypeScript errors were corrected: an out-of-scope diagnostic variable, Firestore callback type, supported signature WebView dark-mode prop, and Expo's legacy filesystem import for the existing PDF reader.
 
-Build/install and physical read/print verification are pending at this source checkpoint. No test JSA has been submitted to production and no driver acknowledgement was performed by automation. Dashboard/photo work, WB-T and WB-E were not edited.
+Backend deployment completed: only dashboard:jsaStandalone, ACTIVE revision jsastandalone-00003-nix, code 11267ba5. Before deployment all 239 deployed source files matched prior checkpoint 3b14a506.
+
+vc38 (0b482d1, build c29eb0f2-f580-441e-91e1-95ab716df032) was canceled before installation after sample PDF review found orphan headings. This follow-up keeps headings with content and the original signature block together. Paper/3-inch/4-inch sample PDFs were rendered from the app's HTML and visually reviewed; they contain no production data.
+
+Replacement build/install and physical read/print verification remain pending. No test JSA has been submitted to production and no driver acknowledgement was performed by automation. Dashboard/photo work, WB-T and WB-E were not edited.
