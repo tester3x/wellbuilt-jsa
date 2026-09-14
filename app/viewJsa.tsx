@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Alert,
     Image,
@@ -72,6 +72,16 @@ export default function ViewJsaScreen() {
   const router = useRouter();
   const { t } = useLanguage();
   const { accent } = useTheme();
+  const [standaloneRecord,setStandaloneRecord]=useState<any>(null);
+  useFocusEffect(useCallback(()=>{let active=true;
+    (async()=>{
+      const saves=JSON.parse(await AsyncStorage.getItem(STORAGE_KEYS.saves)||'[]');
+      if(!saves.some((s:any)=>s.id===params.id&&s.workflow==='standalone'))return;
+      const record=await (await import('../services/standaloneJsa')).getStandaloneRecord(String(params.id));
+      if(active)setStandaloneRecord(record);
+    })().catch(()=>{if(active)setStandaloneRecord(null);});
+    return()=>{active=false;};
+  },[params.id]));
 
   // Read launch origin so the header chip can return the driver to the
   // app that launched WB JSA (WB T / WB S / WB eW). The previous "Home"
@@ -460,6 +470,21 @@ export default function ViewJsaScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {standaloneRecord?.state==='open' && <TouchableOpacity style={[styles.card,{borderColor:accent,borderWidth:1}]} onPress={()=>router.push({pathname:'/add-location',params:{id:String(params.id)}} as any)}><Text style={{color:accent,fontWeight:'700',fontSize:18}}>Add location / activity</Text></TouchableOpacity>}
+        {standaloneRecord && <TouchableOpacity style={styles.card} onPress={async()=>{
+          try{
+            const service=await import('../services/standaloneJsa');
+            const latest=await service.getStandaloneRecord(String(params.id));
+            const html=await service.standaloneReportHtml(latest);
+            await (await import('expo-print')).printAsync({html});
+          }catch{Alert.alert('Print unavailable','Could not load the complete report. Retry when connected.');}
+        }}><Text style={{color:accent,fontWeight:'700'}}>Print JSA with additions</Text></TouchableOpacity>}
+        {(standaloneRecord?.additions || []).map((addition:any)=><View key={addition.id} style={styles.card}>
+          <Text style={styles.title}>Added location / activity</Text>
+          <Text>{addition.location} · {addition.activity}</Text>
+          <Text>Hazards: {addition.hazards}</Text><Text>Controls: {addition.controls}</Text><Text>PPE: {addition.ppe}</Text>
+          <Text>Acknowledged by {standaloneRecord.snapshot.printedName} · {new Date(addition.acknowledgedAtMs).toLocaleString()}</Text>
+        </View>)}
         {isEditing ? (
         <View style={styles.card}>
           <Text style={styles.title}>{t("Job Details")}</Text>

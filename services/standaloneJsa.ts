@@ -61,7 +61,7 @@ export async function syncStandaloneHistory(): Promise<any[]> {
     const converted = { ...(matched || {}), ...snapshot, id:matched?.id || r.id, standaloneRecordId:r.id, workflow:'standalone',
       companyId:r.companyId,driverId:r.driverId,driverHash:r.driverId,shiftId:null,state:r.state,
       timestamp:new Date(r.signedAtMs).toISOString(),date:snapshot.formDate || '',driverName:snapshot.printedName,
-      signature:snapshot.printedName,signatureImage:`data:image/png;base64,${snapshot.signature.data}`,
+      signature:snapshot.printedName,signatureImage:`data:image/png;base64,${snapshot.signature.data}`,additions:r.additions || [],
       jobActivityName:r.job.activity,task:r.job.activity,wells:r.job.wells,wellName:r.job.wells[0]?.name || '' };
     const i = latest.findIndex((x:any)=>x.id===converted.id && x.companyId===r.companyId && x.driverId===r.driverId);
     if(i<0) latest.push(converted); else latest[i]=converted;
@@ -75,4 +75,29 @@ export async function closeStandaloneJsa(item:any):Promise<void>{
   const saved = item.standaloneRecordId ? item.standaloneRecordId : (await persistStandaloneJsa(item)).record.id;
   await standaloneCall({operation:'close',recordId:saved});
   await syncStandaloneHistory();
+}
+
+/** Resolve only an owned local save, then read the canonical record. Route params are not authority. */
+export async function getStandaloneRecord(localId:string):Promise<any>{
+  if(await loadLaunchContext()) throw new Error('Finish the required JSA request first.');
+  const records=await syncStandaloneHistory();
+  const item=records.find(r=>r.id===localId && r.workflow==='standalone');
+  if(!item?.standaloneRecordId)throw new Error('This standalone JSA could not be found.');
+  return (await standaloneCall({operation:'get',recordId:item.standaloneRecordId})).record;
+}
+
+export async function appendStandaloneLocation(record:any,additionId:string,fields:{location:string;operator:string;activity:string;hazards:string;controls:string;ppe:string}):Promise<void>{
+  if(await loadLaunchContext())throw new Error('Finish the required JSA request first.');
+  await standaloneCall({operation:'append',recordId:record.id,additionId,addition:{...fields,acknowledged:true,baseContentHash:record.contentHash,expectedAdditionCount:(record.additions || []).length}});
+  await syncStandaloneHistory();
+}
+
+export async function standaloneReportHtml(record:any):Promise<string>{
+  const {buildJsaPdfHtml}=await import('./jsaPdfHtml');
+  const s=record.snapshot;
+  return buildJsaPdfHtml({driverName:s.printedName,truckNumber:s.truckNumber || '',pusher:s.pusher,
+    wellName:'',wells:record.job.wells,jobActivity:record.job.activity,date:s.formDate || '',notes:s.notes,
+    signature:s.printedName,signatureImage:`data:image/png;base64,${s.signature.data}`,locations:s.locations,
+    locationAcks:{},ppeItems:[...Object.keys(s.ppeSelected).filter(k=>s.ppeSelected[k]),...(s.ppeOtherItems || [])],
+    preparedItems:Object.keys(s.prepared).filter(k=>s.prepared[k]),emergencyContacts:[],companyContacts:[],accent:'#DAA520',additions:record.additions || []});
 }

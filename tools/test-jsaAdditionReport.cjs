@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),ts=require('typescript');
+const mod={exports:{}};
+new Function('module','exports',ts.transpileModule(fs.readFileSync('services/jsaPdfHtml.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText)(mod,mod.exports);
+const original={driverName:'Test Driver',truckNumber:'Test',pusher:'',wellName:'First location',jobActivity:'Service',date:'2026-09-14',notes:'',signature:'Test Driver',locations:[],locationAcks:{},ppeItems:[],preparedItems:[],emergencyContacts:[],companyContacts:[],accent:'#DAA520'};
+const addition={location:'Second <location>',operator:'Company & Co',activity:'Service',hazards:'Traffic',controls:'Barrier',ppe:'Glasses',acknowledgedAtMs:1000};
+const baseline=mod.exports.buildJsaPdfHtml(original);
+assert.equal(mod.exports.buildJsaPdfHtml({...original,additions:[]}),baseline);
+const printed=mod.exports.buildJsaPdfHtml({...original,additions:[addition]});
+for(const word of ['First location','Second &lt;location&gt;','Company &amp; Co','Traffic','Barrier','Glasses','Acknowledged by Test Driver','original assessment unchanged'])assert.ok(printed.includes(word),word);
+assert.ok(printed.indexOf('Added location / activity')>printed.indexOf('Signature'));
+assert.equal(printed.includes('Second <location>'),false);
+console.log('Addition report: original preserved, addition evidence printed, text escaped; no-addition report unchanged.');

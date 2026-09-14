@@ -2499,6 +2499,11 @@ export default function JsaHomeScreen() {
         {/* Living JSA Dashboard — full paper JSA per tab */}
         {jsaCompletedToday && currentJsa && (
           <>
+            {currentJsa.savedData?.workflow==='standalone' && currentJsa.savedData?.state!=='closed' && (
+              <TouchableOpacity style={{padding:16,marginBottom:10,borderRadius:12,backgroundColor:accent}} onPress={()=>router.push({pathname:'/add-location',params:{id:String(currentJsa.savedData.id)}} as any)}>
+                <Text style={{color:'white',fontWeight:'700',textAlign:'center'}}>Add location / activity</Text>
+              </TouchableOpacity>
+            )}
             {/* Full JSA Document — paper-ready WebView */}
             {currentJsa.savedData && (() => {
               const sd = currentJsa.savedData;
@@ -2514,6 +2519,7 @@ export default function JsaHomeScreen() {
               if (typeof rawPrep === 'object') preparedItems = Object.entries(rawPrep).filter(([, v]) => v).map(([k]) => k);
 
               const jsaHtml = buildJsaPdfHtml({
+                additions: sd.additions || [],
                 driverName: sd.driverName || '',
                 truckNumber: sd.truckNumber || '',
                 pusher: sd.pusher || '',
