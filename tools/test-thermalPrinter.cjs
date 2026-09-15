@@ -11,6 +11,11 @@ const api={};new Function('require','exports',ts.transpileModule(fs.readFileSync
  devices=[{macAddress:'home'},{macAddress:'truck'}];await api.savePrinter(home);
  assert.equal((await api.refreshPrinter(true)).printer.macAddress,'home');
  await api.savePrinter(truck);assert.equal((await api.refreshPrinter(true)).printer.macAddress,'truck');
+ // A stale settings screen changing paper width must not restore Home.
+ const updated=await api.updatePrinter({width:3});assert.equal(updated.macAddress,'truck');
+ assert.equal(api.samePrinterSelection(home,updated),false);
+ assert.equal(api.samePrinterSelection(updated,await api.loadPrinter()),true);
+ await api.updatePrinter({width:4});
  devices=[{macAddress:'truck'}];assert.equal((await api.refreshPrinter(true)).printer.macAddress,'truck');
  await api.savePrinter(home);assert.equal((await api.refreshPrinter(true)).missing,true);assert.equal((await api.loadPrinter()).macAddress,undefined);
  calls=[];await assert.rejects(()=>api.printThermal(home,'file',()=>{}),/no longer paired/);assert.equal(calls.length,0);

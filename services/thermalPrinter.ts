@@ -24,6 +24,16 @@ function serializePrinter<T>(operation: () => Promise<T>): Promise<T> {
   return result;
 }
 export const savePrinter = (p: PrinterSettings) => serializePrinter(() => AsyncStorage.setItem(KEY, JSON.stringify(p)));
+// A mounted settings screen may have an older device selection. Only replace
+// the fields the user actually changed, using the latest persisted settings.
+export const updatePrinter = (patch: Partial<PrinterSettings>) => serializePrinter(async () => {
+  const next = {...await loadPrinter(), ...patch};
+  await AsyncStorage.setItem(KEY, JSON.stringify(next));
+  return next;
+});
+export function samePrinterSelection(a: PrinterSettings | null, b: PrinterSettings) {
+  return !!a && a.macAddress === b.macAddress && a.brand === b.brand && a.width === b.width;
+}
 async function permissions(request = true) {
   if (Platform.OS !== 'android' || !NativeModules.BrotherPrinter || !NativeModules.EscPosPrinter)
     throw new Error('Direct thermal printing requires the Android build with printer support. Regular printing is still available.');

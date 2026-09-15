@@ -18,3 +18,9 @@ EAS build: 5b15aac5-5767-426f-ae28-975cc61ec533.
 Source: 73a20f9f679e221cf07aa56dfc6d3d5b3b75f5f9.
 APK SHA-256: 054866F83273E5C692F3218751D3DDCAD3875D9DBB2B0A7EEE95F554FA2307D6.
 S24 and ZFold: install succeeded and package versionCode 45 read back. ZFold installation waited until Mike closed JSA. Physical printer and user acknowledgement tests remain pending.
+
+## vc45 switching retest — not passed
+
+Mike paired home printer 4387 while leaving truck printer 7978 paired. After reporting that the selection switched, the next screenshot again displayed RJ-4230B_7978 and OpenStreamFailure. No pages were reported sent. The exact screen on which 4387 appeared is still being clarified; the screenshot alone does not prove an AsyncStorage overwrite.
+
+Follow-up code: settings changes now merge only the changed fields into the latest saved selection. Printing stops without sending if the saved selection differs from the modal's displayed selection. Fixture verifies a width change preserves the latest selected device. TypeScript and thermal fixtures pass. This follow-up is not yet built or device-verified.
