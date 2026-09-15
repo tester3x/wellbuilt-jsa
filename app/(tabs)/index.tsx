@@ -1757,6 +1757,7 @@ export default function JsaHomeScreen() {
   const handleJobTypeSelect = (jt: string) => {
     setJobActivityName(jt);
     setJobTypeSuggestions([]);
+    oilCompanyRef.current?.focus();
   };
 
   const handleWellTextChange = (text: string) => {
@@ -1799,6 +1800,7 @@ export default function JsaHomeScreen() {
     // same activity. Form field stays populated; they clear it manually if
     // switching activities between wells.
     setJobTypeSuggestions([]);
+    pusherRef.current?.focus();
   };
 
   const addWellManual = () => {
@@ -1820,8 +1822,8 @@ export default function JsaHomeScreen() {
 
   const addLocationToList = (loc: string) => {
     const trimmed = loc.trim();
-    if (!trimmed) return;
-    if (!requireActivityOrWarn()) return;
+    if (!trimmed) return false;
+    if (!requireActivityOrWarn()) return false;
     if (!addedLocations.some(l => l.toLowerCase() === trimmed.toLowerCase())) {
       setAddedLocations((prev) => [...prev, trimmed]);
       setHydrationSource('user_input');
@@ -1831,6 +1833,7 @@ export default function JsaHomeScreen() {
       setFavoriteLocations((prev) => [...prev, trimmed]);
     }
     setLocationInput("");
+    return true;
   };
 
   const removeLocationFromList = (loc: string) => {
@@ -2637,6 +2640,7 @@ export default function JsaHomeScreen() {
                   <TouchableOpacity key={name} style={styles.dropdownItem} onPress={() => {
                     setSelectedOperator(name); setOperatorPickerOpen(false); setOperatorQuery(name);
                     setWellName(''); setWellSuggestions([]);
+                    wellNameRef.current?.focus();
                   }}><Text style={{ color: colors.textDark }}>{name}</Text></TouchableOpacity>
                 ))}
                 </ScrollView>
@@ -2726,9 +2730,11 @@ export default function JsaHomeScreen() {
                         key={fav}
                         style={[styles.dropdownItem, index === matches.length - 1 && { borderBottomWidth: 0 }]}
                         onPress={() => {
-                          addLocationToList(fav);
+                          if (!addLocationToList(fav)) return;
                           setWellName("");
                           setWellSuggestions([]);
+                          setWellFieldFocused(false);
+                          pusherRef.current?.focus();
                         }}
                         onLongPress={() => {
                           Alert.alert(
