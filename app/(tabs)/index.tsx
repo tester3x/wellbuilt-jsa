@@ -1663,6 +1663,7 @@ export default function JsaHomeScreen() {
   const truckNumberRef = useRef<TextInput>(null);
   const dateRef = useRef<TextInput>(null);
   const jobActivityRef = useRef<TextInput>(null);
+  const oilCompanyRef = useRef<TextInput>(null);
   const wellNameRef = useRef<TextInput>(null);
   const pusherRef = useRef<TextInput>(null);
   const otherInfoRef = useRef<TextInput>(null);
@@ -2587,7 +2588,10 @@ export default function JsaHomeScreen() {
               onChangeText={handleJobTypeTextChange}
               returnKeyType="next"
               blurOnSubmit={false}
-              onSubmitEditing={() => wellNameRef.current?.focus()}
+              onSubmitEditing={() => {
+                setJobTypeSuggestions([]);
+                oilCompanyRef.current?.focus();
+              }}
               autoComplete="off"
               importantForAutofill="no"
             />
@@ -2613,7 +2617,12 @@ export default function JsaHomeScreen() {
               <Text style={{ color: colors.textMuted, marginBottom: 8 }}>No oil companies are set on your WB driver profile. Set up your customer list to enable well suggestions. You can still enter a location manually.</Text>
             )}
             <View style={styles.companySearchField}>
-            <TextInput style={[styles.input, {borderWidth:0}]} placeholder="Search your oil companies" value={operatorQuery}
+            <TextInput ref={oilCompanyRef} style={[styles.input, {borderWidth:0}]} placeholder="Search your oil companies" value={operatorQuery}
+              returnKeyType="next" blurOnSubmit={false}
+              onSubmitEditing={() => {
+                setOperatorPickerOpen(false);
+                wellNameRef.current?.focus();
+              }}
               selectTextOnFocus autoCorrect={false} placeholderTextColor={colors.textMuted}
               onFocus={() => setOperatorPickerOpen(true)}
               onBlur={() => setTimeout(() => setOperatorPickerOpen(false), 200)}
