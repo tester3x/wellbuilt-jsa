@@ -7,6 +7,8 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "./AuthContext";
+import {getAuth} from 'firebase/auth';
+import {loadUsableGovernedSession} from '../../services/sso/jsaGovernedAuthLive';
 
 // --- Interfaces ---
 
@@ -217,13 +219,18 @@ async function fetchCompanyConfig(companyId: string): Promise<CompanyConfig | nu
  */
 async function fetchJsaTemplate(companyId: string): Promise<JsaTemplateData | null> {
   try {
+    const session=await loadUsableGovernedSession();
+    if(!session||session.companyId!==companyId)return null;
+    const user=getAuth().currentUser;
+    if(!user||user.uid!==session.uid)return null;
+    const token=await user.getIdToken();
     const url = `${FIRESTORE_BASE}/jsa_templates/${companyId}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     const response = await fetch(url, {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization:'Bearer '+token },
       signal: controller.signal,
     });
     clearTimeout(timeoutId);

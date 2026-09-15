@@ -1,6 +1,6 @@
 import {loadTaskSelectionDraft,freezeTaskSelectionDraft} from '../services/jsaTaskSelectionDraft';
 import TaskAssessmentPicker from '../components/TaskAssessmentPicker';
-import {assembleTaskAssessments} from '../services/jsaTaskTemplates';
+import {assembleTaskAssessments,loadTaskAssessments} from '../services/jsaTaskTemplates';
 import MoreMenu from '../components/MoreMenu';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -219,13 +219,20 @@ const locationsList = useMemo(() => {
   activeTaskScope.current=jsaSessionId+':'+jobHandoff.source;
   const [taskDraftLoading,setTaskDraftLoading]=useState(true);
   const [taskDraftError,setTaskDraftError]=useState('');
+  const [taskCatalogVersion,setTaskCatalogVersion]=useState<number|null>(null);
+  const [taskLoadRetry,setTaskLoadRetry]=useState(0);
   useEffect(()=>{
-    let live=true;setTaskSelection(null);setTaskDraftLoading(true);setTaskDraftError('');
+    let live=true;setTaskSelection(null);setTaskDraftLoading(true);setTaskDraftError('');setTaskCatalogVersion(null);
     if(jobHandoff.source!=='nav_params' || !jsaSessionId){setTaskDraftLoading(false);return;}
-    loadTaskSelectionDraft(jsaSessionId).then(selection=>{if(live)setTaskSelection(selection);})
+    loadTaskSelectionDraft(jsaSessionId).then(async selection=>{
+      // A frozen draft can resume offline. A new read must verify the catalog;
+      // failed branding/template REST requests must not substitute default steps.
+      const version=selection?2:(await loadTaskAssessments()).schemaVersion;
+      if(live){setTaskSelection(selection);setTaskCatalogVersion(version);}
+    })
       .catch(e=>{if(live)setTaskDraftError(e.message);}).finally(()=>{if(live)setTaskDraftLoading(false);});
     return()=>{live=false;};
-  },[jsaSessionId,jobHandoff.source]);
+  },[jsaSessionId,jobHandoff.source,taskLoadRetry]);
   const chooseTasks=async(selection:ReturnType<typeof assembleTaskAssessments>)=>{
     const scope=activeTaskScope.current;
     setTaskDraftLoading(true);setTaskDraftError('');
@@ -361,8 +368,8 @@ const locationsList = useMemo(() => {
     );
   };
 
-  if(taskDraftLoading || taskDraftError) return <SafeAreaView style={styles.safeArea}><Text style={{padding:24}}>{taskDraftError || 'Restoring your assessment…'}</Text></SafeAreaView>;
-  if(jsaTemplate?.catalogVersion===2 && !taskSelection) return <SafeAreaView style={styles.safeArea}>{jobHandoff.source==='governed_snapshot' ? <Text>Task-specific required-job assessments are not enabled yet. Return to Suite.</Text> : <TaskAssessmentPicker onChoose={selection=>void chooseTasks(selection)}/>}</SafeAreaView>;
+  if(taskDraftLoading || taskDraftError) return <SafeAreaView style={styles.safeArea}><Text style={{padding:24}}>{taskDraftError || 'Restoring your assessment…'}</Text>{!!taskDraftError&&<TouchableOpacity onPress={()=>setTaskLoadRetry(n=>n+1)} style={{padding:24}}><Text>Retry loading assessment</Text></TouchableOpacity>}</SafeAreaView>;
+  if((taskCatalogVersion===2 || jsaTemplate?.catalogVersion===2) && !taskSelection) return <SafeAreaView style={styles.safeArea}>{jobHandoff.source==='governed_snapshot' ? <Text>Task-specific required-job assessments are not enabled yet. Return to Suite.</Text> : <TaskAssessmentPicker onChoose={selection=>void chooseTasks(selection)}/>}</SafeAreaView>;
   return (
     <SafeAreaView style={styles.safeArea}>
       <Stack.Screen

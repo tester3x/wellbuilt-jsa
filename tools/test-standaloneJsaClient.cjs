@@ -8,7 +8,7 @@ new Function('require','module','exports',js)(name=>{
  if(name.endsWith('jsaGovernedAuthLive'))return{loadUsableGovernedSession:async()=>session};
  if(name.endsWith('jsaRuntime'))return{loadLaunchContext:async()=>launch};
  if(name.endsWith('jsaArtifactSnapshot'))return{adaptGovernedSnapshot:raw=>({ok:!!raw.signatureImage,value:{signature:raw.signatureImage}})};
- if(name==='@react-native-async-storage/async-storage')return{getItem:async()=>JSON.stringify(local),setItem:async(_,v)=>{local=JSON.parse(v)}};
+ if(name==='@react-native-async-storage/async-storage')return{getItem:async key=>key==='saves'?JSON.stringify(local):null,setItem:async(_,v)=>{local=JSON.parse(v)}};
  if(name.endsWith('storageKeys'))return{STORAGE_KEYS:{saves:'saves'}};
  if(name==='./jsaRecord')return{ownJsaRecord:async id=>{const row=local.find(r=>r.id===id&&r.companyId===session.companyId&&r.driverId===session.driverId);if(!row)throw Error('Not owned');return row;}};
  throw Error(name);
@@ -24,9 +24,9 @@ new Function('require','module','exports',js)(name=>{
  await api.persistStandaloneJsa({...payload,operator:'New customer',assessmentSteps:archive});assert.deepEqual(calls.at(-1).job.assessmentSteps,archive);assert.equal(calls.at(-1).job.operator,'New customer');
  launch={requestId:'required'};await assert.rejects(()=>api.persistStandaloneJsa(payload));assert.equal(await api.standaloneAccess(),false);
  launch=null;await assert.rejects(()=>api.persistStandaloneJsa({...payload,companyId:'other'}));
- local=[{...payload,id:'incomplete',signatureImage:''},{...payload,id:'selected',standaloneRecordId:'remote-selected'}];
- calls=[];assert.equal((await api.getStandaloneRecord('selected')).id,'remote-selected');
- assert.deepEqual(calls,[{operation:'get',recordId:'remote-selected'}]);
+ local=[{...payload,id:'incomplete',signatureImage:''},{...payload,id:'selected',standaloneRecordId:'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR'}];
+ calls=[];assert.equal((await api.getStandaloneRecord('selected')).id,'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR');
+ assert.deepEqual(calls,[{operation:'get',recordId:'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR'}]);
  calls=[];await api.syncStandaloneHistory();assert.deepEqual(calls,[{operation:'list'}]);
  assert.equal(local.find(r=>r.id==='incomplete').signatureImage,'');
  await assert.rejects(()=>api.getStandaloneRecord('incomplete'),/incomplete/);

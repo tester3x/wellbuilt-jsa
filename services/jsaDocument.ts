@@ -22,6 +22,7 @@ export function jsaDocumentHtml(r:any,width?:3|4):string{
  </style></head><body><h1>WellBuilt · Job Safety Analysis</h1>
  <div>${escape(recordCustomer(r))}</div><div>${escape(r.driverName)} · Truck ${escape(r.truckNumber)} · ${escape(r.date)}</div>
  <h2>Location / Activity</h2>${locations.map((w:any)=>`<div class="row"><span>${escape(w.name)}</span><span>${escape(w.jobType||r.jobActivityName)}</span></div>`).join('')}
+ ${(r.assessmentTemplates||[]).length?`<h2>Company assessments</h2>${r.assessmentTemplates.map((t:any)=>`<div>${escape(t.name)} · Version ${escape(t.version)}</div>`).join('')}`:''}
  <h2>Steps, hazards and controls</h2>${!archived?'<p class="note">Reference only: the original step text was not stored with this older JSA. The steps below are the current built-in reference, not proof of what was originally read.</p>':''}
  ${steps.map((s:any)=>`<h3>${escape(s.title)}</h3>${(s.items||[]).map((i:any)=>`<div class="item"><b>Hazard:</b> ${escape(i.hazard)}<br><b>Controls:</b> ${escape(i.controls)}</div>`).join('')}`).join('')}
  <h2>PPE selected</h2><div>${selected(ppe,r.assessmentPpeItems||PPE_ITEMS)}${(r.ppeOtherItems||[]).map((x:string)=>`, ${escape(x)}`).join('')}</div>
