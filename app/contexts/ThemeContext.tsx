@@ -12,6 +12,7 @@ import { useAuth } from "./AuthContext";
 
 // BYOJSA: Company-specific JSA template loaded from Firestore
 export interface JsaTemplateData {
+  catalogVersion?: number;
   name: string;
   steps: { id: string; title: string; items: { hazard: string; controls: string }[] }[];
   ppeItems: { id: string; label: string }[];
@@ -234,7 +235,8 @@ async function fetchJsaTemplate(companyId: string): Promise<JsaTemplateData | nu
     if (!fields) return null;
 
     // Only use active templates
-    if (fields.status?.stringValue !== 'active') return null;
+    const catalogVersion = Number(fields.schemaVersion?.integerValue || 1);
+    if (fields.status?.stringValue !== 'active' && catalogVersion !== 2) return null;
 
     // Parse steps array
     const steps = (fields.steps?.arrayValue?.values || []).map((v: any) => {
@@ -254,7 +256,7 @@ async function fetchJsaTemplate(companyId: string): Promise<JsaTemplateData | nu
       };
     }).filter(Boolean);
 
-    if (steps.length === 0) return null;
+    if (steps.length === 0 && catalogVersion !== 2) return null;
 
     // Parse PPE items
     const ppeItems = (fields.ppeItems?.arrayValue?.values || []).map((v: any) => {
@@ -269,6 +271,7 @@ async function fetchJsaTemplate(companyId: string): Promise<JsaTemplateData | nu
     }).filter(Boolean);
 
     return {
+      catalogVersion,
       name: fields.name?.stringValue || 'Custom JSA',
       steps,
       ppeItems,

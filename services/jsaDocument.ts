@@ -24,8 +24,8 @@ export function jsaDocumentHtml(r:any,width?:3|4):string{
  <h2>Location / Activity</h2>${locations.map((w:any)=>`<div class="row"><span>${escape(w.name)}</span><span>${escape(w.jobType||r.jobActivityName)}</span></div>`).join('')}
  <h2>Steps, hazards and controls</h2>${!archived?'<p class="note">Reference only: the original step text was not stored with this older JSA. The steps below are the current built-in reference, not proof of what was originally read.</p>':''}
  ${steps.map((s:any)=>`<h3>${escape(s.title)}</h3>${(s.items||[]).map((i:any)=>`<div class="item"><b>Hazard:</b> ${escape(i.hazard)}<br><b>Controls:</b> ${escape(i.controls)}</div>`).join('')}`).join('')}
- <h2>PPE selected</h2><div>${selected(ppe,PPE_ITEMS)}${(r.ppeOtherItems||[]).map((x:string)=>`, ${escape(x)}`).join('')}</div>
- <h2>Prepared for work</h2><div>${selected(r.prepared,PREPARED_FOR_WORK_ITEMS)}</div><h2>Notes</h2><div>${escape(r.notes||'—')}</div>
+ <h2>PPE selected</h2><div>${selected(ppe,r.assessmentPpeItems||PPE_ITEMS)}${(r.ppeOtherItems||[]).map((x:string)=>`, ${escape(x)}`).join('')}</div>
+ <h2>Prepared for work</h2><div>${selected(r.prepared,r.assessmentPreparedItems||PREPARED_FOR_WORK_ITEMS)}</div><h2>Notes</h2><div>${escape(r.notes||'—')}</div>
  <section class="signature"><h2>Original signature</h2>${image?`<img src="${image}" alt="Driver signature">`:'<div>Signature image unavailable in this saved record.</div>'}<div>${escape(r.driverLegalName||r.signature||r.driverName)}</div><div>Signed: ${escape(signingTime(r.timestamp||r.createdAt))}</div></section>
  ${(r.additions||[]).map((a:any)=>`<h2>Added location / activity</h2><div>${escape(a.location)} · ${escape(a.activity)}</div><div>Hazards: ${escape(a.hazards)}</div><div>Controls: ${escape(a.controls)}</div><div>PPE: ${escape(a.ppe)}</div><div>${escape(a.acknowledgement||'Location and activity reviewed and acknowledged.')}</div><div>${escape(r.driverLegalName||r.signature||r.driverName)} · ${escape(signingTime(a.acknowledgedAtMs))}</div>`).join('')}
  <div class="footer">WellBuilt JSA · Record ${escape(r.id)} · Original signature and later acknowledgements remain separate.</div></body></html>`;

@@ -1,3 +1,5 @@
+import TaskAssessmentPicker from '../components/TaskAssessmentPicker';
+import {assembleTaskAssessments} from '../services/jsaTaskTemplates';
 import MoreMenu from '../components/MoreMenu';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -211,7 +213,8 @@ const locationsList = useMemo(() => {
 
   const { t } = useLanguage();
   const { accent, jsaTemplate } = useTheme();
-  const steps: JSAStep[] = jsaTemplate?.steps ?? JSA_STEPS;
+  const [taskSelection,setTaskSelection]=useState<ReturnType<typeof assembleTaskAssessments>|null>(null);
+  const steps: JSAStep[] = taskSelection?.steps ?? jsaTemplate?.steps ?? JSA_STEPS;
   const requiredStepIds = useMemo(() => steps.map((s) => s.id), [steps]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
@@ -339,6 +342,7 @@ const locationsList = useMemo(() => {
     );
   };
 
+  if(jsaTemplate?.catalogVersion===2 && !taskSelection) return <SafeAreaView style={styles.safeArea}>{jobHandoff.source==='governed_snapshot' ? <Text>Task-specific required-job assessments are not enabled yet. Return to Suite.</Text> : <TaskAssessmentPicker onChoose={setTaskSelection}/>}</SafeAreaView>;
   return (
     <SafeAreaView style={styles.safeArea}>
       <Stack.Screen
@@ -474,6 +478,7 @@ const locationsList = useMemo(() => {
                             stepAcks: JSON.stringify(evidence.stepAcks),
                             stepsAcknowledged: evidence.stepsAcknowledged ? '1' : '0',
                             assessmentSteps: JSON.stringify(steps),
+                            assessmentBundle: taskSelection ? JSON.stringify(taskSelection) : undefined,
                             operator: params.operator,
                           },
                         });

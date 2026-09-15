@@ -37,6 +37,7 @@ import { useTheme } from "./contexts/ThemeContext";
 type Params = {
   operator?:string;
   assessmentSteps?: string;
+  assessmentBundle?: string;
   driverName?: string;
   truckNumber?: string;
   jobActivityName?: string;
@@ -60,7 +61,8 @@ export default function SignoffScreen() {
   const router = useRouter();
   const { t } = useLanguage();
   const { emergencyContacts: themeEmergencyContacts, companyContacts: themeCompanyContacts, accent, jsaTemplate } = useTheme();
-  const preparedItemsList = jsaTemplate?.preparedItems ?? PREPARED_FOR_WORK_ITEMS;
+  const assessmentBundle=useMemo(()=>{try{return params.assessmentBundle?JSON.parse(params.assessmentBundle):null;}catch{return null;}},[params.assessmentBundle]);
+  const preparedItemsList: {id:string;label:string}[] = assessmentBundle?.preparedItems ?? jsaTemplate?.preparedItems ?? PREPARED_FOR_WORK_ITEMS;
 
   // Contacts from company config (managed in Dashboard Settings > JSA)
   const emergencyContacts = themeEmergencyContacts.map((c, i) => ({ id: `ec-${i}`, ...c }));
@@ -386,7 +388,7 @@ export default function SignoffScreen() {
       const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
       const { legalAcknowledgmentName } = await import('../services/sso/jsaSession');
       const { decideGovernedSubmitEvidence } = await import('../services/sso/jsaGovernedFormEvidence');
-      const requiredStepIds = (jsaTemplate?.steps ?? JSA_STEPS).map((s: { id: string }) => s.id);
+      const requiredStepIds = (params.assessmentSteps ? JSON.parse(params.assessmentSteps) : (jsaTemplate?.steps ?? JSA_STEPS)).map((s: { id: string }) => s.id);
       const submitEvidence = decideGovernedSubmitEvidence({
         source: frozenJob.source,
         legalName: legalAcknowledgmentName(await loadGovernedSession()),
@@ -495,6 +497,7 @@ export default function SignoffScreen() {
 
       const payload = {
         assessmentSteps: params.assessmentSteps ? JSON.parse(params.assessmentSteps) : [],
+        ...(assessmentBundle ? {templateRefs:assessmentBundle.templateRefs,assessmentTemplates:assessmentBundle.templates,assessmentPpeItems:assessmentBundle.ppeItems,assessmentPreparedItems:assessmentBundle.preparedItems}:{}),
         id: (pendingComplete && governedActive && pendingComplete.requestId === governedCtx.requestId)
           ? pendingComplete.localRecordId
           : independent ? `standalone_${String(params.jsaSessionId || Date.now())}` : Date.now().toString(),

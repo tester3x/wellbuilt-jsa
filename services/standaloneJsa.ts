@@ -28,6 +28,7 @@ export async function persistStandaloneJsa(payload: any): Promise<any> {
   if (!snapshot.ok) throw new Error('JSA signature or inspection data is incomplete.');
   const recordId = payload.standaloneRecordId || (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${session.companyId}:${session.driverId}:${payload.id}`)).slice(0,43);
   return standaloneCall({ operation: 'create', recordId, snapshot: snapshot.value, job: {
+    ...(payload.templateRefs?.length ? {templateRefs:payload.templateRefs} : {}),
     ...(payload.assessmentSteps?.length ? {assessmentSteps:payload.assessmentSteps} : {}),
     // Older saves must retain their original canonical create hash on retry.
     ...(payload.assessmentSteps?.length && payload.operator ? {operator:String(payload.operator).trim()} : {}),
@@ -69,7 +70,8 @@ export async function syncStandaloneHistory(): Promise<any[]> {
       timestamp:new Date(r.signedAtMs).toISOString(),date:snapshot.formDate || '',driverName:snapshot.printedName,
       signature:snapshot.printedName,signatureImage:`data:image/png;base64,${snapshot.signature.data}`,additions:r.additions || [],
       jobActivityName:r.job.activity,task:r.job.activity,wells:r.job.wells,wellName:r.job.wells[0]?.name || '',
-      operator:r.job.operator || matched?.operator || '',assessmentSteps:r.job.assessmentSteps || matched?.assessmentSteps || [] };
+      operator:r.job.operator || matched?.operator || '',assessmentSteps:r.job.assessmentSteps || matched?.assessmentSteps || [],
+      ...(r.job.assessmentTemplates ? {assessmentTemplates:r.job.assessmentTemplates,assessmentPpeItems:r.job.assessmentPpeItems,assessmentPreparedItems:r.job.assessmentPreparedItems}: {}) };
     const i = latest.findIndex((x:any)=>x.id===converted.id && x.companyId===r.companyId && x.driverId===r.driverId);
     if(i<0) latest.push(converted); else latest[i]=converted;
   }

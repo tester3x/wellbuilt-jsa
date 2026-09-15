@@ -27,6 +27,7 @@ import { keyboardRevealOffset } from '../utils/keyboardRevealOffset';
 type Params = {
   operator?:string;
   assessmentSteps?: string;
+  assessmentBundle?: string;
   driverName?: string;
   truckNumber?: string;
   jobActivityName?: string;
@@ -49,6 +50,7 @@ export default function PpeScreen() {
   const {
     operator = '',
     assessmentSteps = '',
+    assessmentBundle = '',
     driverName = "",
     truckNumber = "",
     jobActivityName = "",
@@ -70,7 +72,8 @@ export default function PpeScreen() {
   const router = useRouter();
   const { t } = useLanguage();
   const { accent, jsaTemplate } = useTheme();
-  const ppeItemsList = jsaTemplate?.ppeItems ?? PPE_ITEMS;
+  const bundle=useMemo(()=>{try{return assessmentBundle?JSON.parse(assessmentBundle):null;}catch{return null;}},[assessmentBundle]);
+  const ppeItemsList: PpeItem[] = bundle?.ppeItems ?? jsaTemplate?.ppeItems ?? PPE_ITEMS;
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [otherItems, setOtherItems] = useState<string[]>([]); // List of added "other" PPE items
   const [otherInput, setOtherInput] = useState(""); // Current text input for adding new items
@@ -281,6 +284,7 @@ export default function PpeScreen() {
         stepAcks,
         stepsAcknowledged,
         assessmentSteps,
+        assessmentBundle,
         operator,
       },
     });

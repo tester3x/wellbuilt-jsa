@@ -1,0 +1,9 @@
+const fs=require('fs'),ts=require('typescript'),assert=require('node:assert/strict');
+const api={};new Function('exports','require',ts.transpileModule(fs.readFileSync('services/jsaTaskTemplates.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText)(api,()=>({standaloneCall:async()=>({schemaVersion:2,templates:[]})}));
+const t={id:'loading',version:1,contentHash:'a'.repeat(64),name:'Loading',tasks:['loading'],packageId:null,steps:[{id:'same-id',title:'Original loading',items:[{hazard:'Hazard',controls:'Exact wording'}]}],ppeItems:[{id:'one',label:'Glasses'}],preparedItems:[]};
+const u={...t,id:'unloading',contentHash:'b'.repeat(64),name:'Unloading',tasks:['unloading']};
+const combined=api.assembleTaskAssessments([u,t]);assert.equal(combined.steps.length,2);assert.notEqual(combined.steps[0].id,combined.steps[1].id);assert.equal(combined.steps[0].items[0].controls,'Exact wording');assert.equal(t.steps[0].id,'same-id');
+assert.deepEqual(combined,api.assembleTaskAssessments([t,u]));
+assert.notEqual(api.assembleTaskAssessments([{...t,version:2,contentHash:'c'.repeat(64)}]).steps[0].id,combined.steps[0].id);
+assert.throws(()=>api.assembleTaskAssessments([t,t]));
+console.log('PASS: task combination preserves wording, distinguishes reused step ids, resets evidence for changed content and never mutates source');
