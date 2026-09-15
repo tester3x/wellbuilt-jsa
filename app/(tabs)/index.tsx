@@ -1688,66 +1688,6 @@ export default function JsaHomeScreen() {
     return false;
   }, [session?.displayName, session?.legalName]);
 
-  // Return-to-origin: launch origin is persisted as `jsa_returnTo` in
-  // AsyncStorage by the deep-link handlers. Convert to a stable enum for the
-  // UI and for the submit modal's button choices. Re-read on focus so the
-  // return chip disappears after the user actually deep-links back out.
-  const [launchOrigin, setLaunchOrigin] = useState<'wbs' | 'wbt' | 'wbew' | 'standalone'>('standalone');
-  const readLaunchOrigin = useCallback(async () => {
-    const raw = await AsyncStorage.getItem('jsa_returnTo').catch(() => null);
-    let origin: 'wbs' | 'wbt' | 'wbew' | 'standalone';
-    let returnUrl: string;
-    let buttonLabel: string;
-    let fallbackUsed = false;
-    if (!raw) {
-      origin = 'standalone';
-      returnUrl = '(none — staying in WB JSA)';
-      buttonLabel = '(none — Done button)';
-      fallbackUsed = true;
-      setLaunchOrigin('standalone');
-    } else {
-      switch (raw) {
-        case 'wbs':
-        case 'wellbuilt-suite':
-          origin = 'wbs';
-          returnUrl = 'wellbuilt-suite://resume';
-          buttonLabel = 'Return to WB S';
-          break;
-        case 'wbt':
-        case 'wellbuilt-tickets':
-          origin = 'wbt';
-          returnUrl = 'wellbuilt-tickets://resume';
-          buttonLabel = 'Return to WB T';
-          break;
-        case 'wellbuilt-ewallet':
-          origin = 'wbew';
-          returnUrl = 'wellbuilt-ewallet://resume';
-          buttonLabel = 'Return to WB eW';
-          break;
-        default:
-          origin = 'standalone';
-          returnUrl = '(unknown source — fallback to standalone)';
-          buttonLabel = '(none — Done button)';
-          fallbackUsed = true;
-      }
-      setLaunchOrigin(origin);
-    }
-    // Diagnostic per Apr-29 follow-up — log the source app + URL + button
-    // label whenever the return chip is reconciled. Pairs with WB T's
-    // [InvoiceModule] launch log so a field test can prove which source
-    // was passed and which button rendered.
-    console.log(JSON.stringify({
-      tag: '[jsa-return][source]',
-      sourceApp: origin,
-      rawReturnTo: raw || null,
-      returnUrl,
-      buttonLabel,
-      fallbackUsed,
-    }));
-  }, []);
-  useEffect(() => { readLaunchOrigin(); }, [deepLinked, readLaunchOrigin]);
-  useFocusEffect(useCallback(() => { readLaunchOrigin(); }, [readLaunchOrigin]));
-
   // Post-submit clear-form gate. Signoff sets `@jsa/clearFormOnNextFocus`
   // before the completion modal opens. When the driver returns here via
   // Done / Stay on JSA / Return-to-origin, we read the flag, wipe the form
@@ -2254,39 +2194,6 @@ export default function JsaHomeScreen() {
               <Text style={styles.companyName}>{t("Job Safety Analysis")}</Text>
               <Text style={styles.subtitle}>{themeCompanyName} • {t("Digital JSA")}</Text>
             </View>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {/* Persistent return-to-origin chip — visible whenever the JSA
-                was launched from another WB app. If user chose "Stay on JSA"
-                on the submit modal they can still return here. */}
-            {(launchOrigin === 'wbs' || launchOrigin === 'wbt' || launchOrigin === 'wbew') && (
-              <TouchableOpacity
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  backgroundColor: accent,
-                  borderRadius: 8,
-                }}
-                onPress={async () => {
-                  const scheme =
-                    launchOrigin === 'wbs' ? 'wellbuilt-suite://' :
-                    launchOrigin === 'wbt' ? 'wellbuilt-tickets://' :
-                    'wellbuilt-ewallet://';
-                  const { Linking } = require('react-native');
-                  try { await Linking.openURL(scheme); } catch (err) {
-                    console.warn('[JSA] Return-to-origin failed:', err);
-                  }
-                }}
-                accessibilityLabel="Return to origin app"
-              >
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
-                  {launchOrigin === 'wbs' ? t("Return to WB S") :
-                   launchOrigin === 'wbt' ? t("Return to WB T") :
-                   t("Return to WB eW")}
-                </Text>
-              </TouchableOpacity>
-            )}
-
           </View>
         </View>
 
