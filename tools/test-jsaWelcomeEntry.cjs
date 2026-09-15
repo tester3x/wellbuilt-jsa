@@ -11,7 +11,7 @@ const start = root.indexOf('  const maybeShowWelcome = async');
 const end = root.indexOf('  const resolveUnauthSurface', start);
 assert(start >= 0 && end > start);
 const welcomeJs = compile(root.slice(start, end) + '\nexports.run = maybeShowWelcome;');
-const owner = {uid: 'owner', generation: 'generation', legalName: 'Test Driver'};
+const owner = {uid: 'owner', generation: 'generation', companyId: 'company', legalName: 'Test Driver'};
 const read = {requestId: 'read-1', state: 'pending', intent: 'read', wellName: 'Test Well', jobType: 'Service Work'};
 async function welcome(options = {}) {
   const result = {}, exports = {};
@@ -69,7 +69,7 @@ function route(options = {}) {
   assert.equal((await welcome(required)).request, 'read-1');
   for (const options of [
     {allowed: false}, {pathname: '/steps'}, {ownerChanged: true}, {staleInspection: true},
-    {seen: 'owner:generation:standalone'},
+    {seen: 'owner:company:standalone'},
     {...required, context: {...read, requestId: 'different'}},
     {...required, failure: {requestId: 'read-1'}},
     {...required, context: {...read, intent: 'acknowledge'}},
@@ -86,3 +86,4 @@ function route(options = {}) {
     {context: {...read, state: 'completed'}}]) assert.deepEqual(route(options), []);
   console.log('PASS: actual Welcome callback (12 cases) and request-bound Continue routing (7 cases)');
 })().catch(error => {console.error(error); process.exitCode = 1;});
+

@@ -86,7 +86,10 @@ export async function hrefAfterJsaCallback(result: CallbackOwnerResult): Promise
   const launch = await loadLaunchContext();
   if (result.purpose === 'app_access' && !launch) {
     const inspected = await inspectGovernedIdentityStartupDetailed();
-    if (callbackMayOpenApp(result,false,inspected.state === 'usable')) return '/(tabs)';
+      if (callbackMayOpenApp(result,false,inspected.state === 'usable')) {
+        const {lastJsaScreen}=await import('../jsaScreenResume');
+        return (await lastJsaScreen()) || '/(tabs)';
+      }
   }
   const { recoverGoverned, liveGovernedDeps } = await import('./jsaGovernedLive');
   const { resolveEntryRoute } = await import('./jsaGovernedRoute');

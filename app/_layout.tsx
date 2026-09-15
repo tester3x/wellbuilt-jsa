@@ -1,5 +1,5 @@
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
-import { Stack, usePathname, useRouter } from 'expo-router';
+import { Stack, usePathname, useRouter, useGlobalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { useEffect, useRef, useState } from 'react';
@@ -94,6 +94,9 @@ function AppContent() {
   const { mode, session, isAuthenticated, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const screenParams=useGlobalSearchParams();
+  const screenParamsJson=JSON.stringify(screenParams);
+  useEffect(()=>{void import('../services/jsaScreenResume').then(m=>m.rememberJsaScreen(pathname,JSON.parse(screenParamsJson))).catch(()=>{});},[pathname,screenParamsJson]);
   const [ssoInProgress, setSsoInProgress] = useState(true); // suppress login overlay until we check initial URL
   // Count of governed /start candidates being processed — published by
   // the owner choke point (subscribeStartResolving), so EVERY entry
@@ -231,7 +234,7 @@ function AppContent() {
       const current = await loadUsableGovernedSession();
       if (!current || current.uid !== owner.uid || current.generation !== owner.generation) return;
       if (welcomeInspectionRef.current !== inspection) return;
-      const key = `${owner.uid}:${owner.generation}:${launch?.requestId || 'standalone'}`;
+      const key = `${owner.uid}:${owner.companyId}:${launch?.requestId || 'standalone'}`;
       if (welcomeKeyRef.current === key) return;
       welcomeKeyRef.current = key;
       setWelcomeOwner(`${owner.uid}:${owner.generation}`);
