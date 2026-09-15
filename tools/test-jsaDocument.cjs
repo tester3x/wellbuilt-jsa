@@ -10,5 +10,7 @@ for(const width of [undefined,3,4]){const html=jsaDocumentHtml(record,width);for
 assert.equal(JSON.stringify(record),before);
 assert.ok(jsaDocumentHtml({...record,assessmentSteps:[]}).includes('not proof of what was originally read'));
 assert.ok(!jsaDocumentHtml({...record,signatureImage:'javascript:alert(1)'}).includes('<img'));
+assert.ok(jsaDocumentHtml({...record,signatureImage:''}).includes('Signature image unavailable in this saved record.'));
+assert.ok(!jsaDocumentHtml(record).includes('Signature image unavailable'));
 assert.equal(signingTime(undefined),'Not recorded');assert.equal(signingTime('bad'),'Not recorded');
 console.log('JSA documents: paper/3-inch/4-inch content, signature, additions, escaping, immutable projection and legacy reference passed.');

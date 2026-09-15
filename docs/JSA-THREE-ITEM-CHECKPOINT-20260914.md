@@ -24,3 +24,9 @@ S24 and ZFold: install succeeded and package versionCode 45 read back. ZFold ins
 Mike paired home printer 4387 while leaving truck printer 7978 paired. After reporting that the selection switched, the next screenshot again displayed RJ-4230B_7978 and OpenStreamFailure. No pages were reported sent. The exact screen on which 4387 appeared is still being clarified; the screenshot alone does not prove an AsyncStorage overwrite.
 
 Follow-up code: settings changes now merge only the changed fields into the latest saved selection. Printing stops without sending if the saved selection differs from the modal's displayed selection. Fixture verifies a width change preserves the latest selected device. TypeScript and thermal fixtures pass. This follow-up is not yet built or device-verified.
+
+## Signature visibility follow-up
+
+The shared read/print renderer omitted the black-stroke filter present in the existing PDF renderer and signoff preview. Added the same brightness(0) rendering for archived signature images, preserving the original stored bytes. Missing/unsupported images now display an explicit unavailable message instead of a silently empty signature section. This is a confirmed renderer inconsistency; whether the tested record contains light strokes or lacks an image still needs on-device confirmation. Do not recover a historical signature from the current profile or fabricate one.
+
+Document fixtures and TypeScript passed. Mike corrected the printer switching report: he had selected the wrong printer; 4387 then printed. No switching regression is proven. The short inter-page gap has no explicit tear-off timer in the current Brother report loop.
