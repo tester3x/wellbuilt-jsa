@@ -299,7 +299,7 @@ export default function PpeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
       <Stack.Screen
         options={{
           title: t("PPE Checklist"),
@@ -317,7 +317,8 @@ export default function PpeScreen() {
         <ScrollView
           ref={scrollViewRef}
           style={styles.container}
-          contentContainerStyle={[styles.content,Platform.OS==='android' && keyboardHeight>0 && {paddingBottom:150+keyboardHeight}]}
+          contentContainerStyle={[styles.content,Platform.OS==='android' && keyboardHeight>0 && {paddingBottom:16+keyboardHeight}]}
+          bounces={false}
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="none"
           keyboardShouldPersistTaps="handled"
@@ -327,6 +328,7 @@ export default function PpeScreen() {
         >
           {/* Summary */}
           <JsaSummaryCard
+            compact
             driverName={driverName}
             truckNumber={truckNumber}
             rows={summaryRows}
@@ -340,27 +342,30 @@ export default function PpeScreen() {
             {ppeItemsList.filter((item) => !item.id.toLowerCase().startsWith("other")).map((item) => {
               const checked = isChecked(item.id);
               return (
-                <View key={item.id} style={styles.listRow}>
-                  <TouchableOpacity
+                <TouchableOpacity key={item.id}
                     onPress={() => toggleItem(item)}
-                    style={[styles.checkbox, { borderColor: accent }, checked && [styles.checkboxChecked, { backgroundColor: accent }]]}
+                    style={[styles.listRow, styles.checklistRow]}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked }}
+                    accessibilityLabel={t(item.label)}
                     activeOpacity={0.8}
                   >
+                  <View style={[styles.checkbox, { borderColor: accent }, checked && [styles.checkboxChecked, { backgroundColor: accent }]]}>
                     {checked && <Text style={styles.checkboxMark}>✓</Text>}
-                  </TouchableOpacity>
+                  </View>
                   <Text style={styles.itemLabel}>{t(item.label)}</Text>
-                </View>
+                </TouchableOpacity>
               );
             })}
 
             {/* Other PPE input */}
             <View style={styles.otherSection}>
-              <Text style={[styles.itemLabel, { flex: 0 }]}>{t("Other")}</Text>
               <View style={styles.listRow}>
               <TextInput
                 ref={otherInputRef}
                 style={styles.otherInput}
                 placeholder={t("Enter other PPE")}
+                accessibilityLabel={t("Other PPE")}
                 placeholderTextColor={colors.textMuted}
                 value={otherInput}
                 onChangeText={setOtherInput}
@@ -419,9 +424,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
-    paddingBottom: 150,
-    gap: 12,
+    padding: 12,
+    paddingBottom: 12,
+    gap: 8,
   },
   summaryCard: {
     backgroundColor: colors.card,
@@ -465,11 +470,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: colors.textDark,
-    marginBottom: 10,
+    marginBottom: 4,
   },
   list: {
-    gap: 10,
+    gap: 0,
   },
+  checklistRow: { minHeight: 40, paddingVertical: 4 },
   listRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -537,7 +543,7 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
   },
   nextButton: {
-    marginTop: 8,
+    marginTop: 0,
     backgroundColor: colors.primary,
     paddingVertical: 14,
     borderRadius: 12,

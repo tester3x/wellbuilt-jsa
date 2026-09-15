@@ -17,6 +17,7 @@ type Props = {
   rows: LocationActivityRow[];
   date: string;
   signedAt?: string;
+  compact?: boolean;
   onAddLocation?:()=>void;
 };
 
@@ -31,8 +32,22 @@ type Props = {
  *   4. Value row(s): location left, activity right
  *   5. Date
  */
-export function JsaSummaryCard({ driverName, truckNumber, rows, date,signedAt,onAddLocation }: Props) {
+export function JsaSummaryCard({ driverName, truckNumber, rows, date,signedAt,onAddLocation,compact=false }: Props) {
   const { t } = useLanguage();
+
+  if (compact) return (
+    <View style={[styles.card, { padding: 10 }]}>
+      <Text style={styles.compactIdentity}>{driverName || "-"} · {t("Truck #")} {truckNumber || "-"} · {date || "-"}</Text>
+      <View style={styles.pairRow}>
+        <View style={styles.pairLeft}><Text style={styles.pairLabel}>{t("Location")}</Text></View>
+        <View style={styles.pairRight}><Text style={styles.pairLabel}>{t("Activity")}</Text></View>
+      </View>
+      {rows.map((row, index) => <View key={index} style={styles.pairRow}>
+        <View style={styles.pairLeft}><Text style={styles.pairValueLeft}>{row.name}</Text></View>
+        <View style={styles.pairRight}><Text style={styles.pairValueRight}>{row.resolvedActivity}</Text></View>
+      </View>)}
+    </View>
+  );
 
   return (
     <View style={styles.card}>
@@ -89,6 +104,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  compactIdentity: { color: colors.textMuted, fontSize: 12 },
   card: {
     backgroundColor: colors.card,
     borderRadius: 12,
