@@ -43,5 +43,5 @@ const styles = StyleSheet.create({
   menu: { position: 'absolute', right: 16, width: 208, backgroundColor: colors.card,
     borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, elevation: 8 },
   item: { minHeight: 52, justifyContent: 'center', paddingHorizontal: 18 },
-  label: { color: colors.textDark, fontSize: 16, fontWeight: '600' },
+  label: { color: colors.textDark, fontSize: 16, fontWeight: '600', textAlign: 'right' },
 });

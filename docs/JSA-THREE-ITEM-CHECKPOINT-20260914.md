@@ -30,3 +30,9 @@ Follow-up code: settings changes now merge only the changed fields into the late
 The shared read/print renderer omitted the black-stroke filter present in the existing PDF renderer and signoff preview. Added the same brightness(0) rendering for archived signature images, preserving the original stored bytes. Missing/unsupported images now display an explicit unavailable message instead of a silently empty signature section. This is a confirmed renderer inconsistency; whether the tested record contains light strokes or lacks an image still needs on-device confirmation. Do not recover a historical signature from the current profile or fabricate one.
 
 Document fixtures and TypeScript passed. Mike corrected the printer switching report: he had selected the wrong printer; 4387 then printed. No switching regression is proven. The short inter-page gap has no explicit tear-off timer in the current Brother report loop.
+
+## vc46 verified and More alignment
+
+Both S24 and ZFold installed vc46; package version read back successfully. APK SHA-256 EB5689C47DD5BBFC60143F227EECBDBD5E984DADF2FEFEF995471CD83EBCAB98, source 5d35730717779e38dfdd3bd0e1c2416a04c2411d. Mike confirms the signature is visible after reopening the saved Read JSA report. A fresh physical signature print remains unverified.
+
+More popup labels now right-aligned. This and duplicate top-menu removal are committed after vc46 and need the next build.
