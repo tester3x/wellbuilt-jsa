@@ -9,3 +9,7 @@ Remaining: keep task selection frozen across restart/navigation and owner change
 ## Selection restoration checkpoint
 
 Task selection now persists per authenticated uid/company/JSA session. Restart and token refresh restore the exact bundle; another JSA or owner cannot inherit it. Replacing an already frozen bundle is refused. Steps waits for restoration before showing assessment content, and late saves cannot update a different job screen. Existing routes without a standalone session keep their prior path. TypeScript and task draft/assembly fixtures pass. Not built, installed or deployed; other rollout gates above remain open.
+
+## Add task later checkpoint
+
+Add Location can select a not-yet-covered assessment on multi-template records. It renders that version's steps/PPE/preparation, requires each step acknowledgement, and sends references and acknowledgements with the location addition. Read/print includes the appended assessment wording and version under its separate acknowledgement. Original signature and content are unchanged. The backend rejects incomplete step evidence and duplicate assessment additions; same addition ID retries retain the original timestamp. Document fixtures cover added wording in paper/3-inch/4-inch reports. Server memory tests cover original preservation, missing acknowledgements and duplicate retry. Not deployed or device verified; catalog-change retries, governed handoff and publication authorization still require work.

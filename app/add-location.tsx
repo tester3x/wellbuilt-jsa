@@ -1,3 +1,5 @@
+import TaskAssessmentPicker from '../components/TaskAssessmentPicker';
+import {assembleTaskAssessments} from '../services/jsaTaskTemplates';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -20,6 +22,9 @@ export default function AddLocation(){
   const [loadingWells,setLoadingWells]=useState(false);
   const [fields,setFields]=useState({location:'',activity:'',hazards:'',controls:'',ppe:''});
   const [review,setReview]=useState(false),[ack,setAck]=useState(false),[saving,setSaving]=useState(false);
+  const [choosingTask,setChoosingTask]=useState(false);
+  const [taskReview,setTaskReview]=useState<ReturnType<typeof assembleTaskAssessments>|null>(null);
+  const [taskAcks,setTaskAcks]=useState<Record<string,boolean>>({});
   const [additionId,setAdditionId]=useState('');
   const [companyFocused,setCompanyFocused]=useState(false),[locationFocused,setLocationFocused]=useState(false);
   useEffect(()=>{let active=true;setRecordFailed(false);
@@ -37,8 +42,10 @@ export default function AddLocation(){
   const update=(key:keyof typeof fields,value:string)=>{setFields(old=>({...old,[key]:value}));setAck(false);};
   const button=(label:string,onPress:()=>void,disabled=false)=><TouchableOpacity accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.button,{backgroundColor:accent,opacity:disabled ? 0.45 : 1}]}><Text style={styles.buttonText}>{label}</Text></TouchableOpacity>;
   const valid=Object.values(fields).every(v=>v.trim());
-  const save=async()=>{if(saving||!ack||!valid||!record)return;setSaving(true);
-    try{await appendStandaloneLocation(record,additionId,{...Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,v.trim()])) as typeof fields,operator});Alert.alert('Location added','Your acknowledgement is saved with this JSA.',[{text:'Done',onPress:()=>router.back()}]);}
+  const tasksRead=!taskReview || taskReview.steps.every(step=>taskAcks[step.id]===true);
+  const coveredHashes=[...(record?.job?.assessmentTemplates||[]),...(record?.additions||[]).flatMap((a:any)=>a.taskAssessment?.templates||[])].map((t:any)=>t.contentHash);
+  const save=async()=>{if(saving||!ack||!valid||!record||!tasksRead)return;setSaving(true);
+    try{await appendStandaloneLocation(record,additionId,{...Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,v.trim()])) as typeof fields,operator},taskReview?{templateRefs:taskReview.templateRefs,stepAcks:taskAcks}:undefined);Alert.alert('Location added','Your acknowledgement is saved with this JSA.',[{text:'Done',onPress:()=>router.back()}]);}
     catch(e){
       const message=e instanceof Error?e.message:'Retry when connected.';
       if(message.includes('review_latest_record')){
@@ -56,6 +63,10 @@ export default function AddLocation(){
         <Text style={styles.title}>{review?'Review this addition':'Add the next location'}</Text>
         <Text style={styles.help}>Add a location when you know it. The original signed JSA stays unchanged. Review conditions before starting the added work.</Text>
         {!review?<>
+          {record.job.assessmentTemplates && <>
+            {choosingTask ? <TaskAssessmentPicker excludedHashes={coveredHashes} onChoose={selection=>{setTaskReview(selection);setTaskAcks({});setAck(false);setChoosingTask(false);}}/> : button(taskReview?'Change added assessment':'＋ Add a different task assessment',()=>setChoosingTask(true))}
+            {taskReview && <Text>New assessment: {taskReview.templates.map(t=>t.name).join(', ')}</Text>}
+          </>}
           <Text style={styles.label}>Oil company</Text>
           {record.job.operator?<Text>{record.job.operator} · Use a new JSA for another oil company.</Text>:<>
           <TextInput style={styles.input} placeholder="Search your oil companies" value={operatorQuery} selectTextOnFocus autoCorrect={false}
@@ -79,9 +90,11 @@ export default function AddLocation(){
           <Text style={styles.label}>Original JSA</Text><Text>{record.snapshot.printedName} · {record.snapshot.formDate}</Text>
           {(record.additions || []).length>0&&<View><Text style={styles.label}>Already added</Text>{record.additions.map((a:any)=><Text key={a.id}>{a.location} · {a.activity}</Text>)}</View>}
           {Object.entries(fields).map(([key,value])=><View key={key} style={styles.option}><Text style={styles.label}>{key==='ppe'?'PPE':key.charAt(0).toUpperCase()+key.slice(1)}</Text><Text>{value}</Text></View>)}
+          {taskReview?.steps.map(step=><View key={step.id} style={styles.option}><Text style={styles.label}>{step.title}</Text>{step.items.map((item,i)=><View key={i}><Text>Hazard: {item.hazard}</Text><Text>Controls: {item.controls}</Text></View>)}<TouchableOpacity disabled={saving} accessibilityRole="checkbox" accessibilityState={{checked:taskAcks[step.id]===true}} onPress={()=>{setTaskAcks(old=>({...old,[step.id]:!old[step.id]}));setAck(false);}} style={styles.option}><Text>{taskAcks[step.id]?'☑':'☐'} I have read this step and its controls.</Text></TouchableOpacity></View>)}
+          {taskReview && <View><Text style={styles.label}>Assessment PPE and preparation</Text>{[...taskReview.ppeItems,...taskReview.preparedItems].map(item=><Text key={item.id}>{item.label}</Text>)}</View>}
           <Text style={styles.help}>If the work or hazards differ from your original assessment, include the new hazards, controls, and PPE above before acknowledging.</Text>
           <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{checked:ack}} disabled={saving} onPress={()=>setAck(!ack)} style={styles.option}><Text>{ack?'☑':'☐'} I have reviewed this location and activity, assessed its hazards, and understand the controls and PPE needed before starting work.</Text></TouchableOpacity>
-          {button(saving?'Saving…':'Acknowledge and add',()=>{void save();},saving||!ack||!additionId)}
+          {button(saving?'Saving…':'Acknowledge and add',()=>{void save();},saving||!ack||!additionId||!tasksRead)}
           {button('Edit addition',()=>{setReview(false);setAck(false);},saving)}
         </>}
       </>}

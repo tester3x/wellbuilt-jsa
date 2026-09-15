@@ -97,9 +97,9 @@ export async function getStandaloneRecord(localId:string):Promise<any>{
   return (await standaloneCall({operation:'get',recordId})).record;
 }
 
-export async function appendStandaloneLocation(record:any,additionId:string,fields:{location:string;operator:string;activity:string;hazards:string;controls:string;ppe:string}):Promise<void>{
+export async function appendStandaloneLocation(record:any,additionId:string,fields:{location:string;operator:string;activity:string;hazards:string;controls:string;ppe:string},taskReview?:{templateRefs:unknown[];stepAcks:Record<string,boolean>}):Promise<void>{
   if(await loadLaunchContext())throw new Error('Finish the required JSA request first.');
-  await standaloneCall({operation:'append',recordId:record.id,additionId,addition:{...fields,acknowledged:true,baseContentHash:record.contentHash,expectedAdditionCount:(record.additions || []).length}});
+  await standaloneCall({operation:'append',recordId:record.id,additionId,addition:{...fields,...(taskReview?{taskReview}:{}),acknowledged:true,baseContentHash:record.contentHash,expectedAdditionCount:(record.additions || []).length}});
   await syncStandaloneHistory();
 }
 

@@ -12,5 +12,10 @@ assert.ok(jsaDocumentHtml({...record,assessmentSteps:[]}).includes('not proof of
 assert.ok(!jsaDocumentHtml({...record,signatureImage:'javascript:alert(1)'}).includes('<img'));
 assert.ok(jsaDocumentHtml({...record,signatureImage:''}).includes('Signature image unavailable in this saved record.'));
 assert.ok(!jsaDocumentHtml(record).includes('Signature image unavailable'));
+const taskAddition={...record.additions[0],taskAssessment:{templates:[{name:'Unloading',version:2}],steps:[{title:'Exact added task',items:[{hazard:'Added hazard',controls:'Added control <text>'}]}],ppeItems:[{label:'Special PPE'}],preparedItems:[{label:'Additional preparation'}]}};
+for(const width of [undefined,3,4]){
+ const report=jsaDocumentHtml({...record,additions:[taskAddition]},width);
+ for(const text of ['Unloading','Version 2','Exact added task','Added control &lt;text&gt;','Special PPE','Additional preparation','Original signature'])assert.ok(report.includes(text),text);
+}
 assert.equal(signingTime(undefined),'Not recorded');assert.equal(signingTime('bad'),'Not recorded');
 console.log('JSA documents: paper/3-inch/4-inch content, signature, additions, escaping, immutable projection and legacy reference passed.');
