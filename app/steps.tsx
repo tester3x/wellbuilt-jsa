@@ -1,3 +1,4 @@
+import {loadTaskSelectionDraft,freezeTaskSelectionDraft} from '../services/jsaTaskSelectionDraft';
 import TaskAssessmentPicker from '../components/TaskAssessmentPicker';
 import {assembleTaskAssessments} from '../services/jsaTaskTemplates';
 import MoreMenu from '../components/MoreMenu';
@@ -214,6 +215,24 @@ const locationsList = useMemo(() => {
   const { t } = useLanguage();
   const { accent, jsaTemplate } = useTheme();
   const [taskSelection,setTaskSelection]=useState<ReturnType<typeof assembleTaskAssessments>|null>(null);
+  const activeTaskScope=useRef('');
+  activeTaskScope.current=jsaSessionId+':'+jobHandoff.source;
+  const [taskDraftLoading,setTaskDraftLoading]=useState(true);
+  const [taskDraftError,setTaskDraftError]=useState('');
+  useEffect(()=>{
+    let live=true;setTaskSelection(null);setTaskDraftLoading(true);setTaskDraftError('');
+    if(jobHandoff.source!=='nav_params' || !jsaSessionId){setTaskDraftLoading(false);return;}
+    loadTaskSelectionDraft(jsaSessionId).then(selection=>{if(live)setTaskSelection(selection);})
+      .catch(e=>{if(live)setTaskDraftError(e.message);}).finally(()=>{if(live)setTaskDraftLoading(false);});
+    return()=>{live=false;};
+  },[jsaSessionId,jobHandoff.source]);
+  const chooseTasks=async(selection:ReturnType<typeof assembleTaskAssessments>)=>{
+    const scope=activeTaskScope.current;
+    setTaskDraftLoading(true);setTaskDraftError('');
+    try{await freezeTaskSelectionDraft(jsaSessionId,selection);if(scope===activeTaskScope.current)setTaskSelection(selection);}
+    catch(e){if(scope===activeTaskScope.current)setTaskDraftError(e instanceof Error?e.message:String(e));}
+    finally{if(scope===activeTaskScope.current)setTaskDraftLoading(false);}
+  };
   const steps: JSAStep[] = taskSelection?.steps ?? jsaTemplate?.steps ?? JSA_STEPS;
   const requiredStepIds = useMemo(() => steps.map((s) => s.id), [steps]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -342,7 +361,8 @@ const locationsList = useMemo(() => {
     );
   };
 
-  if(jsaTemplate?.catalogVersion===2 && !taskSelection) return <SafeAreaView style={styles.safeArea}>{jobHandoff.source==='governed_snapshot' ? <Text>Task-specific required-job assessments are not enabled yet. Return to Suite.</Text> : <TaskAssessmentPicker onChoose={setTaskSelection}/>}</SafeAreaView>;
+  if(taskDraftLoading || taskDraftError) return <SafeAreaView style={styles.safeArea}><Text style={{padding:24}}>{taskDraftError || 'Restoring your assessment…'}</Text></SafeAreaView>;
+  if(jsaTemplate?.catalogVersion===2 && !taskSelection) return <SafeAreaView style={styles.safeArea}>{jobHandoff.source==='governed_snapshot' ? <Text>Task-specific required-job assessments are not enabled yet. Return to Suite.</Text> : <TaskAssessmentPicker onChoose={selection=>void chooseTasks(selection)}/>}</SafeAreaView>;
   return (
     <SafeAreaView style={styles.safeArea}>
       <Stack.Screen
