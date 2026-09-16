@@ -503,7 +503,8 @@ export default function SignoffScreen() {
         assessmentPpeItems: assessmentBundle?.ppeItems ?? jsaTemplate?.ppeItems ?? PPE_ITEMS,
         assessmentPreparedItems: preparedItemsList,
         assessmentSteps: params.assessmentSteps ? JSON.parse(params.assessmentSteps) : [],
-        ...(assessmentBundle ? {templateRefs:assessmentBundle.templateRefs,assessmentTemplates:assessmentBundle.templates,assessmentPpeItems:assessmentBundle.ppeItems,assessmentPreparedItems:assessmentBundle.preparedItems}:{}),
+        ...(!assessmentBundle&&jsaTemplate?.locationLayout?{locationLayout:jsaTemplate.locationLayout}:{}),
+        ...(assessmentBundle ? {templateRefs:assessmentBundle.templateRefs,assessmentTemplates:assessmentBundle.templates,assessmentPpeItems:assessmentBundle.ppeItems,assessmentPreparedItems:assessmentBundle.preparedItems,...(assessmentBundle.locationLayout?{locationLayout:assessmentBundle.locationLayout}:{})}:{}),
         id: (pendingComplete && governedActive && pendingComplete.requestId === governedCtx.requestId)
           ? pendingComplete.localRecordId
           : independent ? `standalone_${String(params.jsaSessionId || Date.now())}` : Date.now().toString(),

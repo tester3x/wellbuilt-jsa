@@ -1,0 +1,12 @@
+const assert=require('node:assert/strict'),fs=require('fs'),ts=require('typescript');
+const api={};new Function('exports',ts.transpileModule(fs.readFileSync('services/jsaLocationLayout.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText)(api);
+const custom={schemaVersion:1,locationsCoveredPlacement:'after-assessment',locationDifferencesPlacement:'after-signature'};
+assert.deepEqual(api.resolveLocationLayout(custom),custom);
+assert.deepEqual(api.resolveLocationLayout(undefined),api.LEGACY_LOCATION_ADDENDUM_LAYOUT);
+assert.deepEqual(api.combineLocationLayouts([custom,structuredClone(custom)]),custom);
+assert.equal(api.combineLocationLayouts([custom,api.TEMPLATE_LOCATION_LAYOUT]),undefined);
+assert.equal(api.additionHasDifferences({conditionsDiffer:false,hazards:'custom'}),false);
+assert.equal(api.additionHasDifferences({conditionsDiffer:true}),true);
+assert.equal(api.additionHasDifferences({taskAssessment:{}}),true);
+assert.equal(api.additionHasDifferences({hazards:'As recorded in this JSA’s company assessment.',controls:'Follow the controls and work steps recorded in this JSA’s company assessment.'}),false);
+console.log('PASS: customer location placement, legacy addendum fallback, layout conflict fallback and difference classification');

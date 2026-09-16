@@ -39,7 +39,7 @@ export default function AddLocation(){
  const valid=!!location.trim()&&!!activity.trim()&&(!changes||(!!details.hazards.trim()&&!!details.controls.trim()));
  const save=async()=>{if(saving||!record||!valid||!additionId||!tasksRead)return;setSaving(true);Keyboard.dismiss();
   try{
-   await appendStandaloneLocation(record,additionId,{location:location.trim(),activity:activity.trim(),operator,...locationAssessmentFields(record,changes?details:undefined)},taskReview?{templateRefs:taskReview.templateRefs,stepAcks:taskAcks}:undefined);
+   await appendStandaloneLocation(record,additionId,{location:location.trim(),activity:activity.trim(),operator,conditionsDiffer:changes,...locationAssessmentFields(record,changes?details:undefined)},taskReview?{templateRefs:taskReview.templateRefs,stepAcks:taskAcks}:undefined);
    router.back();
   }catch(e){const message=e instanceof Error?e.message:'Retry when connected.';
    if(message.includes('review_latest_record')){try{setRecord(await getStandaloneRecord(id));setError('This JSA was updated. Check the locations below, then tap Acknowledge and add location again.');}catch{setError('Reopen this JSA when connected to review its latest additions.');}}

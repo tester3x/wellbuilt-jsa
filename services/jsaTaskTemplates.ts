@@ -1,10 +1,12 @@
 import {standaloneCall} from './standaloneJsa';
+import {combineLocationLayouts,type JsaLocationLayout} from './jsaLocationLayout';
 export interface TaskAssessment {
   id:string; version:number; contentHash:string; name:string; tasks:string[];
   packageId:string|null;
   steps:{id:string;title:string;items:{hazard:string;controls:string}[]}[];
   ppeItems:{id:string;label:string}[];
   preparedItems:{id:string;label:string}[];
+  locationLayout?:JsaLocationLayout;
 }
 export async function loadTaskAssessments():Promise<{schemaVersion:number;templates:TaskAssessment[]}> {
   const result=await standaloneCall({operation:'templates'});
@@ -17,10 +19,12 @@ export function assembleTaskAssessments(selected:TaskAssessment[]) {
   const templates=[...selected].sort((a,b)=>a.id.localeCompare(b.id));
   const steps=templates.flatMap(t=>t.steps.map((s,i)=>({...s,id:`${t.contentHash.slice(0,12)}_s${i}`})));
   if(steps.length>40 || JSON.stringify(steps).length>100000)throw new Error('Too many assessment steps in one JSA.');
+  const locationLayout=combineLocationLayouts(templates.map(t=>t.locationLayout));
   return {
     steps,
     ppeItems:templates.flatMap(t=>t.ppeItems.map((p,i)=>({...p,id:`${t.contentHash.slice(0,12)}_p${i}`}))),
     preparedItems:templates.flatMap(t=>t.preparedItems.map((p,i)=>({...p,id:`${t.contentHash.slice(0,12)}_r${i}`}))),
+    ...(locationLayout?{locationLayout}:{}),
     templateRefs:templates.map(({id,version,contentHash})=>({id,version,contentHash})),
     templates:templates.map(({id,version,contentHash,name,tasks})=>({id,version,contentHash,name,tasks})),
   };

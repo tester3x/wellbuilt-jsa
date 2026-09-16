@@ -9,6 +9,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "./AuthContext";
 import {getAuth} from 'firebase/auth';
 import {loadUsableGovernedSession} from '../../services/sso/jsaGovernedAuthLive';
+import {validLocationLayout,type JsaLocationLayout} from '../../services/jsaLocationLayout';
 
 // --- Interfaces ---
 
@@ -19,6 +20,7 @@ export interface JsaTemplateData {
   steps: { id: string; title: string; items: { hazard: string; controls: string }[] }[];
   ppeItems: { id: string; label: string }[];
   preparedItems: { id: string; label: string }[];
+  locationLayout?: JsaLocationLayout;
   version: number;
 }
 
@@ -277,12 +279,19 @@ async function fetchJsaTemplate(companyId: string): Promise<JsaTemplateData | nu
       return m ? { id: m.id?.stringValue || '', label: m.label?.stringValue || '' } : null;
     }).filter(Boolean);
 
+    const locationLayoutFields=fields.locationLayout?.mapValue?.fields;
+    const locationLayout=locationLayoutFields?{
+      schemaVersion:Number(locationLayoutFields.schemaVersion?.integerValue),
+      locationsCoveredPlacement:locationLayoutFields.locationsCoveredPlacement?.stringValue,
+      locationDifferencesPlacement:locationLayoutFields.locationDifferencesPlacement?.stringValue,
+    }:undefined;
     return {
       catalogVersion,
       name: fields.name?.stringValue || 'Custom JSA',
       steps,
       ppeItems,
       preparedItems,
+      ...(validLocationLayout(locationLayout)?{locationLayout}:{}),
       version: parseInt(fields.version?.integerValue || '1', 10),
     };
   } catch (err) {

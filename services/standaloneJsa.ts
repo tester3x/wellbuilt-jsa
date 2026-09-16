@@ -71,7 +71,8 @@ export async function syncStandaloneHistory(): Promise<any[]> {
       signature:snapshot.printedName,signatureImage:`data:image/png;base64,${snapshot.signature.data}`,additions:r.additions || [],
       jobActivityName:r.job.activity,task:r.job.activity,wells:r.job.wells,wellName:r.job.wells[0]?.name || '',
       operator:r.job.operator || matched?.operator || '',assessmentSteps:r.job.assessmentSteps || matched?.assessmentSteps || [],
-      ...(r.job.assessmentTemplates ? {assessmentTemplates:r.job.assessmentTemplates,assessmentPpeItems:r.job.assessmentPpeItems,assessmentPreparedItems:r.job.assessmentPreparedItems}: {}) };
+      ...(r.job.assessmentTemplates ? {assessmentTemplates:r.job.assessmentTemplates,assessmentPpeItems:r.job.assessmentPpeItems,assessmentPreparedItems:r.job.assessmentPreparedItems}: {}),
+      ...(r.job.locationLayout ? {locationLayout:r.job.locationLayout}: {}) };
     const i = latest.findIndex((x:any)=>x.id===converted.id && x.companyId===r.companyId && x.driverId===r.driverId);
     if(i<0) latest.push(converted); else latest[i]=converted;
   }
@@ -130,7 +131,7 @@ async function sendPendingAddition(recordId:string,body?:Record<string,unknown>)
 export async function resumePendingStandaloneAddition(recordId:string):Promise<void>{
   await serializeAddition(()=>sendPendingAddition(recordId));
 }
-export async function appendStandaloneLocation(record:any,additionId:string,fields:{location:string;operator:string;activity:string;hazards:string;controls:string;ppe:string},taskReview?:{templateRefs:unknown[];stepAcks:Record<string,boolean>}):Promise<void>{
+export async function appendStandaloneLocation(record:any,additionId:string,fields:{location:string;operator:string;activity:string;hazards:string;controls:string;ppe:string;conditionsDiffer?:boolean},taskReview?:{templateRefs:unknown[];stepAcks:Record<string,boolean>}):Promise<void>{
   if(await loadLaunchContext())throw new Error('Finish the required JSA request first.');
   const owner=await loadUsableGovernedSession();
   if(!owner||record.companyId!==owner.companyId||record.driverId!==owner.driverId)throw new Error('JSA owner mismatch.');
@@ -151,5 +152,6 @@ export async function standaloneReportHtml(record:any):Promise<string>{
     operator:record.job.operator||'',wells:record.job.wells,jobActivityName:record.job.activity,
     assessmentSteps:record.job.assessmentSteps,assessmentTemplates:record.job.assessmentTemplates,
     assessmentPpeItems:record.job.assessmentPpeItems,assessmentPreparedItems:record.job.assessmentPreparedItems,
+    locationLayout:record.job.locationLayout,
     additions:record.additions||[]});
 }
