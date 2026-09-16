@@ -123,7 +123,8 @@ export default function HistoryTabScreen() {
 
   const handleDeleteItem = (item: HistoryItem) => {
     if ((item as any).workflow === 'standalone') {
-      Alert.alert(t('Close JSA'), t('Close this JSA? The signed report will remain in Saved JSAs.'), [
+      if ((item as any).state !== 'open') return;
+      Alert.alert(t('Close JSA?'), t('The signed report and its additions stay available.'), [
         {text:t('Cancel'),style:'cancel'},
         {text:t('Close JSA'),onPress:async()=>{try { await (await import('../../services/standaloneJsa')).closeStandaloneJsa(item); await loadHistory(); } catch { Alert.alert(t('Error'),t('JSA was not closed. Please retry.')); }}}
       ]);
@@ -159,6 +160,9 @@ export default function HistoryTabScreen() {
   const renderItem = ({ item }: { item: HistoryItem }) => {
     const wellNames = getWellNames(item);
     const jobType = getJobType(item);
+    const standalone = (item as any).workflow === 'standalone';
+    const openStandalone = standalone && (item as any).state === 'open';
+    const closedStandalone = standalone && (item as any).state === 'closed';
 
     return (
       <TouchableOpacity
@@ -176,13 +180,19 @@ export default function HistoryTabScreen() {
         <View style={styles.cardBottom}>
           <Text style={styles.cardDriver}>{item.driverName} • {t("Truck")} #{item.truckNumber}</Text>
           <View style={styles.cardActions}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={(e) => { e.stopPropagation(); handleDeleteItem(item); }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={[styles.actionText, { color: colors.error }]}>{t((item as any).workflow === 'standalone' ? ((item as any).state === 'closed' ? 'Closed' : 'Close JSA') : 'Delete')}</Text>
-            </TouchableOpacity>
+            {closedStandalone ? (
+              <View accessibilityRole="text" accessibilityLabel={t('Closed')} style={styles.statusLabel}>
+                <Text style={[styles.actionText, { color: colors.textMuted }]}>{t('Closed')}</Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={(e) => { e.stopPropagation(); handleDeleteItem(item); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[styles.actionText, { color: colors.error }]}>{t(openStandalone ? 'Close JSA' : 'Delete')}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </TouchableOpacity>
@@ -365,6 +375,9 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   actionButton: {
+    paddingVertical: 2,
+  },
+  statusLabel: {
     paddingVertical: 2,
   },
   actionText: {
