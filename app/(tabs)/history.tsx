@@ -1,6 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,7 +14,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors, cardShadow } from "../../constants/colors";
-import { STORAGE_KEYS } from "../../constants/storageKeys";
 import { deleteJSAEverywhere } from "../../services/sync";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -92,17 +90,14 @@ export default function HistoryTabScreen() {
   const loadHistory = useCallback(async () => {
     try {
       setError(null);
-      const stored = await AsyncStorage.getItem(STORAGE_KEYS.saves);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          const session = await (await import('../../services/sso/jsaGovernedAuthLive')).loadUsableGovernedSession();
-          const owned = session ? parsed.filter((r:any)=>r.companyId===session.companyId && (r.driverId===session.driverId || r.driverHash===session.driverId)) : [];
-          setHistory(owned);
-          try { setHistory(await (await import('../../services/standaloneJsa')).syncStandaloneHistory()); } catch { /* Keep owner-scoped offline records visible. */ }
-        }
-      } else {
-        setHistory([]);
+      const { ownJsaRecords } = await import('../../services/jsaRecord');
+      setHistory(await ownJsaRecords());
+      // An absent cache is precisely when the server must still be checked.
+      try {
+        setHistory(await (await import('../../services/standaloneJsa')).syncStandaloneHistory());
+      } catch {
+        setHistory(await ownJsaRecords());
+        setError(t('Could not refresh JSAs. Showing records available on this phone. Try again when connected.'));
       }
     } catch (err) {
       console.error("Error loading history:", err);
@@ -113,9 +108,7 @@ export default function HistoryTabScreen() {
     }
   }, [t]);
 
-  useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
+  useFocusEffect(useCallback(() => { void loadHistory(); }, [loadHistory]));
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -255,27 +248,28 @@ export default function HistoryTabScreen() {
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>{t("Saved JSAs")}</Text>
           <Text style={styles.headerSubtitle}>
-            {history.length} {history.length === 1 ? t("record") : t("records")}
+            {error ? t('Refresh incomplete') : `${history.length} ${history.length === 1 ? t("record") : t("records")}`}
           </Text>
         </View>
 
       </View>
 
-      {error ? (
+      {!!error && (
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity style={[styles.retryButton, { backgroundColor: accent }]} onPress={onRefresh}>
             <Text style={styles.retryButtonText}>{t("Try Again")}</Text>
           </TouchableOpacity>
         </View>
-      ) : history.length === 0 ? (
+      )}
+      {history.length === 0 ? (!error && (
         <View style={styles.centered}>
           <Text style={styles.emptyText}>{t("No saved JSAs")}</Text>
           <Text style={styles.emptySubtext}>
             {t("Completed JSAs will appear here")}
           </Text>
         </View>
-      ) : (
+      )) : (
         <FlatList
           data={history}
           renderItem={renderItem}
