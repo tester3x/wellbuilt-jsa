@@ -156,37 +156,6 @@ export default function HistoryTabScreen() {
     );
   };
 
-  const handleDuplicate = async (item: HistoryItem) => {
-    const {ownOpenJsaRecords}=await import('../../services/jsaRecord');
-    const {recordCustomer}=await import('../../services/jsaDocument');
-    try {
-      const open=await ownOpenJsaRecords();
-      const normalize=(v:string)=>v.trim().toLowerCase();
-      const matching=open.rows.find((r:any)=>normalize(recordCustomer(r))===normalize(recordCustomer(item)) && normalize(getWellNames(r))===normalize(getWellNames(item)) && normalize(getJobType(r))===normalize(getJobType(item)));
-      if(matching){router.push({pathname:'/jsa-record',params:{id:matching.id}} as any);return;}
-      if(open.unverified){Alert.alert(t('Check existing JSA'),t('Some shift statuses could not be verified. Retry before starting another assessment.'));return;}
-    }catch{Alert.alert(t('Could not check open JSAs'),t('Retry before using this as a starting point.'));return;}
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-    router.push({
-      pathname: "/steps",
-      params: {
-        driverName: item.driverName,
-        truckNumber: item.truckNumber,
-        jobActivityName: item.jobActivityName,
-        pusher: item.pusher,
-        wellName: item.wellName,
-        wells: JSON.stringify(item.wells || []),
-        otherInfo: item.otherInfo,
-        location: item.location,
-        locations: JSON.stringify(item.locations || []),
-        locationAcks: JSON.stringify({}),
-        date: today,
-        jsaSessionId: Date.now().toString(),
-      },
-    });
-  };
-
   const renderItem = ({ item }: { item: HistoryItem }) => {
     const wellNames = getWellNames(item);
     const jobType = getJobType(item);
@@ -207,13 +176,6 @@ export default function HistoryTabScreen() {
         <View style={styles.cardBottom}>
           <Text style={styles.cardDriver}>{item.driverName} • {t("Truck")} #{item.truckNumber}</Text>
           <View style={styles.cardActions}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={(e) => { e.stopPropagation(); handleDuplicate(item); }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={[styles.actionText, { color: accent }]}>{t("Use as starting point")}</Text>
-            </TouchableOpacity>
             <TouchableOpacity
               style={styles.actionButton}
               onPress={(e) => { e.stopPropagation(); handleDeleteItem(item); }}
