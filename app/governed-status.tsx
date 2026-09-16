@@ -22,6 +22,7 @@ import {
   replayHeading,
   submittedHeading,
 } from '../services/sso/jsaGovernedTerminal';
+import { useLanguage } from './contexts/LanguageContext';
 
 type Params = {
   mode?: string;
@@ -33,6 +34,7 @@ type Params = {
 export default function GovernedStatusScreen() {
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
+  const { t } = useLanguage();
   const mode = params.mode === 'submitted'
     ? 'submitted'
     : params.mode === 'completed' ? 'completed' : 'fail';
@@ -113,33 +115,33 @@ export default function GovernedStatusScreen() {
     <View style={styles.wrap}>
       <View style={styles.card}>
         <Text style={styles.title}>
-          {mode === 'submitted' ? submittedHeading()
+          {t(mode === 'submitted' ? submittedHeading()
             : mode === 'completed' ? replayHeading()
-              : 'Cannot continue'}
+              : 'Cannot continue')}
         </Text>
-        <Text style={styles.copy}>{copy}</Text>
+        <Text style={styles.copy}>{t(copy)}</Text>
         {mode === 'submitted' && action ? (
-          <Text style={styles.meta}>{governedCombinedTerminalCopy(action)}</Text>
+          <Text style={styles.meta}>{t(governedCombinedTerminalCopy(action))}</Text>
         ) : null}
         {mode === 'completed' && action ? (
-          <Text style={styles.meta}>{governedCombinedTerminalCopy(action)}</Text>
+          <Text style={styles.meta}>{t(governedCombinedTerminalCopy(action))}</Text>
         ) : null}
         {mode === 'submitted' ? (
           <TouchableOpacity
             style={[styles.btn, styles.secondaryBtn]}
             onPress={onStayOnJsa}
-            accessibilityLabel="Stay on JSA"
+            accessibilityLabel={t('Stay on JSA')}
           >
-            <Text style={styles.secondaryBtnText}>Stay on JSA</Text>
+            <Text style={styles.secondaryBtnText}>{t('Stay on JSA')}</Text>
           </TouchableOpacity>
         ) : null}
         <TouchableOpacity
           style={styles.btn}
           onPress={onReturn}
-          accessibilityLabel={stayAndRetry && mode === 'fail' ? 'Retry' : 'Return to WellBuilt Tickets'}
+          accessibilityLabel={t(stayAndRetry && mode === 'fail' ? 'Retry' : 'Return to WellBuilt Tickets')}
         >
           <Text style={styles.btnText}>
-            {stayAndRetry && mode === 'fail' ? 'Retry' : 'Return to WellBuilt Tickets'}
+            {t(stayAndRetry && mode === 'fail' ? 'Retry' : 'Return to WellBuilt Tickets')}
           </Text>
         </TouchableOpacity>
       </View>

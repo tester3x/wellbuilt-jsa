@@ -69,7 +69,8 @@ type Params = {
 export default function ViewJsaScreen() {
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
+  const locale = lang === 'es' ? 'es-MX' : 'en-US';
   const { accent } = useTheme();
   const [standaloneRecord,setStandaloneRecord]=useState<any>(null);
   useFocusEffect(useCallback(()=>{let active=true;
@@ -417,20 +418,20 @@ export default function ViewJsaScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {standaloneRecord?.state==='open' && <TouchableOpacity style={[styles.card,{borderColor:accent,borderWidth:1}]} onPress={()=>router.push({pathname:'/add-location',params:{id:String(params.id)}} as any)}><Text style={{color:accent,fontWeight:'700',fontSize:18}}>Add location / activity</Text></TouchableOpacity>}
+        {standaloneRecord?.state==='open' && <TouchableOpacity style={[styles.card,{borderColor:accent,borderWidth:1}]} onPress={()=>router.push({pathname:'/add-location',params:{id:String(params.id)}} as any)}><Text style={{color:accent,fontWeight:'700',fontSize:18}}>{t('Add location / activity')}</Text></TouchableOpacity>}
         {standaloneRecord && <TouchableOpacity style={styles.card} onPress={async()=>{
           try{
             const service=await import('../services/standaloneJsa');
             const latest=await service.getStandaloneRecord(String(params.id));
-            const html=await service.standaloneReportHtml(latest);
+            const html=await service.standaloneReportHtml(latest,{t,locale});
             await (await import('expo-print')).printAsync({html});
-          }catch{Alert.alert('Print unavailable','Could not load the complete report. Retry when connected.');}
-        }}><Text style={{color:accent,fontWeight:'700'}}>Print JSA with additions</Text></TouchableOpacity>}
+          }catch{Alert.alert(t('Print unavailable'),t('Could not load the complete report. Retry when connected.'));}
+        }}><Text style={{color:accent,fontWeight:'700'}}>{t('Print JSA with additions')}</Text></TouchableOpacity>}
         {(standaloneRecord?.additions || []).map((addition:any)=><View key={addition.id} style={styles.card}>
-          <Text style={styles.title}>Added location / activity</Text>
+          <Text style={styles.title}>{t('Added location / activity')}</Text>
           <Text>{addition.location} · {addition.activity}</Text>
-          <Text>Hazards: {addition.hazards}</Text><Text>Controls: {addition.controls}</Text><Text>PPE: {addition.ppe}</Text>
-          <Text>Acknowledged by {standaloneRecord.snapshot.printedName} · {new Date(addition.acknowledgedAtMs).toLocaleString()}</Text>
+          <Text>{t('Hazards:')} {addition.hazards}</Text><Text>{t('Controls:')} {addition.controls}</Text><Text>{t('PPE:')} {addition.ppe}</Text>
+          <Text>{t('Acknowledged by')} {standaloneRecord.snapshot.printedName} · {new Date(addition.acknowledgedAtMs).toLocaleString(locale)}</Text>
         </View>)}
         {isEditing ? (
         <View style={styles.card}>
@@ -586,7 +587,7 @@ export default function ViewJsaScreen() {
               <View style={[styles.card, { marginTop: 8 }]}>
                 <View style={styles.row}>
                   <Text style={styles.label}>{t("Saved")}</Text>
-                  <Text style={styles.value}>{new Date(params.timestamp || params.savedAt || "").toLocaleString()}</Text>
+                  <Text style={styles.value}>{new Date(params.timestamp || params.savedAt || "").toLocaleString(locale)}</Text>
                 </View>
               </View>
             ) : null}

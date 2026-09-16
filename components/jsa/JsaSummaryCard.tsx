@@ -56,7 +56,7 @@ export function JsaSummaryCard({ driverName, truckNumber, rows, date,signedAt,on
       <Row label={t("Truck #")} value={truckNumber || "-"} />
       <View style={styles.separator} />
       <View style={styles.locationActivitySection}>
-        {onAddLocation&&<TouchableOpacity accessibilityLabel="Add location / activity" onPress={onAddLocation} style={{alignSelf:'flex-end',padding:8}}><Text style={{fontWeight:'700',color:'#99710c'}}>＋ Add location / activity</Text></TouchableOpacity>}
+        {onAddLocation&&<TouchableOpacity accessibilityLabel={t('Add location / activity')} onPress={onAddLocation} style={{alignSelf:'flex-end',padding:8}}><Text style={{fontWeight:'700',color:'#99710c'}}>＋ {t('Add location / activity')}</Text></TouchableOpacity>}
         <View style={styles.pairRow}>
           <View style={styles.pairLeft}><Text style={styles.pairLabel}>{t("Location")}</Text></View>
           <View style={styles.pairRight}><Text style={styles.pairLabel}>{t("Activity")}</Text></View>

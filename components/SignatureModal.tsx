@@ -6,6 +6,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { View, Text, Modal, TouchableOpacity, StyleSheet } from 'react-native';
 import SignaturePad, { type SignaturePadRef } from './SignaturePad';
 import { claimModalSaveFlight } from '../services/sso/jsaSignatureSaveContract';
+import { useLanguage } from '../app/contexts/LanguageContext';
 
 interface SignatureModalProps {
   visible: boolean;
@@ -17,6 +18,7 @@ interface SignatureModalProps {
 }
 
 export default function SignatureModal({ visible, onClose, onSave, saving = false, accent, title = 'Driver Signature' }: SignatureModalProps) {
+  const { t } = useLanguage();
   const [hasDrawn, setHasDrawn] = useState(false);
   const sigRef = useRef<SignaturePadRef>(null);
   const modalSaveRef = useRef<Promise<void | boolean> | null>(null);
@@ -48,7 +50,7 @@ export default function SignatureModal({ visible, onClose, onSave, saving = fals
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.overlay}>
         <View style={styles.box}>
-          <Text style={[styles.title, { color: accent }]}>{title}</Text>
+          <Text style={[styles.title, { color: accent }]}>{t(title)}</Text>
           <View style={styles.canvas}>
             <SignaturePad
               ref={sigRef}
@@ -62,17 +64,17 @@ export default function SignatureModal({ visible, onClose, onSave, saving = fals
           </View>
           <View style={styles.actions}>
             <TouchableOpacity onPress={handleClear} disabled={!hasDrawn || saving} style={styles.btn}>
-              <Text style={[styles.btnText, !hasDrawn && { opacity: 0.3 }]}>Clear</Text>
+              <Text style={[styles.btnText, !hasDrawn && { opacity: 0.3 }]}>{t('Clear')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => sigRef.current?.readSignature()}
               disabled={!hasDrawn || saving}
               style={[styles.btn, styles.saveBtn, { backgroundColor: accent }]}
             >
-              <Text style={[styles.saveText, (!hasDrawn || saving) && { opacity: 0.3 }]}>{saving ? 'Saving…' : 'Save'}</Text>
+              <Text style={[styles.saveText, (!hasDrawn || saving) && { opacity: 0.3 }]}>{t(saving ? 'Saving…' : 'Save')}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={handleCancel} disabled={saving} style={styles.btn}>
-              <Text style={styles.btnText}>Cancel</Text>
+              <Text style={styles.btnText}>{t('Cancel')}</Text>
             </TouchableOpacity>
           </View>
         </View>

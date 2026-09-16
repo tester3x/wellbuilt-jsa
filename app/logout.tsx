@@ -9,10 +9,12 @@ import { useRouter } from 'expo-router';
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from './contexts/AuthContext';
+import { useLanguage } from './contexts/LanguageContext';
 
 export default function LogoutRoute() {
   const router = useRouter();
   const { logout } = useAuth();
+  const { t } = useLanguage();
   const [failed, setFailed] = React.useState(false);
 
   const attempt = async () => {
@@ -31,8 +33,8 @@ export default function LogoutRoute() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>{failed ? 'Sign out could not be verified.' : 'Signing out...'}</Text>
-      {failed && <TouchableOpacity style={styles.retry} onPress={() => { void attempt(); }}><Text style={styles.retryText}>Retry sign out</Text></TouchableOpacity>}
+      <Text style={styles.text}>{t(failed ? 'Sign out could not be verified.' : 'Signing out...')}</Text>
+      {failed && <TouchableOpacity style={styles.retry} onPress={() => { void attempt(); }}><Text style={styles.retryText}>{t('Retry sign out')}</Text></TouchableOpacity>}
     </View>
   );
 }

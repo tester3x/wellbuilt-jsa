@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { colors } from '../constants/colors';
 import type { UnfinishedJsa } from '../services/jsaStatus';
+import { useLanguage } from '../app/contexts/LanguageContext';
 
 interface Props {
   visible: boolean;
@@ -32,9 +33,9 @@ const DISCARD_REASONS = [
   'Other',
 ];
 
-function formatDate(d: string): string {
+function formatDate(d: string, locale: string): string {
   try {
-    return new Date(d + 'T00:00:00').toLocaleDateString('en-US', {
+    return new Date(d + 'T00:00:00').toLocaleDateString(locale, {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -52,6 +53,8 @@ export default function UnfinishedJsasModal({
   onDiscard,
   onClose,
 }: Props) {
+  const { lang, t } = useLanguage();
+  const locale = lang === 'es' ? 'es-MX' : 'en-US';
   const [discardingDate, setDiscardingDate] = useState<string | null>(null);
   const [discardReason, setDiscardReason] = useState('');
   const [customReason, setCustomReason] = useState('');
@@ -68,8 +71,8 @@ export default function UnfinishedJsasModal({
       discardReason === 'Other' ? customReason.trim() : discardReason;
     if (!finalReason || finalReason.length < 3) {
       Alert.alert(
-        'Reason required',
-        'Please select a reason or describe in at least 3 characters.',
+        t('Reason required'),
+        t('Please select a reason or describe in at least 3 characters.'),
       );
       return;
     }
@@ -84,11 +87,10 @@ export default function UnfinishedJsasModal({
         <View style={styles.overlay}>
           <View style={styles.box}>
             <Text style={styles.title}>
-              Discard JSA for {formatDate(discardingDate)}?
+              {t('Discard JSA for {date}?', { date: formatDate(discardingDate, locale) })}
             </Text>
             <Text style={styles.subtitle}>
-              Required: audit reason. This is logged and visible to your
-              company's safety manager.
+              {t("Required: audit reason. This is logged and visible to your company's safety manager.")}
             </Text>
             {DISCARD_REASONS.map(r => (
               <TouchableOpacity
@@ -105,14 +107,14 @@ export default function UnfinishedJsasModal({
                     discardReason === r && { color: '#000', fontWeight: '700' },
                   ]}
                 >
-                  {r}
+                  {t(r)}
                 </Text>
               </TouchableOpacity>
             ))}
             {discardReason === 'Other' && (
               <TextInput
                 style={styles.input}
-                placeholder="Describe reason..."
+                placeholder={t('Describe reason...')}
                 placeholderTextColor="#888"
                 value={customReason}
                 onChangeText={setCustomReason}
@@ -121,13 +123,13 @@ export default function UnfinishedJsasModal({
             )}
             <View style={styles.actionRow}>
               <TouchableOpacity style={styles.cancelBtn} onPress={resetDiscard}>
-                <Text style={styles.cancelText}>Cancel</Text>
+                <Text style={styles.cancelText}>{t('Cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.confirmBtn}
                 onPress={handleDiscardConfirm}
               >
-                <Text style={styles.confirmText}>Confirm Discard</Text>
+                <Text style={styles.confirmText}>{t('Confirm Discard')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -141,19 +143,18 @@ export default function UnfinishedJsasModal({
       <View style={styles.overlay}>
         <View style={styles.box}>
           <Text style={styles.title}>
-            Unfinished JSA{list.length === 1 ? '' : 's'} ({list.length})
+            {t(list.length === 1 ? 'Unfinished JSA' : 'Unfinished JSAs')} ({list.length})
           </Text>
           <Text style={styles.subtitle}>
-            These JSAs have wells you visited but never signed off. Resume and
-            finish, or discard with a reason for the audit trail.
+            {t('These JSAs have wells you visited but never signed off. Finish them or discard with a reason for the audit trail.')}
           </Text>
           <ScrollView style={styles.list}>
             {list.map(j => (
               <View key={j.date} style={styles.item}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.itemDate}>{formatDate(j.date)}</Text>
+                  <Text style={styles.itemDate}>{formatDate(j.date, locale)}</Text>
                   <Text style={styles.itemWells}>
-                    {j.wellCount} well{j.wellCount === 1 ? '' : 's'}:{' '}
+                    {t(j.wellCount === 1 ? '{count} well:' : '{count} wells:', { count: j.wellCount })}{' '}
                     {j.wellNames.slice(0, 3).join(', ')}
                     {j.wellNames.length > 3 ? '…' : ''}
                   </Text>
@@ -172,14 +173,14 @@ export default function UnfinishedJsasModal({
                     style={styles.discardBtn}
                     onPress={() => setDiscardingDate(j.date)}
                   >
-                    <Text style={styles.discardText}>Discard</Text>
+                    <Text style={styles.discardText}>{t('Discard')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             ))}
           </ScrollView>
           <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Text style={styles.closeText}>Remind me later</Text>
+            <Text style={styles.closeText}>{t('Remind me later')}</Text>
           </TouchableOpacity>
         </View>
       </View>

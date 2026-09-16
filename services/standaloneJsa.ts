@@ -144,7 +144,7 @@ export async function appendStandaloneLocation(record:any,additionId:string,fiel
   await syncStandaloneHistory();
 }
 
-export async function standaloneReportHtml(record:any):Promise<string>{
+export async function standaloneReportHtml(record:any,options?:{t?:(text:string,values?:Record<string,string|number>)=>string;locale?:string}):Promise<string>{
   const {jsaDocumentHtml}=await import('./jsaDocument');
   const s=record.snapshot;
   return jsaDocumentHtml({...s,driverName:s.printedName,truckNumber:s.truckNumber||'',date:s.formDate||'',
@@ -153,5 +153,5 @@ export async function standaloneReportHtml(record:any):Promise<string>{
     assessmentSteps:record.job.assessmentSteps,assessmentTemplates:record.job.assessmentTemplates,
     assessmentPpeItems:record.job.assessmentPpeItems,assessmentPreparedItems:record.job.assessmentPreparedItems,
     locationLayout:record.job.locationLayout,
-    additions:record.additions||[]});
+    additions:record.additions||[]},undefined,options);
 }

@@ -46,7 +46,8 @@ type Params = {
 export default function CompletedScreen() {
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const locale = lang === 'es' ? 'es-MX' : 'en-US';
   const { accent, emergencyContacts: themeEmergencyContacts, companyContacts: themeCompanyContacts, logoUrl } = useTheme();
   const [isExporting, setIsExporting] = useState(false);
 
@@ -152,7 +153,9 @@ export default function CompletedScreen() {
     companyContacts: themeCompanyContacts,
     accent,
     logoDataUrl: logoUrl,
-  }), [params, wellsArray, ppeItems, preparedItems, locationsList, locationAcks, locationStamps, themeEmergencyContacts, themeCompanyContacts, accent, logoUrl]);
+    translate: t,
+    locale,
+  }), [params, wellsArray, ppeItems, preparedItems, locationsList, locationAcks, locationStamps, themeEmergencyContacts, themeCompanyContacts, accent, logoUrl, t, locale]);
 
   const handleExportPdf = async () => {
     setIsExporting(true);

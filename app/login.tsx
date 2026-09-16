@@ -17,9 +17,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { beginSuiteCardAuthorization } from '../services/sso/jsaSuiteCardLive';
+import { useLanguage } from './contexts/LanguageContext';
 
 export default function SSOLoginRoute() {
   const router = useRouter();
+  const { t } = useLanguage();
   const params = useLocalSearchParams<{
     hash?: string;
     name?: string;
@@ -59,13 +61,13 @@ export default function SSOLoginRoute() {
       {status === 'validating' && (
         <>
           <ActivityIndicator size="large" color="#DAA520" />
-          <Text style={styles.text}>Signing in from WellBuilt Suite...</Text>
+          <Text style={styles.text}>{t('Signing in from WellBuilt Suite...')}</Text>
         </>
       )}
       {status === 'error' && (
         <>
-          <Text style={styles.errorText}>{errorMsg}</Text>
-          <Text style={styles.subText}>Redirecting...</Text>
+          <Text style={styles.errorText}>{t(errorMsg)}</Text>
+          <Text style={styles.subText}>{t('Redirecting...')}</Text>
         </>
       )}
     </View>

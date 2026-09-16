@@ -8,6 +8,7 @@ import {
   SHIFT_UNVERIFIED_COPY,
   type GovernedReturnTarget,
 } from '../services/shiftAuthority';
+import { useLanguage } from '../app/contexts/LanguageContext';
 
 interface Props {
   variant?: 'overlay' | 'card';
@@ -30,25 +31,26 @@ export default function ShiftAuthorityGate({
   onSignOut,
   onOpenSettings,
 }: Props) {
+  const { t } = useLanguage();
   const onReturn = () => {
     Linking.openURL(returnUrl(returnTarget)).catch(() => {});
   };
 
   const body = (
     <View style={variant === 'overlay' ? styles.card : styles.inlineCard}>
-      <Text style={styles.title}>Shift not verified</Text>
-      <Text style={styles.copy}>{SHIFT_UNVERIFIED_COPY}</Text>
-      {onOpenStandalone && <TouchableOpacity style={styles.btn} onPress={onOpenStandalone} accessibilityLabel="Open standalone login">
-        <Text style={styles.btnText}>Open standalone login</Text>
+      <Text style={styles.title}>{t('Shift not verified')}</Text>
+      <Text style={styles.copy}>{t(SHIFT_UNVERIFIED_COPY)}</Text>
+      {onOpenStandalone && <TouchableOpacity style={styles.btn} onPress={onOpenStandalone} accessibilityLabel={t('Open standalone login')}>
+        <Text style={styles.btnText}>{t('Open standalone login')}</Text>
       </TouchableOpacity>}
-      {onSignOut && <TouchableOpacity style={styles.secondaryBtn} onPress={onSignOut} accessibilityLabel="Sign out and clear local JSA session">
-        <Text style={styles.secondaryText}>Sign out</Text>
+      {onSignOut && <TouchableOpacity style={styles.secondaryBtn} onPress={onSignOut} accessibilityLabel={t('Sign out and clear local JSA session')}>
+        <Text style={styles.secondaryText}>{t('Sign out')}</Text>
       </TouchableOpacity>}
-      {onOpenSettings && <TouchableOpacity style={styles.secondaryBtn} onPress={onOpenSettings} accessibilityLabel="Open JSA settings">
-        <Text style={styles.secondaryText}>Settings</Text>
+      {onOpenSettings && <TouchableOpacity style={styles.secondaryBtn} onPress={onOpenSettings} accessibilityLabel={t('Open JSA settings')}>
+        <Text style={styles.secondaryText}>{t('Settings')}</Text>
       </TouchableOpacity>}
-      {hasGovernedLaunch && <TouchableOpacity style={styles.secondaryBtn} onPress={onReturn} accessibilityLabel="Return to WellBuilt">
-        <Text style={styles.secondaryText}>Return to WellBuilt</Text>
+      {hasGovernedLaunch && <TouchableOpacity style={styles.secondaryBtn} onPress={onReturn} accessibilityLabel={t('Return to WellBuilt')}>
+        <Text style={styles.secondaryText}>{t('Return to WellBuilt')}</Text>
       </TouchableOpacity>}
     </View>
   );

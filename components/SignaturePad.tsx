@@ -179,4 +179,6 @@ resize();window.addEventListener('resize',resize);
   );
 });
 
+SignaturePad.displayName = 'SignaturePad';
+
 export default SignaturePad;

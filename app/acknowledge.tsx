@@ -27,10 +27,12 @@ import {
 import { loadGovernedSession, loadRequestContext } from '../services/sso/jsaRuntime';
 import { legalAcknowledgmentName } from '../services/sso/jsaSession';
 import { useTheme } from './contexts/ThemeContext';
+import { useLanguage } from './contexts/LanguageContext';
 
 export default function AcknowledgeScreen() {
   const router = useRouter();
   const { accent } = useTheme();
+  const { t } = useLanguage();
   const [jobRef, setJobRef] = useState('');
   const [groupRef, setGroupRef] = useState<string | null>(null);
   const [legalName, setLegalName] = useState('');
@@ -87,12 +89,12 @@ export default function AcknowledgeScreen() {
       payload = applied.record;
       localSaveOk = true;
     } catch {
-      Alert.alert('Not saved', failClosedCopy('local_save_failed'));
+      Alert.alert(t('Not saved'), t(failClosedCopy('local_save_failed')));
       return;
     }
     const adapted = adaptGovernedSnapshot(payload);
     if (!adapted.ok) {
-      Alert.alert('Cannot complete', failClosedCopy('malformed'));
+      Alert.alert(t('Cannot complete'), t(failClosedCopy('malformed')));
       return;
     }
     const done = await commitGovernedAfterLocalSave({
@@ -118,7 +120,7 @@ export default function AcknowledgeScreen() {
 
   const onSubmit = () => {
     if (!signatureImage) {
-      Alert.alert('Signature required', 'Please sign to acknowledge this JSA.');
+      Alert.alert(t('Signature required'), t('Please sign to acknowledge this JSA.'));
       return;
     }
     setBusy(true);
@@ -127,30 +129,30 @@ export default function AcknowledgeScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <Stack.Screen options={{ title: 'Acknowledge JSA' }} />
+      <Stack.Screen options={{ title: t('Acknowledge JSA') }} />
       <View style={styles.body}>
-        <Text style={styles.title}>Acknowledge this JSA</Text>
-        <Text style={styles.meta}>Job {jobRef}{groupRef ? ` · ${groupRef}` : ''}</Text>
-        <Text style={styles.label}>Legal name</Text>
+        <Text style={styles.title}>{t('Acknowledge this JSA')}</Text>
+        <Text style={styles.meta}>{t('Job')} {jobRef}{groupRef ? ` · ${groupRef}` : ''}</Text>
+        <Text style={styles.label}>{t('Legal name')}</Text>
         <TextInput
           style={styles.input}
           value={legalName}
           onChangeText={setLegalName}
-          placeholder="Legal name"
+          placeholder={t('Legal name')}
           autoCapitalize="words"
         />
         <TouchableOpacity style={[styles.sigBtn, { borderColor: accent }]} onPress={() => setShowSig(true)}>
           <Text style={{ color: accent, fontWeight: '700' }}>
-            {signatureImage ? 'Signature captured' : 'Add signature'}
+            {t(signatureImage ? 'Signature captured' : 'Add signature')}
           </Text>
         </TouchableOpacity>
-        {retryCopy ? <Text style={styles.retry}>{retryCopy}</Text> : null}
+        {retryCopy ? <Text style={styles.retry}>{t(retryCopy)}</Text> : null}
         <TouchableOpacity
           style={[styles.submit, { backgroundColor: accent }]}
           onPress={onSubmit}
           disabled={busy}
         >
-          <Text style={styles.submitText}>{retryCopy ? 'Retry' : 'Acknowledge'}</Text>
+          <Text style={styles.submitText}>{t(retryCopy ? 'Retry' : 'Acknowledge')}</Text>
         </TouchableOpacity>
       </View>
       <SignatureModal

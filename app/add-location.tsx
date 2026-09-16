@@ -11,9 +11,10 @@ import {appendStandaloneLocation,getStandaloneRecord} from '../services/standalo
 import {locationAssessmentFields,selectedAssessmentLabels} from '../services/jsaAssessmentLabels';
 import SearchResults,{SearchResult} from '../components/SearchResults';
 import {useFormKeyboard} from '../components/useFormKeyboard';
+import {useLanguage} from './contexts/LanguageContext';
 
 export default function AddLocation(){
- const {id}=useLocalSearchParams<{id:string}>(),router=useRouter(),{accent}=useTheme(),keyboard=useFormKeyboard();
+ const {id}=useLocalSearchParams<{id:string}>(),router=useRouter(),{accent}=useTheme(),{t}=useLanguage(),keyboard=useFormKeyboard();
  const companyRef=useRef<TextInput>(null),locationRef=useRef<TextInput>(null),activityRef=useRef<TextInput>(null);
  const hazardsRef=useRef<TextInput>(null),controlsRef=useRef<TextInput>(null),ppeRef=useRef<TextInput>(null);
  const [record,setRecord]=useState<any>(null),[error,setError]=useState(''),[failed,setFailed]=useState(false),[retry,setRetry]=useState(0);
@@ -43,38 +44,38 @@ export default function AddLocation(){
    router.back();
   }catch(e){const message=e instanceof Error?e.message:'Retry when connected.';
    if(message.includes('review_latest_record')){try{setRecord(await getStandaloneRecord(id));setError('This JSA was updated. Check the locations below, then tap Acknowledge and add location again.');}catch{setError('Reopen this JSA when connected to review its latest additions.');}}
-   else Alert.alert('Addition not confirmed',message);
+   else Alert.alert(t('Addition not confirmed'),t(message));
   }finally{setSaving(false);}
  };
  const matches=[...wells,...swds].filter(w=>w.well_name.toLowerCase().includes(location.trim().toLowerCase())&&w.well_name!==location).slice(0,50);
- return <View style={{flex:1,backgroundColor:'#f5f5f5'}}><Stack.Screen options={{title:'Add location'}}/>
+ return <View style={{flex:1,backgroundColor:'#f5f5f5'}}><Stack.Screen options={{title:t('Add location')}}/>
  <ScrollView ref={keyboard.scrollRef} {...keyboard.scrollProps} contentContainerStyle={[styles.content,{paddingBottom:24+keyboard.height}]}>
- {!!error&&<Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
- {!record?(failed?button('Retry loading JSA',()=>setRetry(v=>v+1)):<ActivityIndicator color={accent}/>):record.state!=='open'?<Text>This JSA is closed. Start a new JSA for additional work.</Text>:<>
- <Text style={styles.title}>Add location</Text>
- <Text style={styles.help}>Use the company assessment and PPE already recorded on this JSA.</Text>
- <Text style={styles.label}>Oil company</Text>
+ {!!error&&<Text accessibilityRole="alert" style={styles.error}>{t(error)}</Text>}
+ {!record?(failed?button(t('Retry loading JSA'),()=>setRetry(v=>v+1)):<ActivityIndicator color={accent}/>):record.state!=='open'?<Text>{t('This JSA is closed. Start a new JSA for additional work.')}</Text>:<>
+ <Text style={styles.title}>{t('Add location')}</Text>
+ <Text style={styles.help}>{t('Use the company assessment and PPE already recorded on this JSA.')}</Text>
+ <Text style={styles.label}>{t('Oil company')}</Text>
  {record.job.operator?<Text>{record.job.operator}</Text>:<>
- <TextInput ref={companyRef} style={styles.input} value={operatorQuery} placeholder="Search your oil companies" selectTextOnFocus autoCorrect={false} returnKeyType="next" blurOnSubmit={false} onSubmitEditing={()=>locationRef.current?.focus()} onFocus={()=>{setFocused('company');keyboard.focus(companyRef.current,200);}} onBlur={()=>setTimeout(()=>setFocused(v=>v==='company'?'':v),200)} onChangeText={v=>{setOperatorQuery(v);setOperator('');}}/>
+ <TextInput ref={companyRef} style={styles.input} value={operatorQuery} placeholder={t('Search your oil companies')} selectTextOnFocus autoCorrect={false} returnKeyType="next" blurOnSubmit={false} onSubmitEditing={()=>locationRef.current?.focus()} onFocus={()=>{setFocused('company');keyboard.focus(companyRef.current,200);}} onBlur={()=>setTimeout(()=>setFocused(v=>v==='company'?'':v),200)} onChangeText={v=>{setOperatorQuery(v);setOperator('');}}/>
  {focused==='company'&&<SearchResults>{operators.filter(n=>n.toLowerCase().includes(operatorQuery.toLowerCase())).map(n=><SearchResult key={n} label={n} onPress={()=>{setOperator(n);setOperatorQuery(n);setLocation('');locationRef.current?.focus();}}/>)}</SearchResults>}
  </>}
- <Text style={styles.label}>Well / location</Text>
- <TextInput ref={locationRef} style={styles.input} value={location} placeholder="Search wells / SWDs or enter location" maxLength={300} selectTextOnFocus autoCorrect={false} returnKeyType="next" blurOnSubmit={false} onSubmitEditing={()=>activityRef.current?.focus()} onFocus={()=>{setFocused('location');keyboard.focus(locationRef.current,200);}} onBlur={()=>setTimeout(()=>setFocused(v=>v==='location'?'':v),200)} onChangeText={setLocation}/>
+ <Text style={styles.label}>{t('Well / location')}</Text>
+ <TextInput ref={locationRef} style={styles.input} value={location} placeholder={t('Search wells / SWDs or enter location')} maxLength={300} selectTextOnFocus autoCorrect={false} returnKeyType="next" blurOnSubmit={false} onSubmitEditing={()=>activityRef.current?.focus()} onFocus={()=>{setFocused('location');keyboard.focus(locationRef.current,200);}} onBlur={()=>setTimeout(()=>setFocused(v=>v==='location'?'':v),200)} onChangeText={setLocation}/>
  {loadingWells&&<ActivityIndicator color={accent}/>}
  {focused==='location'&&location.trim().length>=2&&matches.length>0&&<SearchResults>{matches.map((w,i)=><SearchResult key={`${w.well_name}:${i}`} label={w.well_name} detail={w.locationKind==='swd'?'SWD':w.county?`${w.county} Co.`:undefined} onPress={()=>{setLocation(w.well_name);setFocused('');activityRef.current?.focus();}}/>)}</SearchResults>}
- <Text style={styles.label}>Activity</Text>
+ <Text style={styles.label}>{t('Activity')}</Text>
  <TextInput ref={activityRef} style={styles.input} value={activity} maxLength={200} selectTextOnFocus returnKeyType="done" onFocus={()=>keyboard.focus(activityRef.current)} onChangeText={setActivity} onSubmitEditing={()=>Keyboard.dismiss()}/>
- <Text style={styles.label}>PPE already selected</Text>
- <Text>{[...selectedAssessmentLabels(record.snapshot.ppeSelected,record.job.assessmentPpeItems),...(record.snapshot.ppeOtherItems||[])].join(', ')||'See the original JSA.'}</Text>
- <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{checked:changes}} style={styles.option} onPress={()=>setChanges(v=>!v)}><Text>{changes?'☑':'☐'} Different hazards, controls, or PPE at this location</Text></TouchableOpacity>
- {changes&&([['hazards','Additional hazards',2000,hazardsRef],['controls','Controls for these differences',2000,controlsRef],['ppe','PPE changes (optional)',1000,ppeRef]] as const).map(([key,label,max,ref])=><View key={key}><Text style={styles.label}>{label}</Text><TextInput ref={ref} multiline style={styles.input} value={details[key]} maxLength={max} onFocus={()=>keyboard.focus(ref.current)} onChangeText={v=>setDetails(old=>({...old,[key]:v}))}/></View>)}
+ <Text style={styles.label}>{t('PPE already selected')}</Text>
+ <Text>{[...selectedAssessmentLabels(record.snapshot.ppeSelected,record.job.assessmentPpeItems).map(label=>t(label)),...(record.snapshot.ppeOtherItems||[])].join(', ')||t('See the original JSA.')}</Text>
+ <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{checked:changes}} style={styles.option} onPress={()=>setChanges(v=>!v)}><Text>{changes?'☑':'☐'} {t('Different hazards, controls, or PPE at this location')}</Text></TouchableOpacity>
+ {changes&&([['hazards','Additional hazards',2000,hazardsRef],['controls','Controls for these differences',2000,controlsRef],['ppe','PPE changes (optional)',1000,ppeRef]] as const).map(([key,label,max,ref])=><View key={key}><Text style={styles.label}>{t(label)}</Text><TextInput ref={ref} multiline style={styles.input} value={details[key]} maxLength={max} onFocus={()=>keyboard.focus(ref.current)} onChangeText={v=>setDetails(old=>({...old,[key]:v}))}/></View>)}
  {record.job.assessmentTemplates&&<>
- {choosingTask?<TaskAssessmentPicker excludedHashes={coveredHashes} onChoose={selection=>{setTaskReview(selection);setTaskAcks({});setChoosingTask(false);}}/>:<TouchableOpacity style={styles.option} onPress={()=>setChoosingTask(true)}><Text style={{color:accent}}>＋ Different company task assessment</Text></TouchableOpacity>}
- {taskReview?.steps.map(step=><View key={step.id} style={styles.option}><Text style={styles.label}>{step.title}</Text>{step.items.map((item,i)=><View key={i}><Text>Hazard: {item.hazard}</Text><Text>Controls: {item.controls}</Text></View>)}<TouchableOpacity accessibilityRole="checkbox" accessibilityState={{checked:taskAcks[step.id]===true}} disabled={saving} onPress={()=>setTaskAcks(old=>({...old,[step.id]:!old[step.id]}))}><Text>{taskAcks[step.id]?'☑':'☐'} I have read this step and its controls.</Text></TouchableOpacity></View>)}
+ {choosingTask?<TaskAssessmentPicker excludedHashes={coveredHashes} onChoose={selection=>{setTaskReview(selection);setTaskAcks({});setChoosingTask(false);}}/>:<TouchableOpacity style={styles.option} onPress={()=>setChoosingTask(true)}><Text style={{color:accent}}>＋ {t('Different company task assessment')}</Text></TouchableOpacity>}
+ {taskReview?.steps.map(step=><View key={step.id} style={styles.option}><Text style={styles.label}>{step.title}</Text>{step.items.map((item,i)=><View key={i}><Text>{t('Hazard:')} {item.hazard}</Text><Text>{t('Controls:')} {item.controls}</Text></View>)}<TouchableOpacity accessibilityRole="checkbox" accessibilityState={{checked:taskAcks[step.id]===true}} disabled={saving} onPress={()=>setTaskAcks(old=>({...old,[step.id]:!old[step.id]}))}><Text>{taskAcks[step.id]?'☑':'☐'} {t('I have read this step and its controls.')}</Text></TouchableOpacity></View>)}
  </>}
- <Text style={styles.help}>By adding this location, I acknowledge that I have reviewed this work and the applicable hazards, controls, and PPE in this JSA.</Text>
- {button(saving?'Adding…':'Acknowledge and add location',()=>void save(),saving||!valid||!additionId||!tasksRead)}
- {!!record.additions?.length&&<><Text style={styles.label}>Already added</Text>{record.additions.map((a:any)=><Text key={a.id}>{a.location} · {a.activity}</Text>)}</>}
+ <Text style={styles.help}>{t('By adding this location, I acknowledge that I have reviewed this work and the applicable hazards, controls, and PPE in this JSA.')}</Text>
+ {button(t(saving?'Adding…':'Acknowledge and add location'),()=>void save(),saving||!valid||!additionId||!tasksRead)}
+ {!!record.additions?.length&&<><Text style={styles.label}>{t('Already added')}</Text>{record.additions.map((a:any)=><Text key={a.id}>{a.location} · {a.activity}</Text>)}</>}
  </>}
  </ScrollView></View>;
 }

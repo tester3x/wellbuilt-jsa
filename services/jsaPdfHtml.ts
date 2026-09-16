@@ -60,6 +60,8 @@ interface BuildOptions {
   companyContacts: { label: string; phone: string }[];
   accent: string;
   logoDataUrl?: string | null;
+  translate?: (text: string, values?: Record<string, string | number>) => string;
+  locale?: string;
 }
 
 export function buildJsaPdfHtml(opts: BuildOptions): string {
@@ -69,6 +71,13 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
     ppeItems, preparedItems, emergencyContacts, companyContacts,
     accent, logoDataUrl,
   } = opts;
+  const t = opts.translate ?? ((text: string, values?: Record<string, string | number>) => {
+    if (!values) return text;
+    return text.replace(/\{(\w+)\}/g, (match, key) =>
+      Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match
+    );
+  });
+  const locale = opts.locale || 'en-US';
 
   // Build wells display — prefer wells array, fall back to wellName
   let wellsHtml = '';
@@ -116,7 +125,7 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Job Safety Analysis</title>
+  <title>${t('Job Safety Analysis')}</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -183,26 +192,26 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
     <div class="header">
       ${logoDataUrl ? `<div class="logo"><img src="${logoDataUrl}" alt="Logo" /></div>` : ''}
       <div class="title-block">
-        <h1 class="title">Job Safety Analysis</h1>
+        <h1 class="title">${t('Job Safety Analysis')}</h1>
       </div>
     </div>
 
     <div class="section">
-      <h2 class="section-title">Job Details</h2>
-      <div class="row"><span class="row-label">Driver</span><span class="row-value">${driverName || '-'}</span></div>
-      <div class="row"><span class="row-label">Truck #</span><span class="row-value">${truckNumber || '-'}</span></div>
-      ${pusher ? `<div class="row"><span class="row-label">Pusher</span><span class="row-value">${pusher}</span></div>` : ''}
-      <div class="row"><span class="row-label">Date</span><span class="row-value">${date || '-'}</span></div>
+      <h2 class="section-title">${t('Job Details')}</h2>
+      <div class="row"><span class="row-label">${t('Driver')}</span><span class="row-value">${driverName || '-'}</span></div>
+      <div class="row"><span class="row-label">${t('Truck #')}</span><span class="row-value">${truckNumber || '-'}</span></div>
+      ${pusher ? `<div class="row"><span class="row-label">${t('Pusher')}</span><span class="row-value">${pusher}</span></div>` : ''}
+      <div class="row"><span class="row-label">${t('Date')}</span><span class="row-value">${date || '-'}</span></div>
       <div class="badge-strip">
-        <div class="badge badge-okay">JSA Reviewed</div>
-        <div class="badge">Generated: ${new Date().toLocaleString()}</div>
+        <div class="badge badge-okay">${t('JSA Reviewed')}</div>
+        <div class="badge">${t('Generated: {date}', { date: new Date().toLocaleString(locale) })}</div>
       </div>
     </div>
 
     ${wellsHtml ? `
     <div class="section">
       <div class="wells-table">
-        <div class="well-header"><span>Well / Location</span><span>Job Type</span></div>
+        <div class="well-header"><span>${t('Well / Location')}</span><span>${t('Job Type')}</span></div>
         ${wellsHtml}
       </div>
     </div>` : ''}
@@ -210,30 +219,30 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
     <!-- Locations section removed — merged with Wells / Locations -->
 
     <div class="section">
-      <h2 class="section-title">PPE Selected</h2>
+      <h2 class="section-title">${t('PPE Selected')}</h2>
       ${ppeItems.length > 0
-        ? ppeItems.map(item => `<div class="checklist-item">• ${PPE_LABELS[item] || item}</div>`).join('')
-        : '<div style="color:#999;font-size:12px">No PPE recorded.</div>'}
+        ? ppeItems.map(item => `<div class="checklist-item">• ${t(PPE_LABELS[item] || item)}</div>`).join('')
+        : `<div style="color:#999;font-size:12px">${t('No PPE recorded.')}</div>`}
     </div>
 
     <div class="section">
-      <h2 class="section-title">Prepared for Work</h2>
+      <h2 class="section-title">${t('Prepared for Work')}</h2>
       ${preparedItems.map(item =>
-        `<div class="checklist-item">• ${PREPARED_LABELS[item] || item}</div>`
+        `<div class="checklist-item">• ${t(PREPARED_LABELS[item] || item)}</div>`
       ).join('')}
-      ${preparedItems.length === 0 ? '<div style="color:#999;font-size:12px">No checklist responses recorded.</div>' : ''}
+      ${preparedItems.length === 0 ? `<div style="color:#999;font-size:12px">${t('No checklist responses recorded.')}</div>` : ''}
     </div>
 
     <div class="section">
-      <h2 class="section-title">Notes</h2>
+      <h2 class="section-title">${t('Notes')}</h2>
       <div class="notes">${notes?.trim() || '—'}</div>
     </div>
 
     <div class="section">
-      <h2 class="section-title">Signature</h2>
+      <h2 class="section-title">${t('Signature')}</h2>
       ${sigImgSrc
         ? `<div class="signature-block">
-            <img src="${sigImgSrc}" class="signature-img" alt="Signature" />
+            <img src="${sigImgSrc}" class="signature-img" alt="${t('Signature')}" />
           </div>
           <div class="signature-name">${signature || ''}</div>`
         : `<div style="font-size:12px">
@@ -243,10 +252,10 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
 
     ${emergencyContacts.length > 0 ? `
     <div class="section">
-      <h2 class="section-title">Emergency Contacts</h2>
+      <h2 class="section-title">${t('Emergency Contacts')}</h2>
       ${emergencyContacts.map(c => `
         <div class="contact-row">
-          <span class="contact-label">${c.label}</span>
+          <span class="contact-label">${t(c.label)}</span>
           <span class="contact-phone">${c.phone}</span>
         </div>
       `).join('')}
@@ -254,10 +263,10 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
 
     ${companyContacts.length > 0 ? `
     <div class="section">
-      <h2 class="section-title">Company Contacts</h2>
+      <h2 class="section-title">${t('Company Contacts')}</h2>
       ${companyContacts.map(c => `
         <div class="contact-row">
-          <span class="contact-label">${c.label}</span>
+          <span class="contact-label">${t(c.label)}</span>
           <span class="contact-phone">${c.phone}</span>
         </div>
       `).join('')}
@@ -265,14 +274,14 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
 
     ${(opts.additions || []).map(a=>{
       const esc=(v:string)=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
-      return `<div class="section"><h2 class="section-title">Added location / activity</h2>
+      return `<div class="section"><h2 class="section-title">${t('Added location / activity')}</h2>
         <div>${esc(a.location)} · ${esc(a.activity)}</div><div>${esc(a.operator)}</div>
-        <div>Hazards: ${esc(a.hazards)}</div><div>Controls: ${esc(a.controls)}</div><div>PPE: ${esc(a.ppe)}</div>
-        <div>Acknowledged by ${esc(driverName)} · ${esc(new Date(a.acknowledgedAtMs).toLocaleString())}</div>
-        <div>Recorded after the original signature; original assessment unchanged.</div></div>`;
+        <div>${t('Hazards')}: ${esc(a.hazards)}</div><div>${t('Controls')}: ${esc(a.controls)}</div><div>${t('PPE')}: ${esc(a.ppe)}</div>
+        <div>${t('Acknowledged by')} ${esc(driverName)} · ${esc(new Date(a.acknowledgedAtMs).toLocaleString(locale))}</div>
+        <div>${t('Recorded after the original signature; original assessment unchanged.')}</div></div>`;
     }).join('')}
     <div class="footer">
-      Generated by WellBuilt JSA
+      ${t('Generated by WellBuilt JSA')}
     </div>
   </div>
 </body>

@@ -12,7 +12,12 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { COMPANY_CONTACTS, EMERGENCY_CONTACTS } from "../constants/jsaTemplate";
+import {
+  COMPANY_CONTACTS,
+  EMERGENCY_CONTACTS,
+  PPE_ITEMS,
+  PREPARED_FOR_WORK_ITEMS,
+} from "../constants/jsaTemplate";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 
@@ -44,7 +49,8 @@ type Params = {
 export default function PdfScreen() {
   const params = useLocalSearchParams<any>();
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const locale = lang === "es" ? "es-MX" : "en-US";
   const { accent, emergencyContacts: themeEmergencyContacts, companyContacts: themeCompanyContacts, logoUrl } = useTheme();
   const [isGenerating, setIsGenerating] = useState(false);
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
@@ -146,13 +152,15 @@ export default function PdfScreen() {
     const jobLocationsValue = locationsList.length
       ? locationsList.join(", ")
       : location || "-";
+    const ppeLabels = new Map(PPE_ITEMS.map((item) => [item.id, item.label]));
+    const preparedLabels = new Map(PREPARED_FOR_WORK_ITEMS.map((item) => [item.id, item.label]));
 
     return `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Job Safety Analysis</title>
+  <title>${t("Job Safety Analysis")}</title>
   <style>
     * {
       box-sizing: border-box;
@@ -321,86 +329,80 @@ export default function PdfScreen() {
   <div class="page">
     <div class="header">
       <div class="title-block">
-        <h1 class="title">Job Safety Analysis</h1>
+        <h1 class="title">${t("Job Safety Analysis")}</h1>
         <div class="tag-row">
           <span class="tag">JSA</span>
-          <span class="tag">Field Operations</span>
+          <span class="tag">${t("Field Operations")}</span>
         </div>
       </div>
       ${
         logoDataUrl
-          ? `<div><img src="${logoDataUrl}" alt="Company logo" /></div>`
+          ? `<div><img src="${logoDataUrl}" alt="${t("Company logo")}" /></div>`
           : ""
       }
     </div>
 
     <!-- Job Details -->
     <div class="section">
-      <h2 class="section-title">Job Details</h2>
+      <h2 class="section-title">${t("Job Details")}</h2>
       <div class="row">
-        <span class="row-label">Driver</span>
+        <span class="row-label">${t("Driver")}</span>
         <span class="row-value">${driverName || "-"}</span>
       </div>
       <div class="row">
-        <span class="row-label">Truck #</span>
+        <span class="row-label">${t("Truck #")}</span>
         <span class="row-value">${truckNumber || "-"}</span>
       </div>
       <div class="row">
-        <span class="row-label">Pusher</span>
+        <span class="row-label">${t("Pusher")}</span>
         <span class="row-value">${pusher || "-"}</span>
       </div>
       <div class="row">
-        <span class="row-label">Well</span>
+        <span class="row-label">${t("Well")}</span>
         <span class="row-value">${wellName || "-"}</span>
       </div>
       <div class="row">
-        <span class="row-label">Location</span>
+        <span class="row-label">${t("Location")}</span>
         <span class="row-value">${jobLocationsValue}</span>
       </div>
       <div class="row">
-        <span class="row-label">Task</span>
+        <span class="row-label">${t("Task")}</span>
         <span class="row-value">${task || "-"}</span>
       </div>
       <div class="row">
-        <span class="row-label">Date</span>
+        <span class="row-label">${t("Date")}</span>
         <span class="row-value">${date || "-"}</span>
       </div>
       <div class="badge-strip">
-        <div class="badge badge-okay">JSA Reviewed</div>
-        <div class="badge">Generated: ${new Date().toLocaleString()}</div>
+        <div class="badge badge-okay">${t("JSA Reviewed")}</div>
+        <div class="badge">${t("Generated: {date}", { date: new Date().toLocaleString(locale) })}</div>
       </div>
     </div>
 
     <!-- PPE -->
     <div class="section">
-      <h2 class="section-title">PPE Selected</h2>
+      <h2 class="section-title">${t("PPE Selected")}</h2>
       <p style="font-size: 11px; color: #666666; margin: 0 0 4px;">
-        Verified personal protective equipment for this job.
+        ${t("Verified personal protective equipment for this job.")}
       </p>
       <div class="pill-row">
         ${(ppeSelectedArray || [])
-          .map((item) => `<span class="pill">${item}</span>`)
-          .join("") || '<span style="font-size: 11px; color: #999999;">No PPE recorded</span>'}
+          .map((item) => `<span class="pill">${t(ppeLabels.get(String(item)) || String(item))}</span>`)
+          .join("") || `<span style="font-size: 11px; color: #999999;">${t("No PPE recorded.")}</span>`}
       </div>
     </div>
 
     <!-- Prepared for Work -->
     <div class="section">
-      <h2 class="section-title">Prepared for Work</h2>
-      <div class="checklist-item">
-        ${preparedArray.includes("trained") ? "☑" : "☐"} I am properly trained for the job
-      </div>
-      <div class="checklist-item">
-        ${preparedArray.includes("toolsAndPpe") ? "☑" : "☐"} I have the tools and PPE needed for work
-      </div>
-      <div class="checklist-item">
-        ${preparedArray.includes("sds") ? "☑" : "☐"} SDS
-      </div>
+      <h2 class="section-title">${t("Prepared for Work")}</h2>
+      ${PREPARED_FOR_WORK_ITEMS.map((item) => `<div class="checklist-item">
+        ${preparedArray.includes(item.id) ? "☑" : "☐"} ${t(preparedLabels.get(item.id) || item.label)}
+      </div>`).join("")}
     </div>
 
     <!-- Locations -->
     <div class="section">
-      <h2 class="section-title">Locations</h2>
+      <h2 class="section-title">${t("Locations")}</h2>
       <div class="locations-list">
         ${locationsList.length
           ? locationsList
@@ -408,40 +410,40 @@ export default function PdfScreen() {
                 (loc) =>
                   `<div>${loc}${
                     locationAcks[loc]
-                      ? `<div class="ack">Ack: ${new Date(locationAcks[loc]).toLocaleString()}</div>`
+                      ? `<div class="ack">${t("Acknowledged: {date}", { date: new Date(locationAcks[loc]).toLocaleString(locale) })}</div>`
                       : ""
                   }</div>`
               )
               .join("")
-          : '<div style="color:#999999;">No locations recorded.</div>'}
+          : `<div style="color:#999999;">${t("No locations recorded.")}</div>`}
       </div>
     </div>
 
     <!-- Notes & Signature -->
     <div class="section">
-      <h2 class="section-title">Notes & Signature</h2>
+      <h2 class="section-title">${t("Notes & Signature")}</h2>
       <div>
         <div style="font-size: 11px; color: #666666; margin-bottom: 4px;">
-          Additional Notes
+          ${t("Additional Notes")}
         </div>
         <div class="notes">
-          ${notes && notes.trim().length ? notes.trim() : "No additional notes provided."}
+          ${notes && notes.trim().length ? notes.trim() : t("No additional notes provided.")}
         </div>
       </div>
       <div class="signature-row">
-        <span class="signature-label">Signature</span>
+        <span class="signature-label">${t("Signature")}</span>
         <span class="signature-value">${signature || ""}</span>
       </div>
     </div>
 
     <!-- Emergency & Company Contacts -->
     <div class="section">
-      <h2 class="section-title">Emergency Contacts</h2>
+      <h2 class="section-title">${t("Emergency Contacts")}</h2>
       ${emergencyContacts
         .map(
           (c) => `
         <div class="contact-row">
-          <span class="contact-label">${c.label}</span>
+          <span class="contact-label">${t(c.label)}</span>
           <span class="contact-phone">${c.phone}</span>
         </div>
       `
@@ -450,12 +452,12 @@ export default function PdfScreen() {
     </div>
 
     <div class="section">
-      <h2 class="section-title">Company Contacts</h2>
+      <h2 class="section-title">${t("Company Contacts")}</h2>
       ${companyContacts
         .map(
           (c) => `
         <div class="contact-row">
-          <span class="contact-label">${c.label}</span>
+          <span class="contact-label">${t(c.label)}</span>
           <span class="contact-phone">${c.phone}</span>
         </div>
       `
@@ -476,6 +478,12 @@ export default function PdfScreen() {
     params.signature,
     ppeSelectedArray,
     preparedArray,
+    themeEmergencyContacts,
+    themeCompanyContacts,
+    accent,
+    logoDataUrl,
+    locale,
+    t,
   ]);
 
   const handleGeneratePdf = async () => {

@@ -24,6 +24,8 @@ interface JsaPdfData {
   signatureImage?: string; // base64 PNG
   companyName?: string;
   accentColor?: string;
+  translate?: (text: string, values?: Record<string, string | number>) => string;
+  locale?: string;
 }
 
 /**
@@ -74,6 +76,8 @@ export async function generateAndUploadJsaPdf(
       companyContacts: [],
       accent: data.accentColor || '#DAA520',
       logoDataUrl: null,
+      translate: data.translate,
+      locale: data.locale,
     });
 
     stage.step = 'printToFile';

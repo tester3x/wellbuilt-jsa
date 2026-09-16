@@ -61,7 +61,8 @@ type Params = {
 export default function SignoffScreen() {
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const locale = lang === 'es' ? 'es-MX' : 'en-US';
   const { emergencyContacts: themeEmergencyContacts, companyContacts: themeCompanyContacts, accent, jsaTemplate } = useTheme();
   const assessmentBundle=useMemo(()=>{try{return params.assessmentBundle?JSON.parse(params.assessmentBundle):null;}catch{return null;}},[params.assessmentBundle]);
   const formKeyboard=useFormKeyboard();
@@ -589,7 +590,7 @@ export default function SignoffScreen() {
       if (!localSaveOk) {
         Alert.alert(
           t('Not saved') || 'Not saved',
-          failClosedCopy('local_save_failed'),
+          t(failClosedCopy('local_save_failed')),
         );
         return;
       }
@@ -621,7 +622,7 @@ export default function SignoffScreen() {
         if (!adapted.ok) {
           Alert.alert(
             t('Cannot complete') || 'Cannot complete',
-            failClosedCopy('malformed'),
+            t(failClosedCopy('malformed')),
           );
           return;
         }
@@ -635,7 +636,7 @@ export default function SignoffScreen() {
         if (done.kind === 'pending_retry') {
           Alert.alert(
             t('Completion not recorded') || 'Completion not recorded',
-            done.copy,
+            t(done.copy),
             [
               {
                 text: t('Retry') || 'Retry',
@@ -649,7 +650,7 @@ export default function SignoffScreen() {
         if (done.kind === 'fail_closed') {
           Alert.alert(
             t('Cannot complete') || 'Cannot complete',
-            done.copy,
+            t(done.copy),
           );
           return;
         }
@@ -737,6 +738,8 @@ export default function SignoffScreen() {
             signatureImage: signatureImage || undefined,
             companyName: companyId,
             accentColor: accent,
+            translate: t,
+            locale,
           }, companyId, {
             driverHash,
             jsaDocId: payload.id,

@@ -368,8 +368,8 @@ const locationsList = useMemo(() => {
     );
   };
 
-  if(taskDraftLoading || taskDraftError) return <SafeAreaView style={styles.safeArea}><Text style={{padding:24}}>{taskDraftError || 'Restoring your assessment…'}</Text>{!!taskDraftError&&<TouchableOpacity onPress={()=>setTaskLoadRetry(n=>n+1)} style={{padding:24}}><Text>Retry loading assessment</Text></TouchableOpacity>}</SafeAreaView>;
-  if((taskCatalogVersion===2 || jsaTemplate?.catalogVersion===2) && !taskSelection) return <SafeAreaView style={styles.safeArea}>{jobHandoff.source==='governed_snapshot' ? <Text>Task-specific required-job assessments are not enabled yet. Return to Suite.</Text> : <TaskAssessmentPicker onChoose={selection=>void chooseTasks(selection)}/>}</SafeAreaView>;
+  if(taskDraftLoading || taskDraftError) return <SafeAreaView style={styles.safeArea}><Text style={{padding:24}}>{t(taskDraftError || 'Restoring your assessment…')}</Text>{!!taskDraftError&&<TouchableOpacity onPress={()=>setTaskLoadRetry(n=>n+1)} style={{padding:24}}><Text>{t('Retry loading assessment')}</Text></TouchableOpacity>}</SafeAreaView>;
+  if((taskCatalogVersion===2 || jsaTemplate?.catalogVersion===2) && !taskSelection) return <SafeAreaView style={styles.safeArea}>{jobHandoff.source==='governed_snapshot' ? <Text>{t('Task-specific required-job assessments are not enabled yet. Return to Suite.')}</Text> : <TaskAssessmentPicker onChoose={selection=>void chooseTasks(selection)}/>}</SafeAreaView>;
   return (
     <SafeAreaView style={styles.safeArea}>
       <Stack.Screen
@@ -479,7 +479,7 @@ const locationsList = useMemo(() => {
                           }
                           Alert.alert(
                             t("Review All Steps"),
-                            t("Please review all steps before continuing.") + (missing.length ? `\n\nSkipped: ${missing.join(', ')}` : ''),
+                            t("Please review all steps before continuing.") + (missing.length ? `\n\n${t('Skipped: {steps}', { steps: missing.join(', ') })}` : ''),
                             [{ text: t("OK") }],
                           );
                           return;

@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { colors } from '../constants/colors';
+import { useLanguage } from '../app/contexts/LanguageContext';
 
 interface Props {
   visible: boolean;
@@ -20,16 +21,16 @@ interface Props {
   nextStep?: 'read' | 'details';
 }
 
-function greeting(): string {
+function greeting(t: (text: string) => string): string {
   const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (h < 12) return t('Good morning');
+  if (h < 17) return t('Good afternoon');
+  return t('Good evening');
 }
 
-function todayLong(): string {
+function todayLong(locale: string): string {
   try {
-    return new Date().toLocaleDateString('en-US', {
+    return new Date().toLocaleDateString(locale, {
       weekday: 'long',
       month: 'long',
       day: 'numeric',
@@ -46,6 +47,8 @@ export default function WelcomeModal({
   onDismiss,
   nextStep = 'details',
 }: Props) {
+  const { lang, t } = useLanguage();
+  const locale = lang === 'es' ? 'es-MX' : 'en-US';
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.overlay}>
@@ -56,16 +59,16 @@ export default function WelcomeModal({
             resizeMode="contain"
           />
           <Text style={styles.greeting}>
-            {greeting()}
+            {greeting(t)}
             {driverFirstName ? `, ${driverFirstName}` : ''}
           </Text>
-          <Text style={styles.subtitle}>Welcome to WellBuilt JSA</Text>
-          <Text style={styles.date}>{todayLong()}</Text>
+          <Text style={styles.subtitle}>{t('Welcome to WellBuilt JSA')}</Text>
+          <Text style={styles.date}>{todayLong(locale)}</Text>
           <Text style={[styles.subtitle, { textAlign: 'center', marginBottom: 16 }]}>
-            {nextStep === 'read' ? 'Your job details are ready. Continue to read your JSA.' : 'Add your job and locations, then read your JSA.'}
+            {t(nextStep === 'read' ? 'Your job details are ready. Continue to read your JSA.' : 'Add your job and locations, then read your JSA.')}
           </Text>
           <TouchableOpacity style={styles.btn} onPress={onDismiss}>
-            <Text style={styles.btnText}>Continue</Text>
+            <Text style={styles.btnText}>{t('Continue')}</Text>
           </TouchableOpacity>
         </View>
       </View>

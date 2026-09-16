@@ -10,7 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { LanguageProvider } from './contexts/LanguageContext';
+import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import LoginScreen from '../components/LoginScreen';
@@ -59,6 +59,7 @@ export const unstable_settings = {
 /** Renders the main navigation stack with dynamic accent-colored header */
 function NavigationStack() {
   const { accent } = useTheme();
+  const { t } = useLanguage();
   return (
     <Stack
       screenOptions={{
@@ -76,14 +77,14 @@ function NavigationStack() {
       <Stack.Screen name="sso-callback" options={{ headerShown: false }} />
       <Stack.Screen name="acknowledge" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="governed-status" options={{ headerShown: false }} />
-      <Stack.Screen name="settings" options={{ title: 'Settings', headerBackTitle: 'Back', headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
-      <Stack.Screen name="switcher" options={{ title: 'Switcher', headerBackTitle: 'Back' }} />
+      <Stack.Screen name="settings" options={{ title: t('Settings'), headerBackTitle: t('Back'), headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
+      <Stack.Screen name="switcher" options={{ title: t('Switcher'), headerBackTitle: t('Back') }} />
       <Stack.Screen name="steps" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="ppe" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="signoff" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="completed" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
-      <Stack.Screen name="viewJsa" options={{ title: 'JSA Details', headerBackTitle: 'Back', headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
-      <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+      <Stack.Screen name="viewJsa" options={{ title: t('JSA Details'), headerBackTitle: t('Back'), headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
+      <Stack.Screen name="modal" options={{ presentation: 'modal', title: t('Modal') }} />
     </Stack>
   );
 }
@@ -91,6 +92,7 @@ function NavigationStack() {
 /** Inner component that gates on auth state + handles SSO deep links */
 function AppContent() {
   const colorScheme = useColorScheme();
+  const { t } = useLanguage();
   const { mode, session, isAuthenticated, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -809,7 +811,7 @@ function AppContent() {
             <View style={[styles.splash, styles.overlay]}>
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={{ color: colors.textMuted, marginTop: 12, fontSize: 15 }}>
-                {GOVERNED_RESOLVING_COPY}
+                {t(GOVERNED_RESOLVING_COPY)}
               </Text>
             </View>
           )}
@@ -845,10 +847,10 @@ function AppContent() {
           {logoutFailed && (
             <View style={[styles.overlay, styles.logoutFailureOverlay]}>
               <View style={styles.logoutFailureCard}>
-                <Text style={styles.logoutFailureTitle}>Sign out incomplete</Text>
-                <Text style={styles.logoutFailureCopy}>Authentication could not be cleared and verified. Retry before opening standalone or changing drivers.</Text>
+                <Text style={styles.logoutFailureTitle}>{t('Sign out incomplete')}</Text>
+                <Text style={styles.logoutFailureCopy}>{t('Authentication could not be cleared and verified. Retry before opening standalone or changing drivers.')}</Text>
                 <TouchableOpacity style={styles.logoutRetry} onPress={() => { void completeVerifiedLogout(() => router.replace('/login')); }}>
-                  <Text style={styles.logoutRetryText}>Retry sign out</Text>
+                  <Text style={styles.logoutRetryText}>{t('Retry sign out')}</Text>
                 </TouchableOpacity>
               </View>
             </View>

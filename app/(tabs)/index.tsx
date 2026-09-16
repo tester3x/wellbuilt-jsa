@@ -106,6 +106,7 @@ export default function JsaHomeScreen() {
   const [continueJsa, setContinueJsa] = useState<any | null>(null);
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const { t, toggleLang, lang, setLang } = useLanguage();
+  const locale = lang === 'es' ? 'es-MX' : 'en-US';
 
   // Driver's assigned operators — read from RTDB assignedCustomers (same as WB T)
   const [driverOperators, setDriverOperators] = useState<string[]>([]);
@@ -2206,14 +2207,14 @@ export default function JsaHomeScreen() {
 
         {workflowIsolation.mountForm && historyBlocksNewJsa && (
           <View style={[styles.card, { borderColor: '#B45309', borderWidth: 1 }]}>
-            <Text style={styles.cardTitle}>JSA status could not be verified</Text>
+            <Text style={styles.cardTitle}>{t('JSA status could not be verified')}</Text>
             <Text style={styles.cardSubtitle}>
               {historyLookup === 'backend_required'
                 ? 'Older JSA records require secure server verification before another JSA can be started.'
                 : 'WellBuilt could not securely verify this shift. Retry when service is available.'}
             </Text>
             <TouchableOpacity style={[styles.button, { backgroundColor: accent }]} onPress={() => void loadTodaysSave()}>
-              <Text style={styles.buttonText}>Retry secure check</Text>
+              <Text style={styles.buttonText}>{t('Retry secure check')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -2232,10 +2233,10 @@ export default function JsaHomeScreen() {
             : HISTORICAL_JSA_LABEL;
           const bannerSubtitle = isVerifiedCurrent
             ? (todaysJsaSave?.timestamp
-              ? `${t('Submitted')} ${new Date(todaysJsaSave.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`
+              ? `${t('Submitted')} ${new Date(todaysJsaSave.timestamp).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true })}`
               : t('Already submitted today'))
             : (todaysJsaSave?.timestamp
-              ? `${t('Submitted')} ${new Date(todaysJsaSave.timestamp).toLocaleString()}`
+              ? `${t('Submitted')} ${new Date(todaysJsaSave.timestamp).toLocaleString(locale)}`
               : t('Previous period'));
           return (
           <TouchableOpacity
@@ -2284,7 +2285,7 @@ export default function JsaHomeScreen() {
                   <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>{t("JSA Active")}</Text>
                   {currentJsa?.signedAt && (
                     <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 2 }}>
-                      {t("Signed")} {new Date(currentJsa.signedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                      {t("Signed")} {new Date(currentJsa.signedAt).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true })}
                     </Text>
                   )}
                 </View>
@@ -2371,7 +2372,7 @@ export default function JsaHomeScreen() {
           <>
             {currentJsa.savedData?.workflow==='standalone' && currentJsa.savedData?.state!=='closed' && (
               <TouchableOpacity style={{padding:16,marginBottom:10,borderRadius:12,backgroundColor:accent}} onPress={()=>router.push({pathname:'/add-location',params:{id:String(currentJsa.savedData.id)}} as any)}>
-                <Text style={{color:'white',fontWeight:'700',textAlign:'center'}}>Add location / activity</Text>
+                <Text style={{color:'white',fontWeight:'700',textAlign:'center'}}>{t('Add location / activity')}</Text>
               </TouchableOpacity>
             )}
             {/* Full JSA Document — paper-ready WebView */}
@@ -2408,6 +2409,8 @@ export default function JsaHomeScreen() {
                 companyContacts: [],
                 accent,
                 logoDataUrl: null,
+                translate: t,
+                locale,
               });
 
               // Calculate available height: screen - header(80) - banner(80) - tabs(45) - footer(120) - tabBar(60) - padding(32)
@@ -2603,12 +2606,12 @@ export default function JsaHomeScreen() {
                 </SearchResults>
             )}
 
-            <Text style={[styles.label, { marginTop: 14 }]}>Oil Company</Text>
+            <Text style={[styles.label, { marginTop: 14 }]}>{t('Oil Company')}</Text>
             {!wellDataLoading && !wellDataError && driverOperators.length === 0 && (
-              <Text style={{ color: colors.textMuted, marginBottom: 8 }}>No oil companies are set on your WB driver profile. Set up your customer list to enable well suggestions. You can still enter a location manually.</Text>
+              <Text style={{ color: colors.textMuted, marginBottom: 8 }}>{t('No oil companies are set on your WB driver profile. Set up your customer list to enable well suggestions. You can still enter a location manually.')}</Text>
             )}
             <View style={{}}>
-            <TextInput ref={oilCompanyRef} style={styles.input} placeholder="Search your oil companies" value={operatorQuery}
+            <TextInput ref={oilCompanyRef} style={styles.input} placeholder={t('Search your oil companies')} value={operatorQuery}
               returnKeyType="next" blurOnSubmit={false}
               onSubmitEditing={() => {
                 setOperatorPickerOpen(false);
@@ -2634,7 +2637,7 @@ export default function JsaHomeScreen() {
             )}
             </View>
             <Text style={[styles.label, { marginTop: 14 }]}>{t("Well / Location")}</Text>
-            {!selectedOperator && <Text style={{ color: colors.textMuted, marginBottom: 8 }}>Select an oil company for well suggestions. SWDs and manual locations remain available.</Text>}
+            {!selectedOperator && <Text style={{ color: colors.textMuted, marginBottom: 8 }}>{t('Select an oil company for well suggestions. SWDs and manual locations remain available.')}</Text>}
             {(wellDataLoading || operatorWellsLoading) && (
               <View style={styles.loadingRow}>
                 <ActivityIndicator size="small" color={accent} />
@@ -2643,7 +2646,7 @@ export default function JsaHomeScreen() {
             )}
             {wellDataError && !wellDataLoading && (
               <TouchableOpacity onPress={() => setCatalogRetry(value => value + 1)} style={{ paddingVertical: 12 }}>
-                <Text style={{ color: accent }}>Some locations could not load. Tap to retry.</Text>
+                <Text style={{ color: accent }}>{t('Some locations could not load. Tap to retry.')}</Text>
               </TouchableOpacity>
             )}
             <TextInput
@@ -2746,7 +2749,7 @@ export default function JsaHomeScreen() {
                   setLocationInput("");
                 }}
               >
-                <Text style={styles.saveInlineText}>+ {t("Add")} "{wellName.trim()}"</Text>
+                <Text style={styles.saveInlineText}>+ {t('Add "{name}"', { name: wellName.trim() })}</Text>
               </TouchableOpacity>
             )}
 

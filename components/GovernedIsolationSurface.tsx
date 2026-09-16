@@ -8,6 +8,7 @@ import {
   type IsolationSurfaceKind,
 } from '../services/sso/jsaJobDetailsIsolation';
 import type { GovernedReturnTarget } from '../services/shiftAuthority';
+import { useLanguage } from '../app/contexts/LanguageContext';
 
 export default function GovernedIsolationSurface({
   kind,
@@ -26,6 +27,7 @@ export default function GovernedIsolationSurface({
   onSignOut?: () => void;
   onOpenSettings?: () => void;
 }) {
+  const { t } = useLanguage();
   if (kind === 'unverified_gate') {
     return <ShiftAuthorityGate variant={variant} returnTarget={returnTarget} hasGovernedLaunch={hasGovernedLaunch}
       onOpenStandalone={onOpenStandalone} onSignOut={onSignOut} onOpenSettings={onOpenSettings} />;
@@ -38,10 +40,10 @@ export default function GovernedIsolationSurface({
   if (kind === 'governed_failed') {
     return (
       <View style={wrapStyle}>
-        <Text style={styles.title}>Cannot continue</Text>
-        <Text style={styles.copy}>{GOVERNED_FAILED_COPY}</Text>
-        <TouchableOpacity style={styles.btn} onPress={onReturn} accessibilityLabel="Return to WellBuilt">
-          <Text style={styles.btnText}>Return to WellBuilt</Text>
+        <Text style={styles.title}>{t('Cannot continue')}</Text>
+        <Text style={styles.copy}>{t(GOVERNED_FAILED_COPY)}</Text>
+        <TouchableOpacity style={styles.btn} onPress={onReturn} accessibilityLabel={t('Return to WellBuilt')}>
+          <Text style={styles.btnText}>{t('Return to WellBuilt')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -49,7 +51,7 @@ export default function GovernedIsolationSurface({
   return (
     <View style={wrapStyle}>
       <ActivityIndicator size="large" color={colors.primary} />
-      <Text style={styles.copy}>{GOVERNED_CONNECTING_COPY}</Text>
+      <Text style={styles.copy}>{t(GOVERNED_CONNECTING_COPY)}</Text>
     </View>
   );
 }

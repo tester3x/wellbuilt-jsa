@@ -197,7 +197,7 @@ export default function SettingsScreen() {
         contentContainerStyle={styles.content}
         keyboardDismissMode="on-drag"
       >
-        <TouchableOpacity style={styles.card} onPress={()=>router.push('/printer-settings' as any)}><Text style={styles.cardTitle}>Printers</Text><Text>Thermal and regular paper printers</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.card} onPress={()=>router.push('/printer-settings' as any)}><Text style={styles.cardTitle}>{t('Printers')}</Text><Text>{t('Thermal and regular paper printers')}</Text></TouchableOpacity>
         {/* Driver Profile Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t("Driver Profile")}</Text>
@@ -217,7 +217,7 @@ export default function SettingsScreen() {
           {governedProfile && <>
             <View style={styles.field}><Text style={styles.label}>{t("Company")}</Text><Text style={styles.profileValue}>{companyName || '—'}</Text></View>
             <View style={styles.field}><Text style={styles.label}>{t("Phone")}</Text><Text style={styles.profileValue}>{phone || '—'}</Text></View>
-            <View style={styles.field}><Text style={styles.label}>CDL</Text><Text style={styles.profileValue}>{cdl || '—'}</Text></View>
+            <View style={styles.field}><Text style={styles.label}>{t('CDL')}</Text><Text style={styles.profileValue}>{cdl || '—'}</Text></View>
             <View style={styles.field}><Text style={styles.label}>{t("Driver ID")}</Text><Text style={styles.profileValue}>{driverId || '—'}</Text></View>
           </>}
 
@@ -289,7 +289,7 @@ export default function SettingsScreen() {
               ]}
               onPress={() => setLang("en")}
             >
-              <Text style={[styles.langText, lang === "en" && { color: "#fff" }]}>English</Text>
+              <Text style={[styles.langText, lang === "en" && { color: "#fff" }]}>{t('English')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[
@@ -298,7 +298,7 @@ export default function SettingsScreen() {
               ]}
               onPress={() => setLang("es")}
             >
-              <Text style={[styles.langText, lang === "es" && { color: "#fff" }]}>Español</Text>
+              <Text style={[styles.langText, lang === "es" && { color: "#fff" }]}>{t('Español')}</Text>
             </TouchableOpacity>
           </View>
         </View>

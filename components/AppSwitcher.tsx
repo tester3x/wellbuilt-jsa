@@ -36,6 +36,7 @@ const getDriverIdentity: any = async () => null;
 
 const STORAGE_KEY = 'wbt_app_switcher_pos';
 import { normalizeAppRegistryList } from '../utils/normalizeAppRegistry';
+import { useLanguage } from '../app/contexts/LanguageContext';
 
 const REGISTRY_CACHE_KEY = 'wbt_app_registry_cache';
 const LONG_PRESS_DURATION = 400;
@@ -111,6 +112,9 @@ const FALLBACK_APPS: AppEntry[] = [
 ];
 
 export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getIdentity, presentation = 'floating', visible = false, onClose }: Props) {
+  const { t } = useLanguage();
+  const tRef = useRef(t);
+  tRef.current = t;
   const { width: screenW, height: screenH } = useWindowDimensions();
 
   // Scale sizes to screen — phone (~400px) gets smaller, tablet (~800px+) gets current sizes
@@ -381,7 +385,7 @@ export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getI
             return;
           } catch {}
         }
-        Alert.alert('Not Installed', `${app.name} is not installed on this device.`);
+        Alert.alert(tRef.current('Not Installed'), tRef.current('{app} is not installed on this device.', { app: app.name }));
       }
     }
   }, []);
@@ -399,7 +403,7 @@ export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getI
           return;
         } catch {}
       }
-      Alert.alert('Not Installed', 'WellBuilt Suite is not installed on this device.');
+      Alert.alert(tRef.current('Not Installed'), tRef.current('WellBuilt Suite is not installed on this device.'));
     }
   }, []);
 
@@ -534,11 +538,11 @@ export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getI
       <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,.65)', alignItems: 'center', justifyContent: 'center', padding: 24 }} onPress={onClose}>
         <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 380, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.primaryDark, padding: 18 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <Text style={{ color: colors.primaryDark, fontWeight: '800', fontSize: 20 }}>Switcher</Text>
-            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close Switcher" style={{ padding: 12 }}><Text style={{ color: colors.textDark, fontSize: 20 }}>×</Text></Pressable>
+            <Text style={{ color: colors.primaryDark, fontWeight: '800', fontSize: 20 }}>{t('Switcher')}</Text>
+            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={t('Close Switcher')} style={{ padding: 12 }}><Text style={{ color: colors.textDark, fontSize: 20 }}>×</Text></Pressable>
           </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-            {visibleApps.map(app => <TouchableOpacity key={app.id} onPress={() => launchApp(app)} accessibilityRole="button" accessibilityLabel={`Open ${app.name}`}
+            {visibleApps.map(app => <TouchableOpacity key={app.id} onPress={() => launchApp(app)} accessibilityRole="button" accessibilityLabel={t('Open {app}',{app:app.name})}
               style={{ width: '47%', minHeight: 96, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, borderRadius: 12, gap: 8 }}>
               {app.iconUrl ? <Image source={{ uri: app.iconUrl }} style={{ width: 48, height: 48 }} resizeMode="contain" /> :
                 <Text style={{ color: colors.primaryDark, fontSize: 24, fontWeight: '800' }}>{(app.shortName || app.name)[0]}</Text>}
@@ -559,7 +563,7 @@ export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getI
         <Text style={{ color: '#111', fontSize: 16, fontWeight: '600', flex: 1 }}>{app.name}</Text>
         <Text style={{ color: '#666', fontSize: 22 }}>›</Text>
       </TouchableOpacity>)}
-      {!visibleApps.length && <Text style={{ padding: 16, color: '#666' }}>Loading Switcher…</Text>}
+      {!visibleApps.length && <Text style={{ padding: 16, color: '#666' }}>{t('Loading Switcher…')}</Text>}
     </View>;
   }
 
@@ -638,7 +642,7 @@ export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getI
         {/* Shift timer below badge — label overlaps bottom of icon, timer below */}
         {shiftElapsed && !isOpen ? (
           <View style={[styles.timerContainer, { marginTop: isPhone ? -12 : -18 }]}>
-            <Text style={[styles.timerLabel, { fontSize: isPhone ? 8 : 11 }]}>Shift Timer</Text>
+            <Text style={[styles.timerLabel, { fontSize: isPhone ? 8 : 11 }]}>{t('Shift Timer')}</Text>
             <Text style={[styles.timerText, { color: shiftColor, fontSize: isPhone ? 9 : 12 }]}>{shiftElapsed}</Text>
           </View>
         ) : null}

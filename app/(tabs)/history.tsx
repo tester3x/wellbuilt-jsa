@@ -59,7 +59,7 @@ function getJobType(item: HistoryItem): string {
 }
 
 /** Format date concisely */
-function formatDate(isoString: string): string {
+function formatDate(isoString: string, locale: string, t: (text: string) => string): string {
   try {
     const d = new Date(isoString);
     const now = new Date();
@@ -68,11 +68,11 @@ function formatDate(isoString: string): string {
     yesterday.setDate(yesterday.getDate() - 1);
     const isYesterday = d.toDateString() === yesterday.toDateString();
 
-    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    const time = d.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true });
 
-    if (isToday) return `Today, ${time}`;
-    if (isYesterday) return `Yesterday, ${time}`;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + `, ${time}`;
+    if (isToday) return `${t('Today')}, ${time}`;
+    if (isYesterday) return `${t('Yesterday')}, ${time}`;
+    return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' }) + `, ${time}`;
   } catch {
     return isoString;
   }
@@ -80,7 +80,8 @@ function formatDate(isoString: string): string {
 
 export default function HistoryTabScreen() {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const locale = lang === 'es' ? 'es-MX' : 'en-US';
   const { accent, logoUrl } = useTheme();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -163,8 +164,8 @@ export default function HistoryTabScreen() {
       const normalize=(v:string)=>v.trim().toLowerCase();
       const matching=open.rows.find((r:any)=>normalize(recordCustomer(r))===normalize(recordCustomer(item)) && normalize(getWellNames(r))===normalize(getWellNames(item)) && normalize(getJobType(r))===normalize(getJobType(item)));
       if(matching){router.push({pathname:'/jsa-record',params:{id:matching.id}} as any);return;}
-      if(open.unverified){Alert.alert('Check existing JSA','Some shift statuses could not be verified. Retry before starting another assessment.');return;}
-    }catch{Alert.alert('Could not check open JSAs','Retry before using this as a starting point.');return;}
+      if(open.unverified){Alert.alert(t('Check existing JSA'),t('Some shift statuses could not be verified. Retry before starting another assessment.'));return;}
+    }catch{Alert.alert(t('Could not check open JSAs'),t('Retry before using this as a starting point.'));return;}
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     router.push({
@@ -201,7 +202,7 @@ export default function HistoryTabScreen() {
             <Text style={styles.cardWells} numberOfLines={2}>{wellNames}</Text>
             {jobType ? <Text style={styles.cardJobType}>{jobType}</Text> : null}
           </View>
-          <Text style={styles.cardDate}>{formatDate(item.timestamp)}</Text>
+          <Text style={styles.cardDate}>{formatDate(item.timestamp, locale, t)}</Text>
         </View>
         <View style={styles.cardBottom}>
           <Text style={styles.cardDriver}>{item.driverName} • {t("Truck")} #{item.truckNumber}</Text>

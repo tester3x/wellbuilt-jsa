@@ -121,7 +121,7 @@ export default function LoginScreen() {
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>
-          {mode === "verifying" ? "Verifying your passcode..." : "Submitting your registration..."}
+          {t(mode === "verifying" ? "Verifying your passcode..." : "Submitting your registration...")}
         </Text>
       </View>
     );
@@ -132,15 +132,15 @@ export default function LoginScreen() {
     return (
       <View style={styles.centerContainer}>
         <MaterialCommunityIcons name="clock-outline" size={64} color={colors.primary} />
-        <Text style={styles.statusTitle}>Registration Pending</Text>
+        <Text style={styles.statusTitle}>{t('Registration Pending')}</Text>
         <Text style={styles.statusMessage}>
-          Your registration as "{pendingName}" is waiting for approval.
+          {t('Your registration as "{name}" is waiting for approval.', { name: pendingName })}
         </Text>
-        <Text style={styles.statusSubtext}>An administrator will review your request shortly.</Text>
+        <Text style={styles.statusSubtext}>{t('An administrator will review your request shortly.')}</Text>
         <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 20 }} />
-        <Text style={[styles.statusSubtext, { marginTop: 8 }]}>Checking for approval...</Text>
+        <Text style={[styles.statusSubtext, { marginTop: 8 }]}>{t('Checking for approval...')}</Text>
         <TouchableOpacity style={styles.secondaryButton} onPress={cancelRegistration}>
-          <Text style={styles.secondaryButtonText}>Cancel registration</Text>
+          <Text style={styles.secondaryButtonText}>{t('Cancel registration')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -151,12 +151,12 @@ export default function LoginScreen() {
     return (
       <View style={styles.centerContainer}>
         <MaterialCommunityIcons name="check-circle-outline" size={64} color={colors.success} />
-        <Text style={styles.statusTitle}>Registration Approved!</Text>
+        <Text style={styles.statusTitle}>{t('Registration Approved!')}</Text>
         <Text style={styles.statusMessage}>
-          Welcome, {pendingName}! Your registration has been approved.
+          {t('Welcome, {name}! Your registration has been approved.', { name: pendingName })}
         </Text>
         <TouchableOpacity style={styles.primaryButton} onPress={completeReg}>
-          <Text style={styles.primaryButtonText}>Continue to App</Text>
+          <Text style={styles.primaryButtonText}>{t('Continue to App')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -167,10 +167,10 @@ export default function LoginScreen() {
     return (
       <View style={styles.centerContainer}>
         <MaterialCommunityIcons name="close-circle-outline" size={64} color={colors.error} />
-        <Text style={styles.statusTitle}>Access Denied</Text>
-        <Text style={styles.statusMessage}>Your registration request was denied.</Text>
+        <Text style={styles.statusTitle}>{t('Access Denied')}</Text>
+        <Text style={styles.statusMessage}>{t('Your registration request was denied.')}</Text>
         <Text style={styles.statusSubtext}>
-          If you believe this is a mistake, contact an administrator.
+          {t('If you believe this is a mistake, contact an administrator.')}
         </Text>
         <TouchableOpacity
           style={styles.primaryButton}
@@ -178,7 +178,7 @@ export default function LoginScreen() {
             cancelRegistration();
           }}
         >
-          <Text style={styles.primaryButtonText}>Start Over</Text>
+          <Text style={styles.primaryButtonText}>{t('Start Over')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -189,10 +189,10 @@ export default function LoginScreen() {
     return (
       <View style={styles.centerContainer}>
         <MaterialCommunityIcons name="alert-circle-outline" size={64} color={colors.error} />
-        <Text style={styles.statusTitle}>Sign In Failed</Text>
-        <Text style={styles.statusMessage}>{error || "Could not sign in"}</Text>
+        <Text style={styles.statusTitle}>{t('Sign In Failed')}</Text>
+        <Text style={styles.statusMessage}>{t(error || "Could not sign in")}</Text>
         <TouchableOpacity style={styles.primaryButton} onPress={tryAgain}>
-          <Text style={styles.primaryButtonText}>Try Again</Text>
+          <Text style={styles.primaryButtonText}>{t('Try Again')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -220,12 +220,12 @@ export default function LoginScreen() {
               color={colors.primary}
             />
             <Text style={styles.title}>
-              {isRegister ? "New Employee Registration" : "Job Safety Analysis"}
+              {t(isRegister ? "New Employee Registration" : "Job Safety Analysis")}
             </Text>
             <Text style={styles.subtitle}>
-              {isRegister
+              {t(isRegister
                 ? "Enter your info to register with your company"
-                : "Enter your name and passcode to sign in"}
+                : "Enter your name and passcode to sign in")}
             </Text>
           </View>
 
@@ -233,13 +233,13 @@ export default function LoginScreen() {
           <View style={styles.formSection}>
             {/* Display Name */}
             <Text style={styles.label}>
-              {isRegister ? "Display Name" : "Your Name"}
+              {t(isRegister ? "Display Name" : "Your Name")}
             </Text>
             <TextInput
               style={styles.input}
               value={displayName}
               onChangeText={setDisplayName}
-              placeholder={isRegister ? "Display name (e.g., MBurger)" : "Your name"}
+              placeholder={t(isRegister ? "Display name (e.g., MBurger)" : "Your name")}
               placeholderTextColor="#999"
               autoCapitalize="words"
               returnKeyType="next"
@@ -250,41 +250,41 @@ export default function LoginScreen() {
             {/* Legal Name + Company (register only) */}
             {isRegister && (
               <>
-                <Text style={styles.label}>Legal Name</Text>
+                <Text style={styles.label}>{t('Legal Name')}</Text>
                 <TextInput
                   ref={legalNameRef}
                   style={styles.input}
                   value={legalName}
                   onChangeText={setLegalName}
-                  placeholder="Full legal name (for documents)"
+                  placeholder={t('Full legal name (for documents)')}
                   placeholderTextColor="#999"
                   autoCapitalize="words"
                   returnKeyType="next"
                   blurOnSubmit={false}
                   onSubmitEditing={() => companyRef.current?.focus()}
                 />
-                <Text style={styles.hint}>Used on printed JSA forms and signatures</Text>
+                <Text style={styles.hint}>{t('Used on printed JSA forms and signatures')}</Text>
 
-                <Text style={styles.label}>Company</Text>
+                <Text style={styles.label}>{t('Company')}</Text>
                 <TextInput
                   ref={companyRef}
                   style={styles.input}
                   value={companyName}
                   onChangeText={setCompanyName}
-                  placeholder="Your company name"
+                  placeholder={t('Your company name')}
                   placeholderTextColor="#999"
                   autoCapitalize="words"
                   returnKeyType="next"
                   blurOnSubmit={false}
                   onSubmitEditing={() => passcodeRef.current?.focus()}
                 />
-                <Text style={styles.hint}>Enter the company name your employer gave you</Text>
+                <Text style={styles.hint}>{t('Enter the company name your employer gave you')}</Text>
               </>
             )}
 
             {/* Passcode */}
             <Text style={styles.label}>
-              {isRegister ? "Create Passcode" : "Passcode"}
+              {t(isRegister ? "Create Passcode" : "Passcode")}
             </Text>
             <View style={styles.passcodeRow}>
               <TextInput
@@ -292,7 +292,7 @@ export default function LoginScreen() {
                 style={[styles.input, { flex: 1 }]}
                 value={passcode}
                 onChangeText={setPasscode}
-                placeholder={isRegister ? "Create a passcode" : "Your passcode"}
+                placeholder={t(isRegister ? "Create a passcode" : "Your passcode")}
                 placeholderTextColor="#999"
                 secureTextEntry={!showPasscode}
                 autoCapitalize="none"
@@ -311,11 +311,11 @@ export default function LoginScreen() {
                 />
               </TouchableOpacity>
             </View>
-            {isRegister && <Text style={styles.hint}>6-12 characters</Text>}
-            {passcodeError ? <Text style={styles.errorText}>{passcodeError}</Text> : null}
+            {isRegister && <Text style={styles.hint}>{t('6-12 characters')}</Text>}
+            {passcodeError ? <Text style={styles.errorText}>{t(passcodeError)}</Text> : null}
 
             {/* Error message */}
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            {error ? <Text style={styles.errorText}>{t(error)}</Text> : null}
 
             {/* Submit button */}
             <TouchableOpacity
@@ -324,31 +324,31 @@ export default function LoginScreen() {
               disabled={!canSubmit}
             >
               <Text style={styles.primaryButtonText}>
-                {isRegister ? "Submit Registration" : "Sign In"}
+                {t(isRegister ? "Submit Registration" : "Sign In")}
               </Text>
             </TouchableOpacity>
 
             {/* Registration approval note */}
             {isRegister && (
               <Text style={styles.approvalNote}>
-                Your registration will need to be approved by an administrator.
+                {t('Your registration will need to be approved by an administrator.')}
               </Text>
             )}
 
             {isRegister && (
               <Text style={styles.approvalNote}>
-                Independent registration is temporarily unavailable while governed identity support is completed.
+                {t('Independent registration is temporarily unavailable while governed identity support is completed.')}
               </Text>
             )}
 
             {/* Toggle login/register */}
             <View style={styles.toggleRow}>
               <Text style={styles.toggleText}>
-                {isRegister ? "Already registered?" : "New employee?"}
+                {t(isRegister ? "Already registered?" : "New employee?")}
               </Text>
               <TouchableOpacity onPress={isRegister ? handleSwitchToLogin : handleSwitchToRegister}>
                 <Text style={styles.toggleLink}>
-                  {isRegister ? "Sign in" : "Register here"}
+                  {t(isRegister ? "Sign in" : "Register here")}
                 </Text>
               </TouchableOpacity>
             </View>
