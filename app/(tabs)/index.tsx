@@ -1,3 +1,5 @@
+import SearchResults from '../../components/SearchResults';
+import {useFormKeyboard} from '../../components/useFormKeyboard';
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -1642,19 +1644,8 @@ export default function JsaHomeScreen() {
     setWellSuggestions(searchWells(wellName, 0));
   }, [wellName, wellDataLoading, operatorWellsLoading, selectedOperator]);
 
-  const scrollViewRef = useRef<ScrollView>(null);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-
-  // Track keyboard visibility to add extra padding when open
-  useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
+  const formKeyboard = useFormKeyboard();
+  const scrollViewRef = formKeyboard.scrollRef;
   const [addedLocations, setAddedLocations] = useState<string[]>([]);
 
   // Refs for keyboard Next tab order across the Job Details form.
@@ -2170,11 +2161,8 @@ export default function JsaHomeScreen() {
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        // Android with behavior=undefined was a no-op; the keyboard rode
-        // straight over the Next button on landscape tablets. `padding`
-        // works on both platforms with a ScrollView child — the bottom
-        // edge of the scrollable area lifts above the keyboard so the
-        // last form field + Next button are reachable.
+        // Android uses measured focus reveal for both resize and overlay keyboards.
+        enabled={Platform.OS === "ios"}
         behavior="padding"
         keyboardVerticalOffset={0}
       >
@@ -2370,14 +2358,11 @@ export default function JsaHomeScreen() {
         {/* === SCROLLABLE CONTENT (ScrollView starts here) === */}
         <ScrollView
           ref={scrollViewRef}
+          {...formKeyboard.scrollProps}
           style={styles.container}
           contentContainerStyle={[
             styles.scrollContent,
-            // Bump the bottom inset when the keyboard is up so the Next
-            // button can scroll above it (KeyboardAvoidingView shrinks the
-            // viewport; this gives ScrollView room to scroll the last
-            // field + Next into the visible area).
-            keyboardVisible && { paddingBottom: 420 },
+            formKeyboard.height > 0 && { paddingBottom: formKeyboard.height + 220 },
           ]}
           keyboardShouldPersistTaps="handled"
         >
@@ -2527,6 +2512,7 @@ export default function JsaHomeScreen() {
             <Text style={styles.label}>{t("Driver Name")}</Text>
             <TextInput
               ref={driverNameRef}
+              onFocus={() => formKeyboard.focus(driverNameRef.current, 0)}
               style={styles.input}
               placeholder={t("Enter driver name")}
               placeholderTextColor={colors.textMuted}
@@ -2544,6 +2530,7 @@ export default function JsaHomeScreen() {
             <Text style={styles.label}>{t("Truck #")}</Text>
             <TextInput
               ref={truckNumberRef}
+              onFocus={() => formKeyboard.focus(truckNumberRef.current, 0)}
               style={styles.input}
               placeholder={t("e.g. 105")}
               placeholderTextColor={colors.textMuted}
@@ -2562,6 +2549,7 @@ export default function JsaHomeScreen() {
             <Text style={styles.label}>{t("Date")}</Text>
             <TextInput
               ref={dateRef}
+              onFocus={() => formKeyboard.focus(dateRef.current, 0)}
               style={styles.input}
               placeholder="YYYY-MM-DD"
               placeholderTextColor={colors.textMuted}
@@ -2584,11 +2572,13 @@ export default function JsaHomeScreen() {
             <Text style={styles.label}>{t("Job Type")}</Text>
             <TextInput
               ref={jobActivityRef}
+              onFocus={() => formKeyboard.focus(jobActivityRef.current, 200)}
               style={styles.input}
               placeholder={t("e.g. Production Water, Service Work...")}
               placeholderTextColor={colors.textMuted}
               value={jobActivityName}
               onChangeText={handleJobTypeTextChange}
+              onBlur={()=>setTimeout(()=>setJobTypeSuggestions([]),200)}
               returnKeyType="next"
               blurOnSubmit={false}
               onSubmitEditing={() => {
@@ -2599,8 +2589,7 @@ export default function JsaHomeScreen() {
               importantForAutofill="no"
             />
             {jobTypeSuggestions.length > 0 && (
-              <View style={styles.autocompleteDropdown}>
-                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              <SearchResults>
                   {jobTypeSuggestions.map((jt, index) => (
                     <TouchableOpacity
                       key={jt}
@@ -2611,31 +2600,29 @@ export default function JsaHomeScreen() {
                       <Text style={styles.dropdownItemText}>{jt}</Text>
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
-              </View>
+                </SearchResults>
             )}
 
             <Text style={[styles.label, { marginTop: 14 }]}>Oil Company</Text>
             {!wellDataLoading && !wellDataError && driverOperators.length === 0 && (
               <Text style={{ color: colors.textMuted, marginBottom: 8 }}>No oil companies are set on your WB driver profile. Set up your customer list to enable well suggestions. You can still enter a location manually.</Text>
             )}
-            <View style={styles.companySearchField}>
-            <TextInput ref={oilCompanyRef} style={[styles.input, {borderWidth:0}]} placeholder="Search your oil companies" value={operatorQuery}
+            <View style={{}}>
+            <TextInput ref={oilCompanyRef} style={styles.input} placeholder="Search your oil companies" value={operatorQuery}
               returnKeyType="next" blurOnSubmit={false}
               onSubmitEditing={() => {
                 setOperatorPickerOpen(false);
                 wellNameRef.current?.focus();
               }}
               selectTextOnFocus autoCorrect={false} placeholderTextColor={colors.textMuted}
-              onFocus={() => setOperatorPickerOpen(true)}
+              onFocus={() => {setOperatorPickerOpen(true);formKeyboard.focus(oilCompanyRef.current,200);}}
               onBlur={() => setTimeout(() => setOperatorPickerOpen(false), 200)}
               onChangeText={text => {
                 setOperatorQuery(text); setOperatorPickerOpen(true);
                 if(text !== selectedOperator) { setSelectedOperator(''); setWellSuggestions([]); }
               }} />
             {operatorPickerOpen && driverOperators.some(name => name.toLowerCase().includes(operatorQuery.trim().toLowerCase())) && (
-              <View style={styles.companySearchResults}>
-                <ScrollView style={{maxHeight:220}} nestedScrollEnabled keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
+              <SearchResults>
                 {driverOperators.filter(name => name.toLowerCase().includes(operatorQuery.trim().toLowerCase())).map(name => (
                   <TouchableOpacity key={name} style={styles.dropdownItem} onPress={() => {
                     setSelectedOperator(name); setOperatorPickerOpen(false); setOperatorQuery(name);
@@ -2643,8 +2630,7 @@ export default function JsaHomeScreen() {
                     wellNameRef.current?.focus();
                   }}><Text style={{ color: colors.textDark }}>{name}</Text></TouchableOpacity>
                 ))}
-                </ScrollView>
-              </View>
+                </SearchResults>
             )}
             </View>
             <Text style={[styles.label, { marginTop: 14 }]}>{t("Well / Location")}</Text>
@@ -2670,7 +2656,7 @@ export default function JsaHomeScreen() {
                 handleWellTextChange(text);
                 setLocationInput(text);
               }}
-              onFocus={() => setWellFieldFocused(true)}
+              onFocus={() => {setWellFieldFocused(true);formKeyboard.focus(wellNameRef.current,200);}}
               onBlur={() => {
                 // Delay so tapping a suggestion item lands before the dropdown unmounts.
                 setTimeout(() => {
@@ -2693,12 +2679,7 @@ export default function JsaHomeScreen() {
             />
             {/* NDIC well suggestions */}
             {wellFieldFocused && wellSuggestions.length > 0 && (
-              <View style={styles.wellSuggestionsContainer}>
-                <ScrollView
-                  nestedScrollEnabled
-                  keyboardShouldPersistTaps="handled"
-                  style={styles.wellSuggestionsList}
-                >
+              <SearchResults>
                   {wellSuggestions.map((well, index) => (
                     <TouchableOpacity
                       key={`${well.api_no}-${index}`}
@@ -2713,8 +2694,7 @@ export default function JsaHomeScreen() {
                       <Text style={styles.dropdownItemSub}>{well.locationKind === 'swd' ? 'SWD • ' : ''}{well.operator}{well.county ? ` • ${well.county} Co.` : ''}</Text>
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
-              </View>
+                </SearchResults>
             )}
             {/* Favorite location suggestions (when no NDIC matches) */}
             {wellFieldFocused && wellSuggestions.length === 0 && (() => {
@@ -2723,8 +2703,7 @@ export default function JsaHomeScreen() {
                 ? favoriteLocations.filter((f) => f.toLowerCase().includes(trimmed) && f.toLowerCase() !== trimmed)
                 : [];
               return matches.length > 0 ? (
-                <View style={styles.autocompleteDropdown}>
-                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                <SearchResults>
                     {matches.map((fav, index) => (
                       <TouchableOpacity
                         key={fav}
@@ -2755,8 +2734,7 @@ export default function JsaHomeScreen() {
                         <Text style={styles.dropdownItemSub}>{t("Saved location")}</Text>
                       </TouchableOpacity>
                     ))}
-                  </ScrollView>
-                </View>
+                  </SearchResults>
               ) : null;
             })()}
             {/* Manual add button (no NDIC matches) */}
@@ -2833,6 +2811,7 @@ export default function JsaHomeScreen() {
             <Text style={styles.label}>{t("Pusher")}</Text>
             <TextInput
               ref={pusherRef}
+              onFocus={() => formKeyboard.focus(pusherRef.current, 0)}
               style={styles.input}
               placeholder={t("Pusher name")}
               placeholderTextColor={colors.textMuted}
@@ -2851,6 +2830,7 @@ export default function JsaHomeScreen() {
             <Text style={styles.label}>{t("Notes")}</Text>
             <TextInput
               ref={otherInfoRef}
+              onFocus={() => formKeyboard.focus(otherInfoRef.current, 0)}
               style={[styles.input, styles.multiline]}
               placeholder={t("Notes")}
               placeholderTextColor={colors.textMuted}
@@ -3448,7 +3428,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   dropdownItemText: {
-    fontSize: 14,
+    fontSize: 16,
     color: colors.textDark,
   },
   dropdownItemSub: {

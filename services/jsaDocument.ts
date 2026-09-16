@@ -1,3 +1,4 @@
+import {selectedAssessmentLabels} from './jsaAssessmentLabels';
 import {JSA_STEPS,PPE_ITEMS,PREPARED_FOR_WORK_ITEMS} from '../constants/jsaTemplate';
 const escape=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 export function signingTime(value:unknown):string {
@@ -12,7 +13,7 @@ export function jsaDocumentHtml(r:any,width?:3|4):string{
  const steps=Array.isArray(r.assessmentSteps)&&r.assessmentSteps.length?r.assessmentSteps:JSA_STEPS;
  const archived=Array.isArray(r.assessmentSteps)&&r.assessmentSteps.length>0;
  let ppe=r.ppeSelected || {};if(typeof ppe==='string'){try{ppe=JSON.parse(ppe);}catch{ppe={};}}ppe=ppe.selected || ppe;
- const selected=(map:any,labels:{id:string;label:string}[])=>Object.entries(map||{}).filter(([,v])=>v===true).map(([k])=>escape(labels.find(l=>l.id===k)?.label||k)).join(', ');
+ const selected=(map:any,labels:{id:string;label:string}[])=>selectedAssessmentLabels(map,labels).map(escape).join(', ');
  const signature=String(r.signatureImage||'');const image=/^data:image\/png;base64,[A-Za-z0-9+/=\s]+$/.test(signature)?signature:/^[A-Za-z0-9+/=\s]+$/.test(signature)&&signature?`data:image/png;base64,${signature}`:'';
  const locations=[...(r.wells||[]).map((w:any)=>typeof w==='string'?{name:w,jobType:r.jobActivityName}:w),...(r.locations||[]).filter((n:string)=>!(r.wells||[]).some((w:any)=>w.name===n)).map((name:string)=>({name,jobType:r.jobActivityName}))];
  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>

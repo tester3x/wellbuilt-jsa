@@ -1,3 +1,4 @@
+import {useFormKeyboard} from '../components/useFormKeyboard';
 import MoreMenu from '../components/MoreMenu';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -27,6 +28,7 @@ import { colors } from "../constants/colors";
 import {
     JSA_STEPS,
     PREPARED_FOR_WORK_ITEMS,
+    PPE_ITEMS,
 } from "../constants/jsaTemplate";
 import { STORAGE_KEYS } from "../constants/storageKeys";
 import { fetchDriverProfile } from "../services/driverAuth";
@@ -62,6 +64,8 @@ export default function SignoffScreen() {
   const { t } = useLanguage();
   const { emergencyContacts: themeEmergencyContacts, companyContacts: themeCompanyContacts, accent, jsaTemplate } = useTheme();
   const assessmentBundle=useMemo(()=>{try{return params.assessmentBundle?JSON.parse(params.assessmentBundle):null;}catch{return null;}},[params.assessmentBundle]);
+  const formKeyboard=useFormKeyboard();
+  const notesInputRef=useRef<TextInput>(null),nameInputRef=useRef<TextInput>(null);
   const preparedItemsList: {id:string;label:string}[] = assessmentBundle?.preparedItems ?? jsaTemplate?.preparedItems ?? PREPARED_FOR_WORK_ITEMS;
 
   // Contacts from company config (managed in Dashboard Settings > JSA)
@@ -496,6 +500,8 @@ export default function SignoffScreen() {
         : null;
 
       const payload = {
+        assessmentPpeItems: assessmentBundle?.ppeItems ?? jsaTemplate?.ppeItems ?? PPE_ITEMS,
+        assessmentPreparedItems: preparedItemsList,
         assessmentSteps: params.assessmentSteps ? JSON.parse(params.assessmentSteps) : [],
         ...(assessmentBundle ? {templateRefs:assessmentBundle.templateRefs,assessmentTemplates:assessmentBundle.templates,assessmentPpeItems:assessmentBundle.ppeItems,assessmentPreparedItems:assessmentBundle.preparedItems}:{}),
         id: (pendingComplete && governedActive && pendingComplete.requestId === governedCtx.requestId)
@@ -1591,8 +1597,10 @@ export default function SignoffScreen() {
         keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
       >
         <ScrollView
+          ref={formKeyboard.scrollRef}
+          {...formKeyboard.scrollProps}
           style={styles.container}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content,{paddingBottom:24+formKeyboard.height}]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="always"
         >
@@ -1648,6 +1656,8 @@ export default function SignoffScreen() {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>{t("Additional Notes")}</Text>
             <TextInput
+              ref={notesInputRef}
+              onFocus={()=>formKeyboard.focus(notesInputRef.current)}
               style={[styles.input, styles.multiline]}
               placeholder={t("Enter any notes")}
               placeholderTextColor={colors.textMuted}
@@ -1695,6 +1705,8 @@ export default function SignoffScreen() {
             {/* Only request a name when the verified profile has no legal name. */}
             {!governedPrintedName &&
             <TextInput
+              ref={nameInputRef}
+              onFocus={()=>formKeyboard.focus(nameInputRef.current)}
               style={[styles.input, { marginTop: 8 }]}
               placeholder={t("Print full name")}
               placeholderTextColor={colors.textMuted}
