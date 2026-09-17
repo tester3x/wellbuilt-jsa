@@ -440,6 +440,8 @@ const translations: Record<Language, Record<string, string>> = {
     "Open Bluetooth settings on your phone to pair the printer.": "Abra la configuración de Bluetooth del teléfono para emparejar la impresora.",
     "Open JSA settings": "Abrir configuración de JSA",
     "Open JSAs": "JSA abiertos",
+    "Current JSA": "JSA actual",
+    "Current JSAs": "JSAs actuales",
     "Open Printer settings to choose a printer.": "Abra la configuración de impresoras para elegir una impresora.",
     "Open standalone login": "Abrir inicio de sesión independiente",
     "Original": "Original",
