@@ -422,6 +422,15 @@ function AppContent() {
           if (href) router.replace(href as any);
           return;
         }
+        if (decision.action === 'resume_session') {
+          const { lastJsaScreen } = await import('../services/jsaScreenResume');
+          const href = await lastJsaScreen();
+          if (!cancelled) {
+            setSsoInProgress(false);
+            router.replace((href || '/(tabs)') as any);
+          }
+          return;
+        }
         if (decision.action === 'open_suite_authorize') {
           const Crypto = await import('expo-crypto');
           const attempt = await mintAttempt({
@@ -706,7 +715,14 @@ function AppContent() {
       // SSO login deep link — login.tsx handles the actual auth,
       // but we keep the overlay suppressed until auth state settles
       if (url.includes('login') && url.includes('hash=')) {
-        console.log('[JSA] Cold start Suite card launch — starting governed authorization');
+        const { loadUsableGovernedSession } = await import('../services/sso/jsaGovernedAuthLive');
+        if (await loadUsableGovernedSession()) {
+          const { lastJsaScreen } = await import('../services/jsaScreenResume');
+          router.replace(((await lastJsaScreen()) || '/(tabs)') as any);
+          setSsoInProgress(false);
+          return;
+        }
+        console.log('[JSA] Cold start Suite card launch without a usable session — starting governed authorization');
         const { beginSuiteCardAuthorization } = await import('../services/sso/jsaSuiteCardLive');
         const result = await beginSuiteCardAuthorization();
         if (result === 'usable') router.replace('/(tabs)');

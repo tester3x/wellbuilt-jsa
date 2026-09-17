@@ -13,48 +13,24 @@
 // failure 4/25/2026: this was the primary entry point users actually
 // hit, but only /start captured shiftId. Now both routes do.
 
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { beginSuiteCardAuthorization } from '../services/sso/jsaSuiteCardLive';
 import { useLanguage } from './contexts/LanguageContext';
 
 export default function SSOLoginRoute() {
-  const router = useRouter();
   const { t } = useLanguage();
-  const params = useLocalSearchParams<{
-    hash?: string;
-    name?: string;
-    truck?: string;
-    trailer?: string;
-    shiftId?: string;
-  }>();
   const [status, setStatus] = useState<'validating' | 'error'>('validating');
-  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    handleSSO();
+    // Authorization is owned by the root deep-link handler. Keeping a
+    // second owner here caused Android's retained task intent to start a
+    // fresh Suite authorization every time the process reopened. If the
+    // root cannot settle the route, stop presenting an endless spinner.
+    const timeout = setTimeout(() => setStatus('error'), 15000);
+    return () => clearTimeout(timeout);
   }, []);
-
-  const handleSSO = async () => {
-    console.log('[JSA-SSO] Starting governed Suite authorization');
-
-    try {
-      // hash/name/truck/trailer/shiftId are never consumed. The installed
-      // governed session and canonical shift authority are server-authored.
-      void params;
-      const result = await beginSuiteCardAuthorization();
-      if (result === 'usable') router.replace('/(tabs)');
-      else if (result === 'fail_closed') {
-        setStatus('error');
-        setErrorMsg('Secure WellBuilt sign-in could not be verified. Return to WellBuilt and try again.');
-      }
-    } catch (error: any) {
-      console.error('[JSA-SSO] Validation error:', error);
-      setStatus('error');
-      setErrorMsg('Secure WellBuilt sign-in could not be verified. Return to WellBuilt and try again.');
-    }
-  };
+  // hash/name/truck/trailer/shiftId are never consumed. The installed
+  // governed session and canonical shift authority are server-authored.
 
   return (
     <View style={styles.container}>
@@ -65,10 +41,7 @@ export default function SSOLoginRoute() {
         </>
       )}
       {status === 'error' && (
-        <>
-          <Text style={styles.errorText}>{t(errorMsg)}</Text>
-          <Text style={styles.subText}>{t('Redirecting...')}</Text>
-        </>
+        <Text style={styles.errorText}>{t('Secure WellBuilt sign-in could not be verified. Return to WellBuilt and try again.')}</Text>
       )}
     </View>
   );
@@ -93,10 +66,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 8,
-  },
-  subText: {
-    color: '#6B7280',
-    fontSize: 14,
-    textAlign: 'center',
   },
 });

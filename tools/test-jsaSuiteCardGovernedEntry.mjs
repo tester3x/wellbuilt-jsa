@@ -36,6 +36,10 @@ const runtime = source('services/sso/jsaRuntime.ts');
 check('legacy Suite card identity fields are ignored and never sent to authentication',
   !/ssoLogin\(/.test(layout) && !/ssoLogin\(/.test(login)
   && /hash\/name\/truck\/trailer\/shiftId are never consumed/.test(login));
+check('retained Android login task resumes an already-usable JSA session',
+  /url\.includes\('login'\)[\s\S]{0,500}loadUsableGovernedSession[\s\S]{0,500}lastJsaScreen[\s\S]{0,300}setSsoInProgress\(false\)/.test(layout));
+check('login route does not start a competing authorization and cannot spin forever',
+  !/beginSuiteCardAuthorization/.test(login) && /setTimeout\(\(\) => setStatus\('error'\), 15000\)/.test(login));
 check('Suite card uses wellbuilt-jsa PKCE authorize URL',
   /buildAuthorizeUrl\(attempt\)/.test(live) && /mintAttempt/.test(live));
 check('ordinary company-authorized access exposes standalone creation without a shift',
