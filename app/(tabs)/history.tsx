@@ -78,6 +78,15 @@ function formatDate(isoString: string, locale: string, t: (text: string) => stri
   }
 }
 
+function openRecordsFirst(records: HistoryItem[]): HistoryItem[] {
+  return [...records].sort((left, right) => {
+    const leftOpen = (left as any).workflow === 'standalone' && (left as any).state === 'open';
+    const rightOpen = (right as any).workflow === 'standalone' && (right as any).state === 'open';
+    if (leftOpen !== rightOpen) return leftOpen ? -1 : 1;
+    return new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime();
+  });
+}
+
 export default function HistoryTabScreen() {
   const router = useRouter();
   const { t, lang } = useLanguage();
@@ -92,12 +101,12 @@ export default function HistoryTabScreen() {
     try {
       setError(null);
       const { ownJsaRecords } = await import('../../services/jsaRecord');
-      setHistory(await ownJsaRecords());
+      setHistory(openRecordsFirst(await ownJsaRecords()));
       // An absent cache is precisely when the server must still be checked.
       try {
-        setHistory(await (await import('../../services/standaloneJsa')).syncStandaloneHistory());
+        setHistory(openRecordsFirst(await (await import('../../services/standaloneJsa')).syncStandaloneHistory()));
       } catch {
-        setHistory(await ownJsaRecords());
+        setHistory(openRecordsFirst(await ownJsaRecords()));
         setError(t('Could not refresh JSAs. Showing records available on this phone. Try again when connected.'));
       }
     } catch (err) {
@@ -166,10 +175,15 @@ export default function HistoryTabScreen() {
 
     return (
       <TouchableOpacity
-        style={styles.card}
+        style={[styles.card, openStandalone && styles.activeCard]}
         onPress={() => handleViewDetails(item)}
         activeOpacity={0.7}
       >
+        {openStandalone && (
+          <View style={styles.activeBadge} accessibilityRole="text">
+            <Text style={styles.activeBadgeText}>{t('Active JSA')}</Text>
+          </View>
+        )}
         <View style={styles.cardTop}>
           <View style={{ flex: 1 }}>
             <Text style={styles.cardWells} numberOfLines={2}>{wellNames}</Text>
@@ -334,6 +348,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     ...cardShadow,
+  },
+  activeCard: {
+    borderWidth: 2,
+    borderColor: colors.success,
+  },
+  activeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#E6F5EA',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: 9,
+  },
+  activeBadgeText: {
+    color: '#176B2C',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   cardTop: {
     flexDirection: 'row',

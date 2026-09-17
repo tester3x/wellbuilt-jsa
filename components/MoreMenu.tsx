@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../app/contexts/LanguageContext';
 import AppSwitcher from './AppSwitcher';
 import { colors } from '../constants/colors';
@@ -21,13 +22,13 @@ export default function MoreMenu({ placement = 'header' }: { placement?: 'header
     <Modal transparent visible={visible} animationType="fade" onRequestClose={() => setVisible(false)}>
       <Pressable style={styles.backdrop} accessibilityLabel={t('Close menu')} onPress={() => setVisible(false)}>
         <View style={[styles.menu, placement === 'bottom' ? { bottom: Math.max(insets.bottom, 8) + 64 } : { top: insets.top + 52 }]}>
-          {([{ label: 'Open JSAs', route: '/open-jsas' }, { label: 'Job Details', route: '/(tabs)' }, { label: 'Saved JSAs', route: '/(tabs)/history' },
-            { label: 'Settings', route: '/settings' }, { label: 'Switcher', route: '/switcher' }] as const).map(item =>
+          {([{ label: 'Open JSAs', route: '/open-jsas', icon: 'shield-checkmark-outline' }, { label: 'New JSA', route: '/(tabs)', icon: 'add-circle-outline' }, { label: 'Saved JSAs', route: '/(tabs)/history', icon: 'time-outline' },
+            { label: 'Settings', route: '/settings', icon: 'settings-outline' }, { label: 'Switcher', route: '/switcher', icon: 'apps-outline' }] as const).map(item =>
             <Pressable key={item.route} accessibilityRole="button" style={styles.item} onPress={() => {
               setVisible(false);
               if (item.label === 'Switcher') setSwitcherVisible(true);
               else router.push(item.route as Href);
-            }}><Text style={styles.label}>{t(item.label)}</Text></Pressable>
+            }}><Ionicons name={item.icon} size={20} color={colors.primaryDark}/><Text style={styles.label}>{t(item.label)}</Text></Pressable>
           )}
         </View>
       </Pressable>
@@ -40,8 +41,8 @@ const styles = StyleSheet.create({
   trigger: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   dots: { color: colors.textDark, fontSize: 20, fontWeight: '800', letterSpacing: 2 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.18)' },
-  menu: { position: 'absolute', right: 16, width: 208, backgroundColor: colors.card,
-    borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, elevation: 8 },
-  item: { minHeight: 52, justifyContent: 'center', paddingHorizontal: 18 },
+  menu: { position: 'absolute', right: 12, width: 190, backgroundColor: colors.card,
+    borderRadius: 14, borderWidth: 1, borderColor: colors.border, paddingVertical: 6, elevation: 8 },
+  item: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 12, paddingHorizontal: 16 },
   label: { color: colors.textDark, fontSize: 16, fontWeight: '600', textAlign: 'right' },
 });

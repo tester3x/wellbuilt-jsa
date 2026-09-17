@@ -19,6 +19,8 @@ const translations: Record<Language, Record<string, string>> = {
     "Job Safety Analysis": "Análisis de Seguridad de Trabajo",
     "Digital JSA": "JSA Digital",
     "Job Details": "Detalles del Trabajo",
+    "New JSA": "Nuevo JSA",
+    "Active JSA": "JSA activo",
     "Fill out the basic info for this load.": "Complete la información básica para esta carga.",
     "Fill out the basic info for this job.": "Complete la información básica para este trabajo.",
     "Driver Name": "Nombre del Conductor",

@@ -1,8 +1,7 @@
 import { Tabs } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Keyboard, Pressable, Text, View } from 'react-native';
+import { Keyboard, Pressable, Text } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
 import MoreMenu from '@/components/MoreMenu';
 import BottomActionBar from '@/components/BottomActionBar';
@@ -13,7 +12,6 @@ import { useTheme } from '../contexts/ThemeContext';
 function BottomBar({ state, navigation }: BottomTabBarProps) {
   const { t } = useLanguage();
   const { accent } = useTheme();
-  const insets = useSafeAreaInsets();
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardOpen(true));
@@ -23,7 +21,7 @@ function BottomBar({ state, navigation }: BottomTabBarProps) {
   if (keyboardOpen) return null;
   return <BottomActionBar>
     {([{ name: 'history', label: 'Saved JSAs', icon: 'clock.fill' },
-      { name: 'index', label: 'Job Details', icon: 'house.fill' }] as const).map(item => {
+      { name: 'index', label: 'New JSA', icon: 'plus.circle.fill' }] as const).map(item => {
       const route = state.routes.find(route => route.name === item.name)!;
       const selected = state.routes[state.index].key === route.key;
       const color = selected ? accent : colors.textMuted;
