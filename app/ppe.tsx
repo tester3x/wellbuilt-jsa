@@ -460,7 +460,7 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.glassSurface,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
@@ -513,6 +513,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 14,
     color: colors.textDark,
+    backgroundColor: colors.inputSurface,
   },
   removeButton: {
     width: 24,

@@ -12,6 +12,7 @@ import {locationAssessmentFields,selectedAssessmentLabels} from '../services/jsa
 import SearchResults,{SearchResult} from '../components/SearchResults';
 import {useFormKeyboard} from '../components/useFormKeyboard';
 import {useLanguage} from './contexts/LanguageContext';
+import {colors} from '../constants/colors';
 
 export default function AddLocation(){
  const {id}=useLocalSearchParams<{id:string}>(),router=useRouter(),{accent}=useTheme(),{t}=useLanguage(),keyboard=useFormKeyboard();
@@ -79,4 +80,4 @@ export default function AddLocation(){
  </>}
  </ScrollView></View>;
 }
-const styles=StyleSheet.create({content:{padding:16},title:{fontSize:22,fontWeight:'700'},help:{fontSize:14,lineHeight:20,marginVertical:10,color:'#555'},label:{fontSize:15,fontWeight:'600',marginTop:14,marginBottom:6},input:{backgroundColor:'white',borderColor:'#ccc',borderWidth:1,borderRadius:8,padding:12,fontSize:17},option:{paddingVertical:12,marginTop:6},button:{padding:16,borderRadius:10,marginTop:8},buttonText:{color:'white',textAlign:'center',fontWeight:'700',fontSize:17},error:{color:'#a32626',marginBottom:12}});
+const styles=StyleSheet.create({content:{padding:16},title:{fontSize:22,fontWeight:'700'},help:{fontSize:14,lineHeight:20,marginVertical:10,color:'#555'},label:{fontSize:15,fontWeight:'600',marginTop:14,marginBottom:6},input:{backgroundColor:colors.inputSurface,borderColor:'#ccc',borderWidth:1,borderRadius:8,padding:12,fontSize:17},option:{paddingVertical:12,marginTop:6},button:{padding:16,borderRadius:10,marginTop:8},buttonText:{color:'white',textAlign:'center',fontWeight:'700',fontSize:17},error:{color:'#a32626',marginBottom:12}});

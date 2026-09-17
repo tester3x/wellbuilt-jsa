@@ -10,6 +10,7 @@ export const colors = {
   background: "#F5F5F5",
   card: "#FFFFFF",
   glassSurface: "rgba(255, 255, 255, 0.72)",
+  inputSurface: "rgba(255, 255, 255, 0.35)",
 
   // Text
   textDark: "#111111",

@@ -469,7 +469,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   input: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.inputSurface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 8,

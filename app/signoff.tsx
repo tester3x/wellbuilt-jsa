@@ -1988,7 +1988,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     color: colors.textDark,
-    backgroundColor: colors.card,
+    backgroundColor: colors.inputSurface,
   },
   multiline: {
     textAlignVertical: "top",

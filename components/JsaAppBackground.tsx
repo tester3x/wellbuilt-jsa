@@ -13,13 +13,14 @@ const sources: Record<JsaBackgroundPackage, number> = {
 export default function JsaAppBackground() {
   const { backgroundPackageId } = useTheme();
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <Image source={sources[backgroundPackageId]} style={StyleSheet.absoluteFill} resizeMode="cover" />
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.frame]}>
+      <Image source={sources[backgroundPackageId]} style={StyleSheet.absoluteFill} resizeMode="contain" />
       <View style={[StyleSheet.absoluteFill, styles.wash]} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  frame: { backgroundColor: '#dfe7e7' },
   wash: { backgroundColor: 'rgba(245,248,248,0.22)' },
 });

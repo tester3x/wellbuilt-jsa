@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     color: colors.textDark,
-    backgroundColor: colors.card,
+    backgroundColor: colors.inputSurface,
   },
   sigBtn: {
     borderWidth: 2,

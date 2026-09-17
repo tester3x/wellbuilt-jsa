@@ -3172,7 +3172,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 14,
     color: colors.textDark,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.inputSurface,
   },
   multiline: {
     minHeight: 80,
@@ -3413,7 +3413,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 8,
-    backgroundColor: '#FFF',
+    backgroundColor: colors.inputSurface,
     overflow: 'hidden',
   },
   companySearchResults: {
