@@ -106,6 +106,7 @@ check('bad credentials before installation leave a pre-existing governed identit
 
 const ctx = read('app/contexts/AuthContext.tsx');
 const driverAuth = read('services/driverAuth.ts');
+const registrationContract = read('services/jsaRegistrationContract.ts');
 const live = read('services/sso/jsaManualLoginLive.ts');
 const cleanupContract = read('services/sso/jsaOwnedIdentityCleanup.ts');
 const login = read('components/LoginScreen.tsx');
@@ -122,9 +123,10 @@ check('manual and rollback cleanup share the centralized full ownership prefligh
     && /session\.driverId !== owner\.driverId/.test(cleanupContract)
     && /session\.companyId !== owner\.companyId/.test(cleanupContract)
     && /baselineOwned\(owner\)/.test(cleanupContract));
-check('independent registration is clearly unavailable and cannot submit',
-  /Independent registration is temporarily unavailable/.test(login)
-    && !/registerStandalone|handleStandaloneRegister/.test(ctx + login + driverAuth));
+check('employee registration uses governed companyCode and cannot auto-approve',
+  /companyCode/.test(registrationContract)
+    && /JSA_REGISTRATION_SOURCE\s*=\s*'wbjsa'/.test(registrationContract)
+    && !/registerStandalone|handleStandaloneRegister/.test(ctx + login + driverAuth + registrationContract));
 
 function ownedFixture(overrides = {}) {
   const owner = { generation: 'GA', uid: 'uA', driverId: 'dA', companyId: 'cA' };

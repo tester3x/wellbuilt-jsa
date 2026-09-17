@@ -10,6 +10,7 @@ import {
   checkRegistrationStatus,
   clearPendingRegistration,
 } from "../../services/driverAuth";
+import { createRegistrationPollGuard } from "../../services/registrationPollGuard";
 
 export interface GovernedDriverPresentation {
   authKind: 'governed';
@@ -29,7 +30,6 @@ export type AuthMode =
   | "verifying"
   | "registering"
   | "pending"
-  | "approved"
   | "rejected"
   | "error"
   | "authenticated";
@@ -49,9 +49,7 @@ interface AuthContextValue {
   /** Sign in with name + passcode */
   login: (displayName: string, passcode: string) => Promise<boolean>;
   /** Register a new driver (company flow — pending approval) */
-  register: (displayName: string, passcode: string, companyName?: string, legalName?: string) => Promise<boolean>;
-  /** After approval, return the driver to normal login. Never mints a session. */
-  completeReg: () => Promise<boolean>;
+  register: (displayName: string, passcode: string, companyCode: string, legalName?: string) => Promise<boolean>;
   /** Cancel pending registration */
   cancelRegistration: () => Promise<void>;
   /** Sign out */
@@ -77,6 +75,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const loginAttemptRef = React.useRef(0);
   const identityReadRef = React.useRef(0);
+  const registrationAttemptRef = React.useRef(0);
+  const registrationPollGuardRef = React.useRef(createRegistrationPollGuard());
 
   const governedPresentationSession = (governed: {
     uid: string; generation: string; driverId: string; companyId: string;
@@ -116,34 +116,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Auto-poll for registration approval when pending
   useEffect(() => {
-    if (mode === "pending") {
-      pollRef.current = setInterval(async () => {
-        try {
-          const status = await checkRegistrationStatus();
-          if (status === "approved") {
-            if (pollRef.current) clearInterval(pollRef.current);
-            // Governed pending approval never mints a local session.
-            setMode("login");
-            setError("Registration approved. Please sign in.");
-          } else if (status === "rejected") {
-            if (pollRef.current) clearInterval(pollRef.current);
-            setMode("rejected");
-          }
-        } catch (err) {
+    const guard = registrationPollGuardRef.current;
+    if (mode !== "pending") return;
+
+    const generation = guard.begin();
+    const stopTimer = () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
+    };
+    const poll = async () => {
+      if (!guard.tryStart(generation)) return;
+      try {
+        const status = await checkRegistrationStatus();
+        if (!guard.isCurrent(generation)) return;
+        if (status === "approved") {
+          // Governed pending approval never mints a local session.
+          await clearPendingRegistration();
+          if (!guard.isCurrent(generation)) return;
+          stopTimer();
+          setPendingName("");
+          setMode("login");
+          setError("Registration approved. Please sign in.");
+        } else if (status === "rejected") {
+          stopTimer();
+          setMode("rejected");
+        } else if (status === "none") {
+          await clearPendingRegistration();
+          if (!guard.isCurrent(generation)) return;
+          stopTimer();
+          setPendingName("");
+          setMode("login");
+          setError("Registration request expired. Please register again.");
+        }
+      } catch (err) {
+        if (guard.isCurrent(generation)) {
           console.log("[AuthContext-JSA] Poll error (will retry):", err);
         }
-      }, 5000);
+      } finally {
+        guard.finish(generation);
+      }
+    };
+    pollRef.current = setInterval(() => { void poll(); }, 5000);
 
-      return () => {
-        if (pollRef.current) {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-        }
-      };
-    }
+    return () => {
+      stopTimer();
+      guard.invalidate();
+    };
   }, [mode]);
 
   const checkInitialState = async () => {
+    registrationAttemptRef.current++;
+    registrationPollGuardRef.current.invalidate();
     const read = ++identityReadRef.current;
     let current = () => read === identityReadRef.current;
     setSession(null);
@@ -202,10 +225,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const status = await checkRegistrationStatus();
         if (!current()) return;
         if (status === "approved") {
+          await clearPendingRegistration();
+          if (!current()) return;
+          setPendingName("");
           setMode("login");
           setError("Registration approved. Please sign in.");
         } else if (status === "rejected") {
           setMode("rejected");
+        } else if (status === "none") {
+          await clearPendingRegistration();
+          if (!current()) return;
+          setPendingName("");
+          setMode("login");
+          setError("Registration request expired. Please register again.");
         } else {
           setMode("pending");
         }
@@ -223,6 +255,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = useCallback(async (displayName: string, passcode: string): Promise<boolean> => {
+    registrationAttemptRef.current++;
+    registrationPollGuardRef.current.invalidate();
     identityReadRef.current++;
     const attempt = ++loginAttemptRef.current;
     setMode("verifying");
@@ -257,7 +291,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const register = useCallback(async (displayName: string, passcode: string, companyName?: string, legalName?: string): Promise<boolean> => {
+  const register = useCallback(async (displayName: string, passcode: string, companyCode: string, legalName?: string): Promise<boolean> => {
+    registrationPollGuardRef.current.invalidate();
+    const registrationAttempt = ++registrationAttemptRef.current;
+    const identityRead = ++identityReadRef.current;
+    const isCurrent = () => registrationAttempt === registrationAttemptRef.current
+      && identityRead === identityReadRef.current;
     setMode("registering");
     setError("");
 
@@ -265,9 +304,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await submitRegistration({
         passcode: passcode.trim(),
         displayName: displayName.trim(),
-        companyName: companyName?.trim() || undefined,
+        companyCode: companyCode.trim().toUpperCase(),
         legalName: legalName?.trim() || undefined,
       });
+      if (!isCurrent()) return false;
 
       if (result.success) {
         setPendingName(displayName.trim());
@@ -279,6 +319,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
     } catch (err) {
+      if (!isCurrent()) return false;
       console.error("[AuthContext-JSA] Registration error:", err);
       setMode("register");
       setError("Connection error. Please try again.");
@@ -286,19 +327,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const completeReg = useCallback(async (): Promise<boolean> => {
-    setMode("login");
-    setError("Registration approved. Please sign in.");
-    return false;
-  }, []);
-
   const cancelRegistration = useCallback(async () => {
-    await clearPendingRegistration();
+    const registrationAttempt = ++registrationAttemptRef.current;
+    const identityRead = identityReadRef.current;
+    registrationPollGuardRef.current.invalidate();
     setPendingName("");
+    setError("");
     setMode("login");
+    try {
+      await clearPendingRegistration();
+    } catch {
+      if (registrationAttempt === registrationAttemptRef.current
+        && identityRead === identityReadRef.current) {
+        setError("Pending registration could not be cleared. Sign in or try again.");
+      }
+    }
   }, []);
 
   const logout = useCallback(async () => {
+    registrationAttemptRef.current++;
+    registrationPollGuardRef.current.invalidate();
     identityReadRef.current++;
     loginAttemptRef.current++;
     const { logoutJsaCompletely } = await import("../../services/logoutJsaCompletely");
@@ -343,7 +391,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     pendingName,
     login,
     register,
-    completeReg,
     cancelRegistration,
     logout,
     switchToRegister,

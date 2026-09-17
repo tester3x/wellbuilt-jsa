@@ -6,6 +6,11 @@
 // Pending registration state is an opaque server-issued id only.
 
 import * as SecureStore from "expo-secure-store";
+import {
+  buildJsaRegistrationPayload,
+  pendingRegistrationIdFromResponse,
+  type JsaRegistrationInput,
+} from './jsaRegistrationContract';
 // Legacy credential sessions are retired. Authentication state is restored only
 // from an exact governed Firebase/session/claims/baseline binding.
 // --- Profile / Vehicle Info ---
@@ -102,35 +107,29 @@ async function requestPendingRegistration(params: {
   passcode: string;
   displayName: string;
   legalName?: string;
-  companyName?: string;
+  companyCode: string;
 }): Promise<{ success: boolean; pending?: boolean; pendingId?: string; error?: string }> {
   if (params.passcode.length < JSA_PASSCODE_MIN_LEN || params.passcode.length > 128) {
     return { success: false, error: 'Passcode must be 6–128 characters' };
   }
+  if (!params.companyCode.trim()) {
+    return { success: false, error: 'Company join code is required' };
+  }
 
   try {
-    const data: Record<string, unknown> = {
-      displayName: params.displayName,
-      passcode: params.passcode,
-      source: 'wbjsa',
-    };
-    if (params.legalName) data.legalName = params.legalName;
-    if (params.companyName) data.companyName = params.companyName;
+    const data = buildJsaRegistrationPayload(params);
 
-    const result = await callHttpsFunction<{ pendingId?: string }>('requestDriverRegistration', data);
-    const pendingId = typeof result?.pendingId === 'string' ? result.pendingId : '';
+    const result = await callHttpsFunction<{ pendingId?: string; status?: string }>(
+      'requestDriverRegistration',
+      data,
+    );
+    const pendingId = pendingRegistrationIdFromResponse(result);
     if (!pendingId) {
       return { success: false, error: 'Registration did not return a pending request' };
     }
     await SecureStore.setItemAsync('jsa_pendingSecureId', pendingId);
     await SecureStore.setItemAsync('jsa_pendingDisplayName', params.displayName);
     await SecureStore.setItemAsync('jsa_pendingRegistrationTime', Date.now().toString());
-    if (params.legalName) {
-      await SecureStore.setItemAsync('jsa_pendingLegalName', params.legalName);
-    }
-    if (params.companyName) {
-      await SecureStore.setItemAsync('jsa_pendingCompanyName', params.companyName);
-    }
     return { success: true, pending: true, pendingId };
   } catch (error: unknown) {
     console.error('[DriverAuth-JSA] Pending registration error:', classifyRegistrationError(error));
@@ -142,16 +141,13 @@ async function requestPendingRegistration(params: {
  * Request a pending company registration through requestDriverRegistration.
  * Does not write drivers/pending from the client and does not store a hash.
  */
-export const submitRegistration = async (params: {
-  passcode: string;
-  displayName: string;
-  companyName?: string;
-  legalName?: string;
-}): Promise<{ success: boolean; pending?: boolean; pendingId?: string; error?: string }> => {
+export const submitRegistration = async (
+  params: JsaRegistrationInput,
+): Promise<{ success: boolean; pending?: boolean; pendingId?: string; error?: string }> => {
   return requestPendingRegistration({
     passcode: params.passcode,
     displayName: params.displayName,
-    companyName: params.companyName,
+    companyCode: params.companyCode,
     legalName: params.legalName,
   });
 };
@@ -165,14 +161,12 @@ export const getSecurePendingId = async (): Promise<string | null> => {
 
 export const getPendingRegistration = async (): Promise<{
   displayName: string;
-  companyName?: string;
 } | null> => {
   const displayName = await SecureStore.getItemAsync("jsa_pendingDisplayName");
-  const companyName = await SecureStore.getItemAsync("jsa_pendingCompanyName");
   const secureId = await SecureStore.getItemAsync("jsa_pendingSecureId");
 
   if (secureId && displayName) {
-    return { displayName, companyName: companyName || undefined };
+    return { displayName };
   }
   return null;
 };
@@ -201,21 +195,6 @@ export const checkRegistrationStatus = async (): Promise<
     console.error('[DriverAuth-JSA] Error checking secure pending status:', error);
     return 'pending';
   }
-};
-
-/**
- * Approval never mints a local hash session. The driver must sign in normally.
- */
-export const completeRegistration = async (): Promise<{
-  success: boolean;
-  driverId?: string;
-  displayName?: string;
-  error?: string;
-}> => {
-  return {
-    success: false,
-    error: 'Registration approved. Please sign in.',
-  };
 };
 
 /**

@@ -48,8 +48,8 @@ const frozen = {
   'services/sso/jsaArtifactCallables.ts': '127f909e5d7b38a5b830152c2d66f0e1919dfa9adc132a92bef05e1cdbbb8a32',
   'services/sso/jsaRequestCallables.ts': '4dd637a900d74f653272402d8cbd7836d34ebf386bfc2cee1d158a9360fb542c',
   'services/sso/jsaRequestLifecycle.ts': '04978ae1fa34510c6a92a917e6c6d0fee71203fd0cf49795ae429df887042e02',
-    // Approved presentation refresh; behavior/race coverage is in test-jsaAuthPresentationRefresh.
-    'app/contexts/AuthContext.tsx': 'c14b8b0ce532dea37ed2bb903dd43183319bf1991c2fea15d1685a70aa0a6e69',
+    // Presentation and registration races are covered in test-jsaAuthPresentationRefresh.
+    'app/contexts/AuthContext.tsx': '2844f5b207eaad224546cae0157bc750965b685b16227640a934e7927ad05262',
 };
 for (const [rel, want] of Object.entries(frozen)) {
   const got = sha256(rel);

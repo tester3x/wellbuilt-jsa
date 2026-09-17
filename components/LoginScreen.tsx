@@ -1,10 +1,11 @@
 // app/login.tsx
 // Login / Registration screen for WB JSA
 // Manual sign-in uses authenticateDriver → Firebase Auth → governed JSA session.
-// Supports: login, register, pending approval, approved, rejected, error states
+// Supports: login, register, pending approval, rejected, and error states.
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
+  BackHandler,
   View,
   Text,
   TextInput,
@@ -19,8 +20,10 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { colors } from "../constants/colors";
-import { useAuth, AuthMode } from "../app/contexts/AuthContext";
+import { useAuth } from "../app/contexts/AuthContext";
 import { useLanguage } from "../app/contexts/LanguageContext";
+import { registrationBackAction } from './registrationBack';
+import { uppercaseCompanyCodeInput } from '../services/jsaRegistrationContract';
 
 // Passcode validation
 const VALID_PASSCODE_REGEX = /^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]+$/;
@@ -41,7 +44,6 @@ export default function LoginScreen() {
     pendingName,
     login,
     register,
-    completeReg,
     cancelRegistration,
     switchToRegister,
     switchToLogin,
@@ -51,23 +53,20 @@ export default function LoginScreen() {
   const [displayName, setDisplayName] = useState("");
   const [legalName, setLegalName] = useState("");
   const [passcode, setPasscode] = useState("");
-  const [companyName, setCompanyName] = useState("");
+  const [companyCode, setCompanyCode] = useState("");
   const [showPasscode, setShowPasscode] = useState(false);
   const [passcodeError, setPasscodeError] = useState("");
 
   const legalNameRef = useRef<TextInput>(null);
   const passcodeRef = useRef<TextInput>(null);
   const companyRef = useRef<TextInput>(null);
+  const keyboardVisibleRef = useRef(false);
 
   // Validate passcode as user types (register mode only)
   useEffect(() => {
     if (mode === "register" && passcode.length > 0) {
       const validation = validatePasscode(passcode);
-      if (!validation.valid && validation.error?.includes("invalid characters")) {
-        setPasscodeError(validation.error);
-      } else {
-        setPasscodeError("");
-      }
+      setPasscodeError(validation.valid ? "" : validation.error || "");
     } else {
       setPasscodeError("");
     }
@@ -75,7 +74,7 @@ export default function LoginScreen() {
 
   const canSubmit =
     mode === "register"
-      ? !!(passcode.trim() && displayName.trim() && legalName.trim() && companyName.trim() && !passcodeError)
+      ? !!(validatePasscode(passcode).valid && displayName.trim() && companyCode.trim())
       : !!(passcode.trim() && displayName.trim() && !passcodeError);
 
   const handleLogin = async () => {
@@ -85,26 +84,76 @@ export default function LoginScreen() {
 
   const handleRegister = async () => {
     const validation = validatePasscode(passcode);
-    if (!validation.valid) return;
-    if (!displayName.trim() || !legalName.trim() || !companyName.trim()) return;
-    await register(displayName, passcode, companyName, legalName);
+    if (!validation.valid) {
+      setPasscodeError(validation.error || "");
+      return;
+    }
+    if (!displayName.trim() || !companyCode.trim()) return;
+    if (await register(displayName, passcode, companyCode, legalName)) {
+      setPasscode("");
+      setLegalName("");
+      setCompanyCode("");
+      setShowPasscode(false);
+    }
   };
 
-  const handleSwitchToRegister = () => {
+  const handleSwitchToRegister = useCallback(() => {
     setPasscode("");
     setLegalName("");
-    setCompanyName("");
+    setCompanyCode("");
     setShowPasscode(false);
     switchToRegister();
-  };
+  }, [switchToRegister]);
 
-  const handleSwitchToLogin = () => {
+  const handleSwitchToLogin = useCallback(() => {
+    Keyboard.dismiss();
     setPasscode("");
     setLegalName("");
-    setCompanyName("");
+    setCompanyCode("");
     setShowPasscode(false);
     switchToLogin();
-  };
+  }, [switchToLogin]);
+
+  const handleCancelRegistration = useCallback(() => {
+    Keyboard.dismiss();
+    setPasscode("");
+    setLegalName("");
+    setCompanyCode("");
+    setShowPasscode(false);
+    void cancelRegistration();
+  }, [cancelRegistration]);
+
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', () => {
+      keyboardVisibleRef.current = true;
+    });
+    const hidden = Keyboard.addListener('keyboardDidHide', () => {
+      keyboardVisibleRef.current = false;
+    });
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || (mode !== 'register' && mode !== 'pending')) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      const action = registrationBackAction(mode, keyboardVisibleRef.current);
+      if (action === 'dismiss_keyboard') {
+        Keyboard.dismiss();
+        keyboardVisibleRef.current = false;
+        return true;
+      }
+      if (action === 'return_to_sign_in') {
+        if (mode === 'pending') handleCancelRegistration();
+        else handleSwitchToLogin();
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [handleCancelRegistration, handleSwitchToLogin, mode]);
 
   // --- Loading / Checking state ---
   if (mode === "checking") {
@@ -139,24 +188,8 @@ export default function LoginScreen() {
         <Text style={styles.statusSubtext}>{t('An administrator will review your request shortly.')}</Text>
         <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 20 }} />
         <Text style={[styles.statusSubtext, { marginTop: 8 }]}>{t('Checking for approval...')}</Text>
-        <TouchableOpacity style={styles.secondaryButton} onPress={cancelRegistration}>
-          <Text style={styles.secondaryButtonText}>{t('Cancel registration')}</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  // --- Approved ---
-  if (mode === "approved") {
-    return (
-      <View style={styles.centerContainer}>
-        <MaterialCommunityIcons name="check-circle-outline" size={64} color={colors.success} />
-        <Text style={styles.statusTitle}>{t('Registration Approved!')}</Text>
-        <Text style={styles.statusMessage}>
-          {t('Welcome, {name}! Your registration has been approved.', { name: pendingName })}
-        </Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={completeReg}>
-          <Text style={styles.primaryButtonText}>{t('Continue to App')}</Text>
+        <TouchableOpacity style={styles.secondaryButton} onPress={handleCancelRegistration}>
+          <Text style={styles.secondaryButtonText}>{t('Return to Sign In')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -175,7 +208,7 @@ export default function LoginScreen() {
         <TouchableOpacity
           style={styles.primaryButton}
           onPress={() => {
-            cancelRegistration();
+            handleCancelRegistration();
           }}
         >
           <Text style={styles.primaryButtonText}>{t('Start Over')}</Text>
@@ -214,6 +247,17 @@ export default function LoginScreen() {
         >
           {/* Header */}
           <View style={styles.headerSection}>
+            {isRegister && (
+              <TouchableOpacity
+                style={styles.headerBackButton}
+                onPress={handleSwitchToLogin}
+                accessibilityRole="button"
+                accessibilityLabel={t('Return to Sign In')}
+                hitSlop={10}
+              >
+                <MaterialCommunityIcons name="arrow-left" size={28} color={colors.textDark} />
+              </TouchableOpacity>
+            )}
             <MaterialCommunityIcons
               name="shield-check-outline"
               size={48}
@@ -247,10 +291,10 @@ export default function LoginScreen() {
               onSubmitEditing={() => (isRegister ? legalNameRef : passcodeRef).current?.focus()}
             />
 
-            {/* Legal Name + Company (register only) */}
+            {/* Optional legal name + company join code (register only) */}
             {isRegister && (
               <>
-                <Text style={styles.label}>{t('Legal Name')}</Text>
+                <Text style={styles.label}>{t('Legal Name (optional)')}</Text>
                 <TextInput
                   ref={legalNameRef}
                   style={styles.input}
@@ -265,20 +309,21 @@ export default function LoginScreen() {
                 />
                 <Text style={styles.hint}>{t('Used on printed JSA forms and signatures')}</Text>
 
-                <Text style={styles.label}>{t('Company')}</Text>
+                <Text style={styles.label}>{t('Company Join Code')}</Text>
                 <TextInput
                   ref={companyRef}
                   style={styles.input}
-                  value={companyName}
-                  onChangeText={setCompanyName}
-                  placeholder={t('Your company name')}
+                  value={companyCode}
+                  onChangeText={(value) => setCompanyCode(uppercaseCompanyCodeInput(value))}
+                  placeholder={t('Company join code')}
                   placeholderTextColor="#999"
-                  autoCapitalize="words"
+                  autoCapitalize="characters"
+                  autoCorrect={false}
                   returnKeyType="next"
                   blurOnSubmit={false}
                   onSubmitEditing={() => passcodeRef.current?.focus()}
                 />
-                <Text style={styles.hint}>{t('Enter the company name your employer gave you')}</Text>
+                <Text style={styles.hint}>{t('Enter the join code your employer gave you')}</Text>
               </>
             )}
 
@@ -335,12 +380,6 @@ export default function LoginScreen() {
               </Text>
             )}
 
-            {isRegister && (
-              <Text style={styles.approvalNote}>
-                {t('Independent registration is temporarily unavailable while governed identity support is completed.')}
-              </Text>
-            )}
-
             {/* Toggle login/register */}
             <View style={styles.toggleRow}>
               <Text style={styles.toggleText}>
@@ -379,6 +418,16 @@ const styles = StyleSheet.create({
   headerSection: {
     alignItems: "center",
     marginBottom: 32,
+  },
+  headerBackButton: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
   },
   title: {
     fontSize: 24,
