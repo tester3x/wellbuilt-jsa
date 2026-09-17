@@ -9,6 +9,7 @@ import {recordCustomer} from '../services/jsaDocument';
 import {closeStandaloneJsa,syncStandaloneHistory} from '../services/standaloneJsa';
 import {useLanguage} from './contexts/LanguageContext';
 import {useTheme} from './contexts/ThemeContext';
+import {colors} from '../constants/colors';
 export default function OpenJsas(){const router=useRouter(),{t}=useLanguage(),{setBackgroundPackageId,resolveBackgroundPackageForJob}=useTheme(),[rows,setRows]=useState<any[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true);
  const load=useCallback(async()=>{
   setLoading(true);setError('');let refreshFailed=false;
@@ -23,7 +24,7 @@ export default function OpenJsas(){const router=useRouter(),{t}=useLanguage(),{s
  const close=async(items:any[])=>{if(busy)return;setBusy(true);try{for(const item of items)await closeStandaloneJsa(item);}catch{setError('Some JSAs could not close. The remaining open records are shown below.');}finally{await load();setBusy(false);}};
  const independent=rows.filter(r=>r.workflow==='standalone');
  return <View style={{flex:1}}><ScrollView style={{flex:1}} contentContainerStyle={{padding:20,gap:15}}><Stack.Screen options={{title:t('Open JSAs'),headerRight:()=>null}}/>{!!error&&<Text>{t(error)}</Text>}
- {rows.map(r=><View key={r.id} style={{backgroundColor:'rgba(255,255,255,0.94)',padding:18,borderRadius:12,gap:8}}><TouchableOpacity onPress={()=>{setBackgroundPackageId(resolveBackgroundPackageForJob(r.packageId||r.jobActivityName||''));router.push({pathname:'/jsa-record',params:{id:r.id}} as any);}}><Text style={{fontSize:20,fontWeight:'700'}}>{recordCustomer(r)}</Text><Text>{r.date} · {r.jobActivityName}</Text><Text>{t(r.workflow==='standalone'?'Standalone':'Shift JSA')} · {t('Open')}</Text></TouchableOpacity>{r.workflow==='standalone'&&<TouchableOpacity disabled={busy} onPress={()=>Alert.alert(t('Close JSA?'),t('The signed report and its additions stay available.'),[{text:t('Cancel'),style:'cancel'},{text:t('Close JSA'),onPress:()=>void close([r])}])}><Text>{t('Close this JSA')}</Text></TouchableOpacity>}</View>)}
+ {rows.map(r=><View key={r.id} style={{backgroundColor:colors.glassSurface,padding:18,borderRadius:12,gap:8}}><TouchableOpacity onPress={()=>{setBackgroundPackageId(resolveBackgroundPackageForJob(r.packageId||r.jobActivityName||''));router.push({pathname:'/jsa-record',params:{id:r.id}} as any);}}><Text style={{fontSize:20,fontWeight:'700'}}>{recordCustomer(r)}</Text><Text>{r.date} · {r.jobActivityName}</Text><Text>{t(r.workflow==='standalone'?'Standalone':'Shift JSA')} · {t('Open')}</Text></TouchableOpacity>{r.workflow==='standalone'&&<TouchableOpacity disabled={busy} onPress={()=>Alert.alert(t('Close JSA?'),t('The signed report and its additions stay available.'),[{text:t('Cancel'),style:'cancel'},{text:t('Close JSA'),onPress:()=>void close([r])}])}><Text>{t('Close this JSA')}</Text></TouchableOpacity>}</View>)}
  {loading&&<Text>{t('Checking open JSAs…')}</Text>}
  {!loading&&!error&&!rows.length&&<Text>{t('No open JSAs.')}</Text>}
  {!!error&&<TouchableOpacity disabled={loading} onPress={()=>void load()}><Text>{t('Retry loading JSAs')}</Text></TouchableOpacity>}

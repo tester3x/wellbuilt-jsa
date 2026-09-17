@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   summaryCard: {
-    backgroundColor: "rgba(255,255,255,0.94)",
+    backgroundColor: colors.glassSurface,
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 12,

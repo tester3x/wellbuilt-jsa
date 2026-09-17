@@ -698,7 +698,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   card: {
-    backgroundColor: "rgba(255,255,255,0.94)",
+    backgroundColor: colors.glassSurface,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,

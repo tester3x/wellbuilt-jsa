@@ -21,5 +21,5 @@ export default function JsaAppBackground() {
 }
 
 const styles = StyleSheet.create({
-  wash: { backgroundColor: 'rgba(245,248,248,0.58)' },
+  wash: { backgroundColor: 'rgba(245,248,248,0.22)' },
 });

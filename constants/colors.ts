@@ -9,6 +9,7 @@ export const colors = {
   // Backgrounds
   background: "#F5F5F5",
   card: "#FFFFFF",
+  glassSurface: "rgba(255, 255, 255, 0.72)",
 
   // Text
   textDark: "#111111",
