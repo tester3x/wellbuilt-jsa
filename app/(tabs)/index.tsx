@@ -84,7 +84,14 @@ export default function JsaHomeScreen() {
   const { welcomeReadRequestId,newStandalone } = useLocalSearchParams<{ welcomeReadRequestId?: string;newStandalone?:string }>();
   const welcomeReadConsumed = useRef('');
   const { session, logout } = useAuth();
-  const { accent, logoUrl, companyName: themeCompanyName, jobTypes } = useTheme();
+  const {
+    accent,
+    logoUrl,
+    companyName: themeCompanyName,
+    jobTypes,
+    setBackgroundPackageId,
+    resolveBackgroundPackageForJob,
+  } = useTheme();
 
   const [driverName, setDriverName] = useState(session?.legalName || session?.displayName || "");
   const [truckNumber, setTruckNumber] = useState("");
@@ -166,6 +173,14 @@ export default function JsaHomeScreen() {
   // Derived: is there at least one active JSA?
   const jsaCompletedToday = activeJsas.length > 0;
   const currentJsa = activeJsas[activeJsaIndex] || null;
+
+  useEffect(() => {
+    const hint = currentJsa?.savedData?.packageId
+      || currentJsa?.savedData?.jobActivityName
+      || currentJsa?.wells?.[0]?.jobType
+      || jobActivityName;
+    setBackgroundPackageId(resolveBackgroundPackageForJob(String(hint || '')));
+  }, [currentJsa, jobActivityName, resolveBackgroundPackageForJob, setBackgroundPackageId]);
 
   // Legacy compat setters (used by fetchJsaDayStatus)
   const [jsaCompletedTime, setJsaCompletedTime] = useState<string | null>(null);
@@ -3080,11 +3095,11 @@ export default function JsaHomeScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: "transparent",
   },
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: "transparent",
   },
   scrollContent: {
     padding: 16,
@@ -3120,7 +3135,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: "rgba(255,255,255,0.94)",
     borderRadius: 12,
     padding: 16,
     shadowColor: "#000",

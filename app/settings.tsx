@@ -437,7 +437,7 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: "transparent",
   },
   container: {
     flex: 1,
@@ -447,7 +447,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: "rgba(255,255,255,0.94)",
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,

@@ -149,7 +149,7 @@ export default function OpenJsasScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
+  safeArea: { flex: 1, backgroundColor: 'transparent' },
   container: { flex: 1 },
   content: { padding: 16, gap: 12 },
   title: { fontSize: 18, fontWeight: "700", color: colors.textDark },

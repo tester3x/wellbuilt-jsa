@@ -213,7 +213,7 @@ const locationsList = useMemo(() => {
 }, [locations]);
 
   const { t } = useLanguage();
-  const { accent, jsaTemplate } = useTheme();
+  const { accent, jsaTemplate, setBackgroundPackageId, resolveBackgroundPackageForJob } = useTheme();
   const [taskSelection,setTaskSelection]=useState<ReturnType<typeof assembleTaskAssessments>|null>(null);
   const activeTaskScope=useRef('');
   activeTaskScope.current=jsaSessionId+':'+jobHandoff.source;
@@ -241,6 +241,9 @@ const locationsList = useMemo(() => {
     finally{if(scope===activeTaskScope.current)setTaskDraftLoading(false);}
   };
   const steps: JSAStep[] = taskSelection?.steps ?? jsaTemplate?.steps ?? JSA_STEPS;
+  useEffect(() => {
+    setBackgroundPackageId(taskSelection?.packageId || resolveBackgroundPackageForJob(jobActivityName));
+  }, [jobActivityName, taskSelection?.packageId, resolveBackgroundPackageForJob, setBackgroundPackageId]);
   const requiredStepIds = useMemo(() => steps.map((s) => s.id), [steps]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
@@ -536,7 +539,7 @@ const locationsList = useMemo(() => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: "transparent",
   },
   flex: {
     flex: 1,
@@ -549,7 +552,7 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   summaryCard: {
-    backgroundColor: colors.card,
+    backgroundColor: "rgba(255,255,255,0.94)",
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 12,

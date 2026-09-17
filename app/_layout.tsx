@@ -43,6 +43,7 @@ import { terminalFailureMatches } from '../services/sso/jsaGovernedAuth';
 import type { LogoutWatcherBinding } from '../services/sso/jsaLogoutWatcherContract';
 
 import { colors } from '../constants/colors';
+import JsaAppBackground from '../components/JsaAppBackground';
 
 // Module-scoped session flag — once "Remind me later" is tapped, the
 // unfinished-JSA modal stays suppressed for the remainder of this app
@@ -67,7 +68,7 @@ function NavigationStack() {
         headerTintColor: '#FFFFFF',
         headerTitleStyle: { fontWeight: '600', color: '#FFFFFF' },
         headerBackTitleStyle: { fontSize: 12 },
-        contentStyle: { backgroundColor: colors.background },
+        contentStyle: { backgroundColor: 'transparent' },
         headerRight: () => <MoreMenu />,
       }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -744,7 +745,8 @@ function AppContent() {
   return (
     <ThemeProvider>
       <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <JsaAppBackground />
           <NavigationStack />
 
           {/* Welcome greeting — scoped to the authenticated entry/request, unless an unfinished-JSA

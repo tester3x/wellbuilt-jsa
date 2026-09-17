@@ -167,7 +167,7 @@ export default function AcknowledgeScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
+  safe: { flex: 1, backgroundColor: 'transparent' },
   body: { flex: 1, padding: 20, gap: 12 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textDark },
   meta: { fontSize: 14, color: colors.textMuted, marginBottom: 8 },

@@ -292,7 +292,7 @@ export default function PpeScreen() {
 
   if (jobGate !== 'ready') {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
         <GovernedIsolationSurface kind="connecting" variant="overlay" />
       </SafeAreaView>
     );
@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
   otherAdd: { minHeight: 44, paddingHorizontal: 16, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: "transparent",
   },
   flex: {
     flex: 1,
@@ -429,7 +429,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   summaryCard: {
-    backgroundColor: colors.card,
+    backgroundColor: "rgba(255,255,255,0.94)",
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,

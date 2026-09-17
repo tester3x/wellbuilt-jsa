@@ -501,6 +501,7 @@ export default function SignoffScreen() {
         : null;
 
       const payload = {
+        ...(assessmentBundle?.packageId ? { packageId: assessmentBundle.packageId } : {}),
         assessmentPpeItems: assessmentBundle?.ppeItems ?? jsaTemplate?.ppeItems ?? PPE_ITEMS,
         assessmentPreparedItems: preparedItemsList,
         assessmentSteps: params.assessmentSteps ? JSON.parse(params.assessmentSteps) : [],
@@ -1900,7 +1901,7 @@ const brandedModalStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: "transparent",
   },
   flex: {
     flex: 1,
@@ -1914,7 +1915,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   summaryCard: {
-    backgroundColor: colors.card,
+    backgroundColor: "rgba(255,255,255,0.94)",
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
@@ -1956,7 +1957,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: "rgba(255,255,255,0.94)",
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,

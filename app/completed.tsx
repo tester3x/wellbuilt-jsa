@@ -243,7 +243,7 @@ export default function CompletedScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: "transparent",
   },
   container: {
     flex: 1,

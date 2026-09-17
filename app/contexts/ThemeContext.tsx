@@ -4,12 +4,18 @@
 // Provides accent color, logo URL, company name, address, phone, and contacts.
 // Falls back to WellBuilt defaults when no company config is set.
 
-import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "./AuthContext";
 import {getAuth} from 'firebase/auth';
 import {loadUsableGovernedSession} from '../../services/sso/jsaGovernedAuthLive';
 import {validLocationLayout,type JsaLocationLayout} from '../../services/jsaLocationLayout';
+import {
+  normalizeBackgroundPackage,
+  resolveCompanyBackground,
+  resolveJobTypePackage,
+  type JsaBackgroundPackage,
+} from '../../services/jsaBackground';
 
 // --- Interfaces ---
 
@@ -63,6 +69,14 @@ interface ThemeContextValue {
   jsaTemplate: JsaTemplateData | null;
   /** Job types available for this company (standard + custom) */
   jobTypes: string[];
+  /** Job packages enabled for this company */
+  activePackages: string[];
+  /** Transportation segment currently driving the app artwork */
+  backgroundPackageId: JsaBackgroundPackage;
+  /** Set from the current JSA/job package; null restores the company fallback */
+  setBackgroundPackageId: (packageId: string | null) => void;
+  /** Resolve a package from a dashboard-configured or standard job type */
+  resolveBackgroundPackageForJob: (jobType: string) => JsaBackgroundPackage | null;
   /** Whether config is still loading */
   loading: boolean;
   /** Whether company config has loaded at least once (false on initial render) */
@@ -76,6 +90,7 @@ const DEFAULT_ACCENT = "#DAA520"; // WellBuilt brand gold
 const DEFAULT_COMPANY_NAME = "WellBuilt";
 const FIRESTORE_BASE = "https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents";
 const CACHE_KEY = "@jsa/companyConfig";
+const BACKGROUND_PACKAGE_KEY = "@jsa/backgroundPackage";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 // Standard job types (matches WB T / Dashboard)
@@ -307,6 +322,29 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = useState<CompanyConfig | null>(null);
   const [jsaTemplate, setJsaTemplate] = useState<JsaTemplateData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [backgroundPackageOverride, setBackgroundPackageOverride] = useState<JsaBackgroundPackage | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(`${BACKGROUND_PACKAGE_KEY}:${companyId || 'standalone'}`).then(value => {
+      if (!cancelled) setBackgroundPackageOverride(normalizeBackgroundPackage(value));
+    }).catch(() => {
+      if (!cancelled) setBackgroundPackageOverride(null);
+    });
+    return () => { cancelled = true; };
+  }, [companyId]);
+
+  const setBackgroundPackageId = useCallback((packageId: string | null) => {
+    const resolved = normalizeBackgroundPackage(packageId);
+    setBackgroundPackageOverride(resolved);
+    const storageKey = `${BACKGROUND_PACKAGE_KEY}:${companyId || 'standalone'}`;
+    if (resolved) AsyncStorage.setItem(storageKey, resolved).catch(() => {});
+    else AsyncStorage.removeItem(storageKey).catch(() => {});
+  }, [companyId]);
+
+  const resolveBackgroundPackageForJob = useCallback((jobType: string) => (
+    resolveJobTypePackage(jobType, config?.customJobTypes || [])
+  ), [config?.customJobTypes]);
 
   const loadConfig = async () => {
     if (!companyId) {
@@ -382,11 +420,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       companyContacts: config?.companyContacts || [],
       jsaTemplate,
       jobTypes: buildJobTypes(config),
+      activePackages: config?.activePackages || [],
+      backgroundPackageId: backgroundPackageOverride || resolveCompanyBackground(config?.activePackages),
+      setBackgroundPackageId,
+      resolveBackgroundPackageForJob,
       loading,
       configLoaded: !loading && (config !== null || !companyId),
       refresh: loadConfig,
     };
-  }, [config, jsaTemplate, loading, session?.companyName, companyId]);
+  }, [config, jsaTemplate, loading, session?.companyName, companyId, backgroundPackageOverride, setBackgroundPackageId, resolveBackgroundPackageForJob]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

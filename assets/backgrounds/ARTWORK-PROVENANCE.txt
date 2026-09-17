@@ -1,0 +1,13 @@
+WellBuilt JSA package backgrounds — generated 2026-09-16
+
+Generated with the built-in OpenAI image generation tool. The existing
+TicketTime office background style was used only as a visual reference.
+
+Files:
+- jsa-water-hauling.png — oilfield water tanker and pumpjack safety office
+- jsa-ltl.png — LTL freight terminal and dispatch office
+- jsa-aggregate.png — quarry, aggregate haul truck and scale house
+- jsa-transportation.png — neutral mixed transportation yard fallback
+
+Shared constraints: vertical mobile composition, uncluttered center for app
+cards, calm morning light, no people, no logos, no legible text or watermark.

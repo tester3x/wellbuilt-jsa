@@ -1,0 +1,17 @@
+const fs=require('node:fs'),ts=require('typescript'),assert=require('node:assert/strict'),vm=require('node:vm');
+const source=fs.readFileSync('services/jsaBackground.ts','utf8');
+const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+const mod={exports:{}};
+vm.runInNewContext(`(function(module,exports){${js}\n})(module,module.exports)`,{module:mod,console});
+const {normalizeBackgroundPackage,resolveJobTypePackage,resolveCompanyBackground}=mod.exports;
+assert.equal(normalizeBackgroundPackage('water-hauling'),'water-hauling');
+assert.equal(normalizeBackgroundPackage('LTL'),'ltl');
+assert.equal(normalizeBackgroundPackage('aggregate'),'aggregate');
+assert.equal(resolveJobTypePackage('Production Water'),'water-hauling');
+assert.equal(resolveJobTypePackage('Parcel delivery'),'ltl');
+assert.equal(resolveJobTypePackage('Stone'),'aggregate');
+assert.equal(resolveJobTypePackage('Special Route',[{label:'Special Route',packages:['ltl']}]),'ltl');
+assert.equal(resolveCompanyBackground(['aggregate']),'aggregate');
+assert.equal(resolveCompanyBackground(['water-hauling','aggregate']),'transportation');
+assert.equal(resolveCompanyBackground([]),'transportation');
+console.log('PASS: 10 package-aware JSA background cases');

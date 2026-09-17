@@ -91,7 +91,7 @@ export default function HistoryTabScreen() {
   const router = useRouter();
   const { t, lang } = useLanguage();
   const locale = lang === 'es' ? 'es-MX' : 'en-US';
-  const { accent, logoUrl } = useTheme();
+  const { accent, logoUrl, setBackgroundPackageId, resolveBackgroundPackageForJob } = useTheme();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -126,6 +126,7 @@ export default function HistoryTabScreen() {
   }, [loadHistory]);
 
   const handleViewDetails = (item: HistoryItem) => {
+    setBackgroundPackageId(resolveBackgroundPackageForJob((item as any).packageId || getJobType(item)));
     router.push({pathname:'/jsa-record',params:{id:item.id}} as any);
     return;
   };
@@ -279,7 +280,7 @@ export default function HistoryTabScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: "transparent",
   },
   header: {
     flexDirection: 'row',
@@ -342,7 +343,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: "rgba(255,255,255,0.94)",
     borderRadius: 10,
     padding: 14,
     borderWidth: 1,

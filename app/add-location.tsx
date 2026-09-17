@@ -48,7 +48,7 @@ export default function AddLocation(){
   }finally{setSaving(false);}
  };
  const matches=[...wells,...swds].filter(w=>w.well_name.toLowerCase().includes(location.trim().toLowerCase())&&w.well_name!==location).slice(0,50);
- return <View style={{flex:1,backgroundColor:'#f5f5f5'}}><Stack.Screen options={{title:t('Add location')}}/>
+ return <View style={{flex:1,backgroundColor:'transparent'}}><Stack.Screen options={{title:t('Add location')}}/>
  <ScrollView ref={keyboard.scrollRef} {...keyboard.scrollProps} contentContainerStyle={[styles.content,{paddingBottom:24+keyboard.height}]}>
  {!!error&&<Text accessibilityRole="alert" style={styles.error}>{t(error)}</Text>}
  {!record?(failed?button(t('Retry loading JSA'),()=>setRetry(v=>v+1)):<ActivityIndicator color={accent}/>):record.state!=='open'?<Text>{t('This JSA is closed. Start a new JSA for additional work.')}</Text>:<>

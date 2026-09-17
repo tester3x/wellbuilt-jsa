@@ -20,6 +20,7 @@ export function assembleTaskAssessments(selected:TaskAssessment[]) {
   const steps=templates.flatMap(t=>t.steps.map((s,i)=>({...s,id:`${t.contentHash.slice(0,12)}_s${i}`})));
   if(steps.length>40 || JSON.stringify(steps).length>100000)throw new Error('Too many assessment steps in one JSA.');
   const locationLayout=combineLocationLayouts(templates.map(t=>t.locationLayout));
+  const packageIds=[...new Set(templates.map(t=>t.packageId).filter((id):id is string=>!!id))];
   return {
     steps,
     ppeItems:templates.flatMap(t=>t.ppeItems.map((p,i)=>({...p,id:`${t.contentHash.slice(0,12)}_p${i}`}))),
@@ -27,5 +28,7 @@ export function assembleTaskAssessments(selected:TaskAssessment[]) {
     ...(locationLayout?{locationLayout}:{}),
     templateRefs:templates.map(({id,version,contentHash})=>({id,version,contentHash})),
     templates:templates.map(({id,version,contentHash,name,tasks})=>({id,version,contentHash,name,tasks})),
+    packageIds,
+    ...(packageIds.length===1?{packageId:packageIds[0]}:{}),
   };
 }

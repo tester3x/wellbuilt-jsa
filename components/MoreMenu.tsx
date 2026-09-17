@@ -29,7 +29,7 @@ export default function MoreMenu({ placement = 'header' }: { placement?: 'header
               if (item.label === 'Switcher') setSwitcherVisible(true);
               else if (item.label === 'New JSA') router.push({ pathname: '/(tabs)', params: { newStandalone: String(Date.now()) } } as Href);
               else router.push(item.route as Href);
-            }}><Ionicons name={item.icon} size={20} color={colors.primaryDark}/><Text style={styles.label}>{t(item.label)}</Text></Pressable>
+            }}><Text style={styles.label}>{t(item.label)}</Text><Ionicons name={item.icon} size={23} color={colors.primaryDark}/></Pressable>
           )}
         </View>
       </Pressable>
@@ -42,8 +42,8 @@ const styles = StyleSheet.create({
   trigger: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   dots: { color: colors.textDark, fontSize: 20, fontWeight: '800', letterSpacing: 2 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.18)' },
-  menu: { position: 'absolute', right: 12, width: 190, backgroundColor: colors.card,
-    borderRadius: 14, borderWidth: 1, borderColor: colors.border, paddingVertical: 6, elevation: 8 },
-  item: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 12, paddingHorizontal: 16 },
-  label: { color: colors.textDark, fontSize: 16, fontWeight: '600', textAlign: 'right' },
+  menu: { position: 'absolute', right: 12, width: 220, backgroundColor: colors.card,
+    borderRadius: 14, borderWidth: 1, borderColor: colors.border, paddingVertical: 8, elevation: 8 },
+  item: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingHorizontal: 18 },
+  label: { flex: 1, color: colors.textDark, fontSize: 18, fontWeight: '700', textAlign: 'left' },
 });

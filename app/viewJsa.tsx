@@ -687,7 +687,7 @@ export default function ViewJsaScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: "transparent",
   },
   container: {
     flex: 1,
@@ -698,7 +698,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: "rgba(255,255,255,0.94)",
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,

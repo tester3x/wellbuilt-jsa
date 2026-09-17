@@ -10,4 +10,7 @@ assert.throws(()=>api.assembleTaskAssessments([t,t]));
 const layout={schemaVersion:1,locationsCoveredPlacement:'after-job-details',locationDifferencesPlacement:'after-assessment'};
 assert.deepEqual(api.assembleTaskAssessments([{...t,locationLayout:layout},{...u,locationLayout:layout}]).locationLayout,layout);
 assert.equal(api.assembleTaskAssessments([{...t,locationLayout:layout},{...u,locationLayout:{...layout,locationDifferencesPlacement:'after-signature'}}]).locationLayout,undefined);
-console.log('PASS: task combination preserves wording, distinguishes reused step ids, resets evidence for changed content and never mutates source');
+assert.equal(api.assembleTaskAssessments([{...t,packageId:'aggregate'}]).packageId,'aggregate');
+assert.deepEqual(api.assembleTaskAssessments([{...t,packageId:'aggregate'},{...u,packageId:'ltl'}]).packageIds,['aggregate','ltl']);
+assert.equal(api.assembleTaskAssessments([{...t,packageId:'aggregate'},{...u,packageId:'ltl'}]).packageId,undefined);
+console.log('PASS: task combination preserves wording, package identity, reused step ids, changed-content evidence and source immutability');
