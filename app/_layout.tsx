@@ -93,6 +93,14 @@ function NavigationStack() {
 /** Inner component that gates on auth state + handles SSO deep links */
 function AppContent() {
   const colorScheme = useColorScheme();
+  const baseNavigationTheme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
+  const navigationTheme = {
+    ...baseNavigationTheme,
+    colors: {
+      ...baseNavigationTheme.colors,
+      background: 'transparent',
+    },
+  };
   const { t } = useLanguage();
   const { mode, session, isAuthenticated, logout } = useAuth();
   const router = useRouter();
@@ -744,8 +752,8 @@ function AppContent() {
   // Splash/LoginScreen overlay on top when not authenticated.
   return (
     <ThemeProvider>
-      <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <NavThemeProvider value={navigationTheme}>
+        <View style={{ flex: 1, backgroundColor: 'transparent' }}>
           <JsaAppBackground />
           <NavigationStack />
 
