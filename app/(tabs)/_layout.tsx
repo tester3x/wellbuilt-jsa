@@ -35,28 +35,31 @@ function BottomBar({ state, navigation }: BottomTabBarProps) {
   const indexRoute = state.routes.find(route => route.name === 'index')!;
   const historySelected = state.routes[state.index].key === historyRoute.key;
   const indexSelected = state.routes[state.index].key === indexRoute.key;
-  const openLabel = openJsas.length === 1 ? 'Current JSA' : openJsas.length > 1 ? 'Current JSAs' : 'Saved JSAs';
-  const openColor = openJsas.length ? colors.success : historySelected ? accent : colors.textMuted;
+  const hasOpenJsa = openJsas.length > 0;
+  const primaryLabel = hasOpenJsa ? 'Resume' : 'New JSA';
+  const primaryColor = hasOpenJsa ? colors.success : indexSelected ? accent : colors.textMuted;
   return <BottomActionBar>
-    <Pressable accessibilityRole="button" accessibilityLabel={t(openLabel)}
+    <Pressable accessibilityRole="tab" accessibilityState={{ selected: historySelected }} accessibilityLabel={t('Saved JSAs')}
+      style={{ width: 88, maxWidth: '100%', height: 52, alignItems: 'center', justifyContent: 'center' }}
+      onPress={() => {
+        const event = navigation.emit({ type: 'tabPress', target: historyRoute.key, canPreventDefault: true });
+        if (!historySelected && !event.defaultPrevented) navigation.navigate(historyRoute.name, historyRoute.params);
+      }}>
+      <IconSymbol size={26} name="clock.fill" color={historySelected ? accent : colors.textMuted} />
+      <Text numberOfLines={1} style={{ color: historySelected ? accent : colors.textMuted, fontSize: 12, lineHeight: 16, fontWeight: '600' }}>{t('Saved JSAs')}</Text>
+    </Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel={t(primaryLabel)}
       style={{ width: 88, maxWidth: '100%', height: 52, alignItems: 'center', justifyContent: 'center' }}
       onPress={() => {
         if (openJsas.length === 1) router.push({ pathname: '/jsa-record', params: { id: openJsas[0].id } } as any);
         else if (openJsas.length > 1) router.push('/open-jsas' as any);
-        else navigation.navigate(historyRoute.name, historyRoute.params);
+        else {
+          const event = navigation.emit({ type: 'tabPress', target: indexRoute.key, canPreventDefault: true });
+          if (!indexSelected && !event.defaultPrevented) navigation.navigate(indexRoute.name, indexRoute.params);
+        }
       }}>
-      <IconSymbol size={26} name={openJsas.length ? 'shield.checkered' : 'clock.fill'} color={openColor} />
-      <Text numberOfLines={1} style={{ color: openColor, fontSize: 12, lineHeight: 16, fontWeight: '600' }}>{t(openLabel)}</Text>
-    </Pressable>
-    <Pressable accessibilityRole="tab" accessibilityState={{ selected: indexSelected }} accessibilityLabel={t('New JSA')}
-      style={{ width: 88, maxWidth: '100%', height: 52, alignItems: 'center', justifyContent: 'center' }}
-      onLongPress={() => navigation.emit({ type: 'tabLongPress', target: indexRoute.key })}
-      onPress={() => {
-        const event = navigation.emit({ type: 'tabPress', target: indexRoute.key, canPreventDefault: true });
-        if (!indexSelected && !event.defaultPrevented) navigation.navigate(indexRoute.name, indexRoute.params);
-      }}>
-      <IconSymbol size={26} name="plus.circle.fill" color={indexSelected ? accent : colors.textMuted} />
-      <Text numberOfLines={1} style={{ color: indexSelected ? accent : colors.textMuted, fontSize: 12, lineHeight: 16, fontWeight: '600' }}>{t('New JSA')}</Text>
+      <IconSymbol size={26} name={hasOpenJsa ? 'play.circle.fill' : 'plus.circle.fill'} color={primaryColor} />
+      <Text numberOfLines={1} style={{ color: primaryColor, fontSize: 12, lineHeight: 16, fontWeight: '600' }}>{t(primaryLabel)}</Text>
     </Pressable>
     <MoreMenu placement="bottom" />
   </BottomActionBar>;

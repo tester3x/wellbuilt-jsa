@@ -27,6 +27,7 @@ export default function MoreMenu({ placement = 'header' }: { placement?: 'header
             <Pressable key={item.route} accessibilityRole="button" style={styles.item} onPress={() => {
               setVisible(false);
               if (item.label === 'Switcher') setSwitcherVisible(true);
+              else if (item.label === 'New JSA') router.push({ pathname: '/(tabs)', params: { newStandalone: String(Date.now()) } } as Href);
               else router.push(item.route as Href);
             }}><Ionicons name={item.icon} size={20} color={colors.primaryDark}/><Text style={styles.label}>{t(item.label)}</Text></Pressable>
           )}
