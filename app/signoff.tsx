@@ -889,6 +889,35 @@ export default function SignoffScreen() {
               if (n) allKnownNames.add(n);
             }
 
+            const nowIso = new Date().toISOString();
+            const slugifyLocation = (name: string) => {
+              if (!name) return '';
+              return String(name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            };
+            const buildJsaLocationId = (name: string, type: string = 'pickup') => {
+              const cleanName = (name || '').trim();
+              const slug = slugifyLocation(cleanName);
+              const locType = (type || 'location').toLowerCase();
+              return slug ? `${slug}__${locType}` : cleanName.toUpperCase().replace(/\s+/g, '_');
+            };
+            const ensureAcknowledgedLocation = (entry: any, defaultType: string = 'pickup') => {
+              if (!entry?.mapValue?.fields) return entry;
+              const f = { ...entry.mapValue.fields };
+              const name = f.name?.stringValue || f.label?.stringValue || '';
+              const type = f.type?.stringValue || defaultType;
+              if (!f.id?.stringValue) {
+                f.id = { stringValue: buildJsaLocationId(name, type) };
+              }
+              if (!f.label?.stringValue && name) {
+                f.label = { stringValue: name };
+              }
+              f.acknowledged = { booleanValue: true };
+              if (!f.acknowledgedAt?.timestampValue) {
+                f.acknowledgedAt = { timestampValue: nowIso };
+              }
+              return { mapValue: { fields: f } };
+            };
+
             const formWells = wellsList
               .map((w: any) => {
                 const name = typeof w === 'string' ? w : (w?.name || '');
@@ -904,17 +933,28 @@ export default function SignoffScreen() {
                 allKnownNames.add(k); // claim the name so locations[] won't take it too
                 return true;
               })
-              .map(w => ({
-                mapValue: {
-                  fields: {
-                    name: { stringValue: w.name },
-                    type: { stringValue: 'pickup' },
-                    jobType: { stringValue: w.jobType },
-                    stampedAt: { timestampValue: new Date().toISOString() },
+              .map(w => {
+                const cleanName = w.name.trim();
+                const locId = buildJsaLocationId(cleanName, 'pickup');
+                return {
+                  mapValue: {
+                    fields: {
+                      id: { stringValue: locId },
+                      name: { stringValue: cleanName },
+                      label: { stringValue: cleanName },
+                      type: { stringValue: 'pickup' },
+                      jobType: { stringValue: w.jobType },
+                      stampedAt: { timestampValue: nowIso },
+                      acknowledged: { booleanValue: true },
+                      acknowledgedAt: { timestampValue: nowIso },
+                    },
                   },
-                },
-              }));
-            const wellsForFirestore = [...existingWells, ...formWells];
+                };
+              });
+            const wellsForFirestore = [
+              ...existingWells.map(w => ensureAcknowledgedLocation(w, 'pickup')),
+              ...formWells,
+            ];
 
             const formLocations = (Array.isArray(locations) ? locations : [])
               .map((l: any) => (typeof l === 'string' ? l : (l?.name || '')))
@@ -925,17 +965,28 @@ export default function SignoffScreen() {
                 allKnownNames.add(k);
                 return true;
               })
-              .map((name: string) => ({
-                mapValue: {
-                  fields: {
-                    name: { stringValue: name },
-                    type: { stringValue: 'location' },
-                    jobType: { stringValue: (params.jobActivityName as string) || '' },
-                    stampedAt: { timestampValue: new Date().toISOString() },
+              .map((name: string) => {
+                const cleanName = name.trim();
+                const locId = buildJsaLocationId(cleanName, 'location');
+                return {
+                  mapValue: {
+                    fields: {
+                      id: { stringValue: locId },
+                      name: { stringValue: cleanName },
+                      label: { stringValue: cleanName },
+                      type: { stringValue: 'location' },
+                      jobType: { stringValue: (params.jobActivityName as string) || '' },
+                      stampedAt: { timestampValue: nowIso },
+                      acknowledged: { booleanValue: true },
+                      acknowledgedAt: { timestampValue: nowIso },
+                    },
                   },
-                },
-              }));
-            const locationsForFirestore = [...existingLocations, ...formLocations];
+                };
+              });
+            const locationsForFirestore = [
+              ...existingLocations.map(l => ensureAcknowledgedLocation(l, 'location')),
+              ...formLocations,
+            ];
 
             // TASK 3 — write-empty-warning. Driver had wells in the form
             // (wellsList) OR there was existing canonical/sibling content
@@ -957,7 +1008,8 @@ export default function SignoffScreen() {
               }));
             }
 
-            const patchUrl = `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`
+            const hasPdfArtifact = typeof pdfUrl === 'string' && pdfUrl.trim().length > 0;
+            let patchUrl = `${FIRESTORE_BASE}/jsa_day_status/${docId}?key=${API_KEY}`
               + '&updateMask.fieldPaths=driverHash'
               + '&updateMask.fieldPaths=driverName'
               + '&updateMask.fieldPaths=companyId'
@@ -967,32 +1019,42 @@ export default function SignoffScreen() {
               + '&updateMask.fieldPaths=date'
               + '&updateMask.fieldPaths=jsaCompleted'
               + '&updateMask.fieldPaths=jsaCompletedAt'
+              + '&updateMask.fieldPaths=signedAt'
+              + '&updateMask.fieldPaths=signatureId'
               + '&updateMask.fieldPaths=jsaDocId'
-              + '&updateMask.fieldPaths=pdfUrl'
               + '&updateMask.fieldPaths=wells'
               + '&updateMask.fieldPaths=locations'
               + '&updateMask.fieldPaths=updatedAt';
+            if (hasPdfArtifact) {
+              patchUrl += '&updateMask.fieldPaths=pdfUrl';
+            }
+
+            const patchFields: any = {
+              driverHash: { stringValue: driverHash },
+              driverName: { stringValue: driverLegalName },
+              companyId: { stringValue: companyId },
+              shiftId: { stringValue: shiftIdForPayload },
+              operatorSlug: { stringValue: operatorSlug },
+              operatorName: { stringValue: operatorForPayload },
+              date: { stringValue: jsaDate },
+              jsaCompleted: { booleanValue: true },
+              jsaCompletedAt: { timestampValue: nowIso },
+              signedAt: { timestampValue: nowIso },
+              signatureId: { stringValue: payload.id },
+              jsaDocId: { stringValue: payload.id },
+              wells: { arrayValue: { values: wellsForFirestore } },
+              locations: { arrayValue: { values: locationsForFirestore } },
+              updatedAt: { timestampValue: nowIso },
+            };
+            if (hasPdfArtifact) {
+              patchFields.pdfUrl = { stringValue: pdfUrl.trim() };
+            }
 
             const resp = await fetch(patchUrl, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                fields: {
-                  driverHash: { stringValue: driverHash },
-                  driverName: { stringValue: driverLegalName },
-                  companyId: { stringValue: companyId },
-                  shiftId: { stringValue: shiftIdForPayload },
-                  operatorSlug: { stringValue: operatorSlug },
-                  operatorName: { stringValue: operatorForPayload },
-                  date: { stringValue: jsaDate },
-                  jsaCompleted: { booleanValue: true },
-                  jsaCompletedAt: { timestampValue: new Date().toISOString() },
-                  jsaDocId: { stringValue: payload.id },
-                  pdfUrl: { stringValue: pdfUrl },
-                  wells: { arrayValue: { values: wellsForFirestore } },
-                  locations: { arrayValue: { values: locationsForFirestore } },
-                  updatedAt: { timestampValue: new Date().toISOString() },
-                },
+                fields: patchFields,
               }),
             });
             if (!resp.ok) {
@@ -1072,7 +1134,7 @@ export default function SignoffScreen() {
               let mirrorReason = '';
               if (mirrorNeeded) {
                 try {
-                  const mirrorPatchUrl = `${FIRESTORE_BASE}/jsa_day_status/${dateDocId}?key=${API_KEY}`
+                  let mirrorPatchUrl = `${FIRESTORE_BASE}/jsa_day_status/${dateDocId}?key=${API_KEY}`
                     + '&updateMask.fieldPaths=driverHash'
                     + '&updateMask.fieldPaths=driverName'
                     + '&updateMask.fieldPaths=companyId'
@@ -1083,32 +1145,41 @@ export default function SignoffScreen() {
                     + '&updateMask.fieldPaths=dateScope'
                     + '&updateMask.fieldPaths=jsaCompleted'
                     + '&updateMask.fieldPaths=jsaCompletedAt'
+                    + '&updateMask.fieldPaths=signedAt'
+                    + '&updateMask.fieldPaths=signatureId'
                     + '&updateMask.fieldPaths=jsaDocId'
-                    + '&updateMask.fieldPaths=pdfUrl'
                     + '&updateMask.fieldPaths=wells'
                     + '&updateMask.fieldPaths=locations'
                     + '&updateMask.fieldPaths=updatedAt';
+                  if (hasPdfArtifact) {
+                    mirrorPatchUrl += '&updateMask.fieldPaths=pdfUrl';
+                  }
+                  const mirrorFields: any = {
+                    driverHash: { stringValue: driverHash },
+                    driverName: { stringValue: driverLegalName },
+                    companyId: { stringValue: companyId },
+                    sourceShiftId: { stringValue: shiftIdForPayload },
+                    operatorSlug: { stringValue: operatorSlug },
+                    operatorName: { stringValue: operatorForPayload },
+                    date: { stringValue: jsaDate },
+                    dateScope: { stringValue: jsaDate },
+                    jsaCompleted: { booleanValue: true },
+                    jsaCompletedAt: { timestampValue: nowIso },
+                    signedAt: { timestampValue: nowIso },
+                    signatureId: { stringValue: payload.id },
+                    jsaDocId: { stringValue: payload.id },
+                    wells: { arrayValue: { values: wellsForFirestore } },
+                    locations: { arrayValue: { values: locationsForFirestore } },
+                    updatedAt: { timestampValue: nowIso },
+                  };
+                  if (hasPdfArtifact) {
+                    mirrorFields.pdfUrl = { stringValue: pdfUrl.trim() };
+                  }
                   const mirrorResp = await fetch(mirrorPatchUrl, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                      fields: {
-                        driverHash: { stringValue: driverHash },
-                        driverName: { stringValue: driverLegalName },
-                        companyId: { stringValue: companyId },
-                        sourceShiftId: { stringValue: shiftIdForPayload },
-                        operatorSlug: { stringValue: operatorSlug },
-                        operatorName: { stringValue: operatorForPayload },
-                        date: { stringValue: jsaDate },
-                        dateScope: { stringValue: jsaDate },
-                        jsaCompleted: { booleanValue: true },
-                        jsaCompletedAt: { timestampValue: new Date().toISOString() },
-                        jsaDocId: { stringValue: payload.id },
-                        pdfUrl: { stringValue: pdfUrl },
-                        wells: { arrayValue: { values: wellsForFirestore } },
-                        locations: { arrayValue: { values: locationsForFirestore } },
-                        updatedAt: { timestampValue: new Date().toISOString() },
-                      },
+                      fields: mirrorFields,
                     }),
                   });
                   if (mirrorResp.ok) {
