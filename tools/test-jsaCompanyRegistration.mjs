@@ -147,7 +147,7 @@ const frozen = {
   'components/SignaturePad.tsx': '19530309e105def83976aad4689c158724771f40cbc92edb2a18f7a96ef2412b',
   'services/sso/jsaCanonicalProfile.ts': '94e6939824e17b3ee490c2f39c680893ec29425f0f6e0604577d4b8212038451',
   'services/sso/jsaIdentityContract.ts': '7a0f61bb6cf112da2b7989734341c5a60fb2c44ac42081767fc818aa8044f4e2',
-  'services/jsaRecord.ts': '9b93c011c1ce05d4d72a442d9460b24c8b081a74fa0fac5af0046fb0311dc8f9',
+  'services/jsaRecord.ts': 'd5d5305950bdcb8bda1b6bbb3651f0fc24216c206436432f11a2902491b0a320',
   'services/jsaDocument.ts': 'dcd3fb05b07a35f09b15491185697d7d5acc0bad45a31e5ffe301aa5c96c7de5',
 };
 for (const [rel, want] of Object.entries(frozen)) {

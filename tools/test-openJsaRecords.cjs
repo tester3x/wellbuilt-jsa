@@ -36,5 +36,9 @@ new Function('require','module','exports',ts.transpileModule(fs.readFileSync('se
   fail=true;
   result=await m.exports.ownOpenJsaRecords();
   assert.equal(result.unverified,true);
+  const unverifiedOld = result.rows.find(r=>r.id==='old');
+  assert.equal(unverifiedOld.canDiscard, false);
+  const unverifiedSigned = result.rows.find(r=>r.id==='signed-old');
+  assert.equal(unverifiedSigned.canCloseOrphan, false);
   console.log('Open JSA list: owner filtering, explicit standalone close, verified shift, prior-day orphan recovery, and unavailable authority passed.');
 })().catch(e=>{console.error(e);process.exitCode=1});
