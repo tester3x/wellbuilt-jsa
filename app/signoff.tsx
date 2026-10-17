@@ -1739,9 +1739,11 @@ export default function SignoffScreen() {
 
       </ScrollView>
       <View style={styles.submitFooter}>
-        <TouchableOpacity style={[styles.submitButton, { backgroundColor: accent }]} onPress={handleSubmit}>
+        <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} style={{ padding: 12, minHeight: 48, justifyContent: "center" }}><Text>{t("Back")}</Text></TouchableOpacity>
+        <TouchableOpacity style={[styles.submitButton, { backgroundColor: accent, flex: 1 }]} onPress={handleSubmit}>
           <Text style={styles.submitText}>{t("Submit JSA")}</Text>
         </TouchableOpacity>
+        <MoreMenu placement="bottom" compact />
       </View>
     </KeyboardAvoidingView>
 
@@ -2027,7 +2029,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  submitFooter: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: 'transparent' },
+  submitFooter: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: 'transparent' },
   submitText: {
     color: "#fff",
     fontSize: 16,

@@ -400,10 +400,14 @@ export default function PpeScreen() {
           </View>
         </View>
 
-          <TouchableOpacity style={[styles.nextButton, { backgroundColor: accent }]} onPress={handleNext}>
+        </ScrollView>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: colors.glassSurface }}>
+          <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} style={{ padding: 12, minHeight: 48, justifyContent: "center" }}><Text>{t('Back')}</Text></TouchableOpacity>
+          <TouchableOpacity style={[styles.nextButton, { backgroundColor: accent, flex: 1 }]} onPress={handleNext}>
             <Text style={styles.nextButtonText}>{t("Next")}</Text>
           </TouchableOpacity>
-        </ScrollView>
+          <MoreMenu placement="bottom" compact />
+        </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

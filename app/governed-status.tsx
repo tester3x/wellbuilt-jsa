@@ -6,6 +6,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors } from '../constants/colors';
+import JsaAppBackground from '../components/JsaAppBackground';
+import { useTheme } from './contexts/ThemeContext';
 import { decideGovernedReturn } from '../services/sso/jsaReturn';
 import {
   consumeGovernedLaunchAfterStay,
@@ -35,6 +37,7 @@ export default function GovernedStatusScreen() {
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
   const { t } = useLanguage();
+  const { accent } = useTheme();
   const mode = params.mode === 'submitted'
     ? 'submitted'
     : params.mode === 'completed' ? 'completed' : 'fail';
@@ -113,6 +116,7 @@ export default function GovernedStatusScreen() {
 
   return (
     <View style={styles.wrap}>
+      <JsaAppBackground />
       <View style={styles.card}>
         <Text style={styles.title}>
           {t(mode === 'submitted' ? submittedHeading()
@@ -136,7 +140,7 @@ export default function GovernedStatusScreen() {
           </TouchableOpacity>
         ) : null}
         <TouchableOpacity
-          style={styles.btn}
+          style={[styles.btn, { backgroundColor: accent }]}
           onPress={onReturn}
           accessibilityLabel={t(stayAndRetry && mode === 'fail' ? 'Retry' : 'Return to WellBuilt Tickets')}
         >
@@ -152,13 +156,15 @@ export default function GovernedStatusScreen() {
 const styles = StyleSheet.create({
   wrap: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
   },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.glassSurface,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: 16,
     paddingVertical: 28,
     paddingHorizontal: 24,

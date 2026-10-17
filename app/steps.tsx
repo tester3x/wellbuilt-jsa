@@ -527,6 +527,7 @@ const locationsList = useMemo(() => {
                   {isLast ? t("PPE Checklist") : t("Next")}
                 </Text>
               </TouchableOpacity>
+              <MoreMenu placement="bottom" compact />
             </View>
           </View>
         </View>
@@ -685,7 +686,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
   },
   navRow: {
-    flexDirection: "row",
+    flexDirection: "column",
     justifyContent: "space-between",
     alignItems: "center",
   },
@@ -695,6 +696,9 @@ const styles = StyleSheet.create({
   },
   navButtons: {
     flexDirection: "row",
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignSelf: 'stretch',
     gap: 8,
   },
   navButton: {
