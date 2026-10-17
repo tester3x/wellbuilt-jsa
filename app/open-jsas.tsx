@@ -1,5 +1,6 @@
+import { BrandedAlert as Alert } from '../services/brandedAlert';
 import React,{useCallback,useState} from 'react';
-import {Alert,ScrollView,Text,TouchableOpacity,View} from 'react-native';
+import {ScrollView,Text,TouchableOpacity,View} from 'react-native';
 import {Stack,useFocusEffect,useRouter} from 'expo-router';
 import BottomActionBar from '../components/BottomActionBar';
 import MoreMenu from '../components/MoreMenu';

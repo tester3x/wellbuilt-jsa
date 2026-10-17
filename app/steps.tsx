@@ -1,3 +1,4 @@
+import { BrandedAlert as Alert } from '../services/brandedAlert';
 import {loadTaskSelectionDraft,freezeTaskSelectionDraft} from '../services/jsaTaskSelectionDraft';
 import TaskAssessmentPicker from '../components/TaskAssessmentPicker';
 import {assembleTaskAssessments,loadTaskAssessments} from '../services/jsaTaskTemplates';
@@ -463,7 +464,6 @@ const locationsList = useMemo(() => {
                             stepAcks: evidence.stepAcks,
                             stepsAcknowledged: evidence.stepsAcknowledged,
                           })) {
-                          const { Alert } = require('react-native');
                           Alert.alert(
                             t("Review All Steps"),
                             t("Please review all steps before continuing."),
@@ -473,7 +473,6 @@ const locationsList = useMemo(() => {
                         }
                         const allVisited = completedSteps.size >= totalSteps - 1;
                         if (!allVisited) {
-                          const { Alert } = require('react-native');
                           const missing = [];
                           for (let s = 0; s < totalSteps; s++) {
                             if (s !== currentStepIndex && !completedSteps.has(s)) {

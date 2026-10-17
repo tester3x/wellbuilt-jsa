@@ -1,7 +1,8 @@
+import { BrandedAlert as Alert } from '../services/brandedAlert';
 import TaskAssessmentPicker from '../components/TaskAssessmentPicker';
 import {assembleTaskAssessments} from '../services/jsaTaskTemplates';
 import React,{useEffect,useRef,useState} from 'react';
-import {ActivityIndicator,Alert,Keyboard,ScrollView,StyleSheet,Text,TextInput,TouchableOpacity,View} from 'react-native';
+import {ActivityIndicator,Keyboard,ScrollView,StyleSheet,Text,TextInput,TouchableOpacity,View} from 'react-native';
 import {Stack,useLocalSearchParams,useRouter} from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import {useTheme} from './contexts/ThemeContext';

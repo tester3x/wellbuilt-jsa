@@ -1,3 +1,4 @@
+import { BrandedAlert as Alert } from '../services/brandedAlert';
 // AppSwitcher — floating draggable button for switching between WB ecosystem apps.
 // Tap = open app grid. Double-tap = jump to WB Suite hub. Long-hold + drag = reposition.
 // Apps loaded from Firestore app_registry, filtered by company tier.
@@ -15,7 +16,6 @@ import {
   Pressable,
   useWindowDimensions,
   Platform,
-  Alert,
   AppState,
   Modal,
 } from 'react-native';

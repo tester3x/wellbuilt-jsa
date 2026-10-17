@@ -1,3 +1,4 @@
+import { BrandedAlert as Alert } from '../../services/brandedAlert';
 import SearchResults from '../../components/SearchResults';
 import { jsaHistoryNotice } from '../../services/jsaHistoryNotice';
 import {useFormKeyboard} from '../../components/useFormKeyboard';
@@ -7,7 +8,6 @@ import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
-    Alert,
     AppState,
     Dimensions,
     Image,

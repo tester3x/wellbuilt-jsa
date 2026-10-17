@@ -1,3 +1,4 @@
+import { BrandedAlert as Alert } from '../services/brandedAlert';
 /**
  * Acknowledgment-only governed UI. No steps/PPE.
  * Signature default is legalName only. Completes with `acknowledged`.
@@ -6,7 +7,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  Alert,
   StyleSheet,
   Text,
   TextInput,

@@ -1,8 +1,8 @@
+import { BrandedAlert as Alert } from '../../services/brandedAlert';
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   RefreshControl,

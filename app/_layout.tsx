@@ -1,3 +1,4 @@
+import BrandedAlertHost from '../components/BrandedAlertHost';
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { Stack, usePathname, useRouter, useGlobalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -756,6 +757,7 @@ function AppContent() {
         <View style={{ flex: 1, backgroundColor: 'transparent' }}>
           <JsaAppBackground />
           <NavigationStack />
+          <BrandedAlertHost />
 
           {/* Welcome greeting — scoped to the authenticated entry/request, unless an unfinished-JSA
               nag is also pending (compliance takes priority). */}

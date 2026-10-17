@@ -1,7 +1,7 @@
+import { BrandedAlert as Alert } from '../services/brandedAlert';
 import { Stack, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
   ScrollView,
   StyleSheet,
   Text,

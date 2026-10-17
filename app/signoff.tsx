@@ -1,10 +1,10 @@
+import { BrandedAlert as Alert } from '../services/brandedAlert';
 import {useFormKeyboard} from '../components/useFormKeyboard';
 import MoreMenu from '../components/MoreMenu';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-    Alert,
     Image,
     KeyboardAvoidingView,
     Linking,
@@ -1581,14 +1581,14 @@ export default function SignoffScreen() {
 
   if (jobGate !== 'ready') {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
         <GovernedIsolationSurface kind="connecting" variant="overlay" />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
       <Stack.Screen
         options={{
           title: t("Review & Submit"),
@@ -1605,12 +1605,14 @@ export default function SignoffScreen() {
           ref={formKeyboard.scrollRef}
           {...formKeyboard.scrollProps}
           style={styles.container}
-          contentContainerStyle={[styles.content,{paddingBottom:24+formKeyboard.height}]}
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
+          contentContainerStyle={[styles.content,{paddingBottom:8+formKeyboard.height}]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="always"
         >
           {/* Summary */}
-          <JsaSummaryCard
+          <JsaSummaryCard compact
             driverName={(params.driverName as string) || ''}
             truckNumber={(params.truckNumber as string) || ''}
             rows={summaryRows}
@@ -1669,7 +1671,7 @@ export default function SignoffScreen() {
               value={notes}
               onChangeText={setNotes}
               multiline
-              numberOfLines={4}
+              numberOfLines={2}
             />
           </View>
 
@@ -1678,12 +1680,12 @@ export default function SignoffScreen() {
             <Text style={styles.sectionTitle}>{t("Driver Signature")}</Text>
             {signatureImage ? (
               <View>
-                <View style={{ backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 4, height: 80, justifyContent: 'center' }}>
+                <View style={{ backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 4, height: 54, justifyContent: 'center' }}>
                   <Image
                     source={{ uri: signatureImage.startsWith('data:') ? signatureImage : `data:image/png;base64,${signatureImage}` }}
                     // tintColor forces strokes to render black regardless of
                     // the capture source. Matches Settings preview (filter:brightness(0)).
-                    style={{ width: '100%', height: 72, tintColor: '#000' }}
+                    style={{ width: '100%', height: 48, tintColor: '#000' }}
                     resizeMode="contain"
                   />
                 </View>
@@ -1707,7 +1709,7 @@ export default function SignoffScreen() {
               </TouchableOpacity>
             )}
             <Text style={{color:colors.textMuted,marginTop:6}}>Date: {params.date} · Signing time is recorded when you submit.</Text>
-            <Text style={{ color: colors.textDark, marginTop: 12, fontWeight: '600' }}>{t('Legal name')}</Text>
+            <Text style={{ color: colors.textDark, marginTop: 6, fontWeight: '600' }}>{t('Legal name')}</Text>
             <TextInput
               ref={nameInputRef}
               onFocus={()=>formKeyboard.focus(nameInputRef.current)}
@@ -1929,14 +1931,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
-    paddingBottom: 32,
-    gap: 12,
+    padding: 10,
+    paddingBottom: 8,
+    gap: 8,
   },
   summaryCard: {
     backgroundColor: colors.glassSurface,
     borderRadius: 12,
-    padding: 14,
+    padding: 10,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -1963,7 +1965,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 6,
+    paddingVertical: 0,
   },
   contactLabel: {
     color: colors.textDark,
@@ -1978,7 +1980,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.glassSurface,
     borderRadius: 12,
-    padding: 14,
+    padding: 10,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -1986,13 +1988,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: colors.textDark,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   checkRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: 6,
+    paddingVertical: 0,
   },
   checkLabel: {
     color: colors.textDark,
@@ -2011,7 +2013,7 @@ const styles = StyleSheet.create({
   },
   multiline: {
     textAlignVertical: "top",
-    minHeight: 100,
+    minHeight: 48,
   },
   submitButton: {
     backgroundColor: colors.primary,
@@ -2025,7 +2027,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  submitFooter: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: colors.border },
+  submitFooter: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: 'transparent' },
   submitText: {
     color: "#fff",
     fontSize: 16,

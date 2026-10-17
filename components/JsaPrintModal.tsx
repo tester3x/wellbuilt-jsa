@@ -1,5 +1,6 @@
+import { BrandedAlert as Alert } from '../services/brandedAlert';
 import React,{useEffect,useRef,useState} from 'react';
-import {Modal,View,Text,Pressable,ActivityIndicator,Alert} from 'react-native';
+import {Modal,View,Text,Pressable,ActivityIndicator,} from 'react-native';
 import * as Print from 'expo-print';
 import {refreshPrinter,printThermal,PrinterSettings,samePrinterSelection} from '../services/thermalPrinter';
 import {jsaDocumentHtml} from '../services/jsaDocument';

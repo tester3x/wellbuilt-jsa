@@ -1,8 +1,8 @@
+import { BrandedAlert as Alert } from '../services/brandedAlert';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    Alert,
     Image,
     ScrollView,
     StyleSheet,

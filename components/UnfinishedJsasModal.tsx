@@ -1,10 +1,10 @@
+import { BrandedAlert as Alert } from '../services/brandedAlert';
 // UnfinishedJsasModal — shown on app launch (and on foreground) when the driver
 // has prior-day JSAs with wells stamped but never signed off. Driver must
 // resume-and-sign or discard-with-reason. Compliance nag, not a soft reminder.
 
 import React, { useState } from 'react';
 import {
-  Alert,
   Modal,
   ScrollView,
   StyleSheet,
