@@ -44,18 +44,21 @@ function trimName(v: unknown): string {
 }
 
 /**
- * Governed printed name is authenticated session legalName only.
- * Hostile route/driverName/displayName/passcode/draft values are not inputs.
+ * Default to the legal profile name; explicit Signoff entry can supply or
+ * correct attestation text. Route/display/draft aliases are never defaults,
+ * and printed-name text never changes the authenticated owner.
  */
 export function decideGovernedPrintedName(input: {
   source: FormEvidenceSource | null | undefined;
   legalName?: string | null;
+  typedLegalName?: string | null;
 }): GovernedPrintedNameDecision {
   if (input.source === 'nav_params') return { kind: 'standalone' };
   if (input.source !== 'governed_snapshot') {
     return { kind: 'fail_closed', reason: 'missing_legal_name' };
   }
-  const printedName = trimName(input.legalName);
+  // Explicit signoff entry is attestation text, never an identity/owner key.
+  const printedName = trimName(input.typedLegalName !== undefined ? input.typedLegalName : input.legalName);
   if (!printedName) return { kind: 'fail_closed', reason: 'missing_legal_name' };
   return { kind: 'ok', printedName };
 }
@@ -99,6 +102,7 @@ export function requiredStepEvidencePresent(input: {
 export function decideGovernedSubmitEvidence(input: {
   source: FormEvidenceSource | null | undefined;
   legalName?: string | null;
+  typedLegalName?: string | null;
   standalonePrintedName?: string | null;
   signatureImage?: string | null;
   requiredStepIds: string[];
@@ -117,6 +121,7 @@ export function decideGovernedSubmitEvidence(input: {
   const printed = decideGovernedPrintedName({
     source: input.source,
     legalName: input.legalName,
+    typedLegalName: input.typedLegalName,
   });
   if (printed.kind !== 'ok') {
     return { kind: 'fail_closed', reason: 'missing_legal_name' };

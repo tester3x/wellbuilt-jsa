@@ -50,6 +50,13 @@ const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8B
 const LEGAL = 'Michael Burger';
 const REQUIRED = JSA_STEPS.map((s) => s.id);
 const ALL_ACKS = Object.fromEntries(REQUIRED.map((id) => [id, true]));
+check('explicit signoff legal name works when the session omits its profile legal name',
+  decideGovernedSubmitEvidence({ source:'governed_snapshot', legalName:null, typedLegalName:'Entered Legal Name',
+    signatureImage:PNG_B64, requiredStepIds:REQUIRED, stepAcks:ALL_ACKS, stepsAcknowledged:true }).kind === 'ok');
+check('clearing the legal-name input remains a validation failure',
+  decideGovernedPrintedName({ source:'governed_snapshot', legalName:LEGAL, typedLegalName:' ' }).kind === 'fail_closed');
+check('typed legal name cannot bypass a blocked governed request',
+  decideGovernedPrintedName({ source:'blocked', typedLegalName:LEGAL }).kind === 'fail_closed');
 
 function memStore(init = {}) {
   const data = { ...init };

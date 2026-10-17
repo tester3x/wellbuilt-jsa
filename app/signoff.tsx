@@ -76,6 +76,9 @@ export default function SignoffScreen() {
   const [prepared, setPrepared] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState("");
   const [signature, setSignature] = useState("");
+  const nameEditedRef = useRef(false);
+  const profileLegalNameRef = useRef(false);
+  const [validationNotice, setValidationNotice] = useState<{ message: string; focusName: boolean } | null>(null);
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
   const [showSigModal, setShowSigModal] = useState(false);
   const isLoadedRef = useRef(false);
@@ -99,7 +102,7 @@ export default function SignoffScreen() {
         const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
         const { legalAcknowledgmentName } = await import('../services/sso/jsaSession');
         const legal = legalAcknowledgmentName(await loadGovernedSession());
-        if(legal){setGovernedPrintedName(legal);setSignature(legal);}
+        if(legal && !nameEditedRef.current && !profileLegalNameRef.current){setGovernedPrintedName(legal);setSignature(legal);}
       } catch {}
     })();
   }, []);
@@ -109,7 +112,7 @@ export default function SignoffScreen() {
     (async () => {
       try {
         const profile = await fetchDriverProfile();
-        if(profile?.legalName?.trim()){setGovernedPrintedName(profile.legalName.trim());setSignature(profile.legalName.trim());}
+        if(profile?.legalName?.trim() && !nameEditedRef.current){profileLegalNameRef.current=true;setGovernedPrintedName(profile.legalName.trim());setSignature(profile.legalName.trim());}
         if (profile?.signature) {
           setSignatureImage(profile.signature);
           console.log('[JSA-Signoff] Pre-loaded signature from Firebase profile');
@@ -282,11 +285,8 @@ export default function SignoffScreen() {
     if (submitLockRef.current) return;
     // Validation: Drawn signature required
     if (!signatureImage) {
-      Alert.alert(
-        t("Signature Required") || "Signature Required",
-        t("Please sign before submitting. Tap the signature area to draw your signature."),
-        [{ text: t("OK") || "OK" }]
-      );
+      setValidationNotice({ focusName: false,
+        message: t("Please sign before submitting. Tap the signature area to draw your signature.") });
       return;
     }
 
@@ -397,6 +397,7 @@ export default function SignoffScreen() {
       const submitEvidence = decideGovernedSubmitEvidence({
         source: frozenJob.source,
         legalName: legalAcknowledgmentName(await loadGovernedSession()),
+        typedLegalName: governedPrintedName,
         standalonePrintedName: signature,
         signatureImage,
         requiredStepIds,
@@ -404,14 +405,13 @@ export default function SignoffScreen() {
         stepsAcknowledged,
       });
       if (submitEvidence.kind === 'fail_closed') {
-        Alert.alert(
-          t('Cannot complete') || 'Cannot complete',
+        setValidationNotice({ focusName: submitEvidence.reason === 'missing_legal_name', message:
           submitEvidence.reason === 'missing_legal_name'
             ? (t('Legal name is required') || 'Legal name is required to submit this JSA.')
             : submitEvidence.reason === 'missing_step_evidence'
               ? (t('Please review all steps before continuing.') || 'Please review all steps before continuing.')
               : (t('Signature Required') || 'Please sign before submitting.'),
-        );
+        });
         return;
       }
       const printedNameForSave = submitEvidence.printedName;
@@ -1707,20 +1707,19 @@ export default function SignoffScreen() {
               </TouchableOpacity>
             )}
             <Text style={{color:colors.textMuted,marginTop:6}}>Date: {params.date} · Signing time is recorded when you submit.</Text>
-            {/* Only request a name when the verified profile has no legal name. */}
-            {!governedPrintedName &&
+            <Text style={{ color: colors.textDark, marginTop: 12, fontWeight: '600' }}>{t('Legal name')}</Text>
             <TextInput
               ref={nameInputRef}
               onFocus={()=>formKeyboard.focus(nameInputRef.current)}
               style={[styles.input, { marginTop: 8 }]}
               placeholder={t("Print full name")}
               placeholderTextColor={colors.textMuted}
-              value={signature}
-              onChangeText={jobSource === 'governed_snapshot' ? () => {} : setSignature}
-              editable={jobSource !== 'governed_snapshot'}
+              value={jobSource === 'governed_snapshot' ? governedPrintedName : signature}
+              onChangeText={value => { nameEditedRef.current=true; setGovernedPrintedName(value); setSignature(value); }}
+              accessibilityLabel={t('Legal name')}
+              autoCapitalize="words"
               returnKeyType="done"
             />
-            }
           </View>
 
           <SignatureModal
@@ -1736,11 +1735,31 @@ export default function SignoffScreen() {
             accent={accent}
           />
 
+      </ScrollView>
+      <View style={styles.submitFooter}>
         <TouchableOpacity style={[styles.submitButton, { backgroundColor: accent }]} onPress={handleSubmit}>
           <Text style={styles.submitText}>{t("Submit JSA")}</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
+
+    <Modal visible={!!validationNotice} transparent animationType="fade" onRequestClose={() => setValidationNotice(null)}>
+      <View style={brandedModalStyles.backdrop}>
+        <View style={brandedModalStyles.card}>
+          <View style={[brandedModalStyles.header, { backgroundColor: accent }]}>
+            <Text style={brandedModalStyles.headerTitle}>{t('Cannot complete')}</Text>
+          </View>
+          <View style={brandedModalStyles.body}><Text style={brandedModalStyles.bodyText}>{validationNotice?.message}</Text></View>
+          <View style={brandedModalStyles.buttonRow}>
+            <TouchableOpacity style={[brandedModalStyles.primaryBtn, { backgroundColor: accent }]} onPress={() => {
+              const focusName = validationNotice?.focusName;
+              setValidationNotice(null);
+              if (focusName) requestAnimationFrame(() => nameInputRef.current?.focus());
+            }}><Text style={brandedModalStyles.primaryBtnText}>{t('OK')}</Text></TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
 
     {/* ── Branded completion modal (single post-submit surface) ─────── */}
     <Modal
@@ -2006,6 +2025,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
+  submitFooter: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: colors.border },
   submitText: {
     color: "#fff",
     fontSize: 16,
