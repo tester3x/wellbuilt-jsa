@@ -135,6 +135,7 @@ export async function clearAttempt(): Promise<void> {
 }
 
 export async function saveGovernedSession(session: JsaGovernedSession): Promise<void> {
+  require('react-native').NativeModules.JsaWorkForms?.clearWorkForms?.();
   const sanitized = sanitizeSessionForPersist(session);
   if (!validatePersistedGovernedSession(sanitized)) {
     throw new Error('invalid_session');
@@ -147,11 +148,13 @@ export async function loadGovernedSession(): Promise<JsaGovernedSession | null> 
 }
 
 export async function clearGovernedSession(): Promise<void> {
+  require('react-native').NativeModules.JsaWorkForms?.clearWorkForms?.();
   await sessionMutator.clear();
 }
 
 /** Clear only if the stored generation is still the one this call used. Serialized with save. */
 export async function clearGovernedSessionIfGeneration(used: string): Promise<boolean> {
+  require('react-native').NativeModules.JsaWorkForms?.clearWorkForms?.();
   return sessionMutator.clearIfGeneration(used);
 }
 
@@ -166,6 +169,7 @@ export async function strictLoadGovernedSession(): Promise<JsaGovernedSession | 
 
 /** Cleanup-only strict conditional delete plus raw absence verification. */
 export async function strictClearGovernedSessionIfGeneration(used: string): Promise<boolean> {
+  require('react-native').NativeModules.JsaWorkForms?.clearWorkForms?.();
   return strictClearRawSessionIfGeneration(used, {
     readRaw: () => SecureStore.getItemAsync(SESSION_KEY),
     deleteRaw: () => SecureStore.deleteItemAsync(SESSION_KEY),

@@ -78,7 +78,7 @@ export function runGovernedIdentityMutation<T>(operation: () => Promise<T>): Pro
   return identityMutations.run(operation);
 }
 
-export function reserveGovernedIdentityEpoch(): number { return identityMutations.reserve(); }
+export function reserveGovernedIdentityEpoch(): number { require('react-native').NativeModules.JsaWorkForms?.clearWorkForms?.(); return identityMutations.reserve(); }
 export function currentGovernedIdentityEpoch(): number { return identityMutations.current(); }
 export function governedIdentityEpochIsCurrent(epoch: number): boolean { return identityMutations.isCurrent(epoch); }
 

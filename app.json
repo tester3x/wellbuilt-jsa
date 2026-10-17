@@ -43,7 +43,8 @@
         }
       ],
       "expo-secure-store",
-      "./plugins/withThermalPrinters"
+      "./plugins/withThermalPrinters",
+      "./plugins/withTicketTimeForms"
     ],
     "experiments": {
       "typedRoutes": true,
