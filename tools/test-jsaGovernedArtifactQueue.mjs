@@ -879,5 +879,24 @@ check('signoff maps signatureImage not signature as the PNG',
     && live.includes('commitGovernedAfterLocalSaveWithStore'));
 }
 
+for (const refusal of ['expired', 'binding_mismatch', 'not_found', 'action_not_permitted']) {
+  const { world, store } = memStore({ completeImpl: async () => ({ kind: 'pending_retry', refusal }) });
+  const out = await commitGovernedAfterLocalSaveWithStore(store, {
+    requestId: RID, action: 'read_completed', localRecordId: 'preserved', snapshot: adapted.value, localSaveOk: true,
+  });
+  check(`terminal completion ${refusal} never offers endless retry or archives uncompleted evidence`,
+    out.kind === 'fail_closed' && world.queue[0].artifactState === 'blocked'
+    && world.queue[0].localRecordId === 'preserved' && world.persists.length === 0);
+  await settleArtifactQueue(store);
+  check(`terminal completion ${refusal} is not retried on foreground`, world.completes.length === 1);
+  if (refusal === 'expired') check('expired completion explains fresh Start Job recovery', out.copy.includes('Start Job'));
+}
+for (const refusal of ['network', 'unauthenticated', 'complete_failed']) {
+  const { store } = memStore({ completeImpl: async () => ({ kind: 'pending_retry', refusal }) });
+  const out = await commitGovernedAfterLocalSaveWithStore(store, {
+    requestId: RID, action: 'read_completed', localRecordId: 'retry-me', snapshot: adapted.value, localSaveOk: true,
+  });
+  check(`transient completion ${refusal} remains retryable`, out.kind === 'pending_retry');
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

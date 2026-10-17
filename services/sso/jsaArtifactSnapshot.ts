@@ -435,6 +435,7 @@ export type ArtifactStatusCode =
   | 'not_a_driver'
   | 'authority_unverifiable'
   | 'not_found'
+  | 'expired'
   | 'permission'
   | 'blocked'
   | 'update_required';
@@ -473,6 +474,7 @@ export function classifyArtifactStatus(code: string): ArtifactClass {
     || code === 'not_a_driver'
     || code === 'authority_unverifiable'
     || code === 'not_found'
+    || code === 'expired'
     || code === 'permission'
     || code === 'blocked'
   ) {
@@ -495,6 +497,7 @@ export function classifyPersistRefusal(refusal: string): ArtifactStatusCode {
     case 'not_a_driver': return 'not_a_driver';
     case 'authority_unverifiable': return 'authority_unverifiable';
     case 'not_found': return 'not_found';
+    case 'expired': return 'expired';
     case 'jsa_disabled':
     case 'active_shift_required':
     case 'intent_not_permitted':
@@ -854,13 +857,10 @@ async function processItem(store: ArtifactQueueStore, item: ArtifactQueueItem): 
     if (done.kind === 'completed') {
       completeReused = done.reused;
       current = markCompleteDone(current);
-    } else if (done.kind === 'fail_closed' && done.refusal === 'conflict') {
-      return { item: applyStatus(current, 'conflict', store.nowMs()), completeReused };
     } else {
-      const status: ArtifactStatusCode = done.refusal === 'unauthenticated' ? 'auth_unavailable'
-        : done.refusal === 'network' ? 'network'
-          : done.refusal === 'malformed' ? 'malformed'
-            : 'complete_retry';
+      const mapped = classifyPersistRefusal(done.refusal);
+      const status: ArtifactStatusCode = mapped === 'unavailable' ? 'complete_retry' : mapped;
+      store.log(`complete_${status}`);
       return { item: applyStatus(current, status, store.nowMs()), completeReused };
     }
   }
@@ -975,7 +975,9 @@ export async function commitGovernedAfterLocalSaveWithStore(
     return {
       kind: 'fail_closed',
       refusal: processed.item.lastStatus,
-      copy: 'Your JSA is saved on this device, but it could not be securely archived. Do not tap Retry. Return to WellBuilt Tickets if you need a new request.',
+      copy: processed.item.lastStatus === 'expired'
+        ? 'Your JSA is saved on this device, but this job request expired before completion. Return to WellBuilt Tickets and tap Start Job to open a fresh JSA request. Retrying this expired request cannot complete it.'
+        : 'Your JSA is saved on this device, but it could not be securely archived. Do not tap Retry. Return to WellBuilt Tickets if you need a new request.',
     };
   }
   return {
