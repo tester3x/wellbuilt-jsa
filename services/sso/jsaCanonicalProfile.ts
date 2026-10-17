@@ -1,7 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { awaitGovernedAuthReady, getGovernedAuth } from './jsaGovernedAuthLive';
+import { awaitGovernedAuthReady, getGovernedAuth, currentGovernedIdentityEpoch } from './jsaGovernedAuthLive';
+import { createSharedVerifiedLookup } from './sharedVerifiedLookup';
 import { loadGovernedSession } from './jsaRuntime';
 import { parseBoundLogoutBaseline, serializeBoundLogoutBaseline } from './jsaLogoutWatcherContract';
 import type { ManualInstallationOwner } from './jsaManualLogin';
@@ -11,14 +12,36 @@ export const CANONICAL_LOGOUT_BASELINE_KEY = 'jsa_lastCanonicalLogoutAt';
 
 export type { JsaCanonicalProfile } from './jsaIdentityContract';
 
+let profileRevision = 0;
+let profileLookup: { key: string; read: () => Promise<JsaCanonicalProfile> } | undefined;
+function profileGeneration() {
+  return `${currentGovernedIdentityEpoch()}/${getGovernedAuth().currentUser?.uid ?? ''}/${profileRevision}`;
+}
+
 export async function fetchCanonicalGovernedProfile(): Promise<JsaCanonicalProfile | null> {
   await awaitGovernedAuthReady();
   const auth = getGovernedAuth();
   const session = await loadGovernedSession();
   if (!session || !auth.currentUser || auth.currentUser.uid !== session.uid) return null;
-  const callable = httpsCallable(getFunctions(getApp()), 'getOwnDriverHydration', { timeout: 15_000 });
-  const result = await callable({});
-  return parseCanonicalProfile(result.data, { driverId: session.driverId, companyId: session.companyId });
+  const key = JSON.stringify([session.uid, session.driverId, session.companyId, session.generation]);
+  if (profileLookup?.key !== key) {
+    profileLookup = { key, read: createSharedVerifiedLookup({
+      generation: profileGeneration,
+      maxAgeMs: 30_000,
+      load: async () => {
+        const callable = httpsCallable(getFunctions(getApp()), 'getOwnDriverHydration', { timeout: 15_000 });
+        const result = await callable({});
+        const current = await loadGovernedSession();
+        if (!current || JSON.stringify([current.uid, current.driverId, current.companyId, current.generation]) !== key) {
+          throw new Error('governed_identity_changed');
+        }
+        const profile = parseCanonicalProfile(result.data, { driverId: session.driverId, companyId: session.companyId });
+        if (!profile) throw new Error('canonical_profile_invalid');
+        return profile;
+      },
+    }) };
+  }
+  return profileLookup.read();
 }
 
 export async function seedCanonicalLogoutBaseline(): Promise<void> {
@@ -33,15 +56,17 @@ export async function seedCanonicalLogoutBaseline(): Promise<void> {
 }
 
 export async function updateCanonicalGovernedProfile(profile: Record<string, unknown>): Promise<void> {
+  profileRevision++;
   await awaitGovernedAuthReady();
   const auth = getGovernedAuth();
   const session = await loadGovernedSession();
   if (!session || auth.currentUser?.uid !== session.uid) throw new Error('governed_auth_required');
   const callable = httpsCallable(getFunctions(getApp()), 'updateDriverProfile', { timeout: 15_000 });
-  await callable({ profile });
+  try { await callable({ profile }); } finally { profileRevision++; }
 }
 
 export async function clearCanonicalIdentityState(): Promise<void> {
+  profileRevision++;
   await SecureStore.deleteItemAsync(CANONICAL_LOGOUT_BASELINE_KEY);
 }
 

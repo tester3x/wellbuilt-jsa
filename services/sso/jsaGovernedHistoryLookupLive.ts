@@ -13,7 +13,8 @@ export async function authenticatedGovernedFirestoreFetch(url: string, init: Req
   if (inspection.state !== 'usable' || !session || !user || user.uid !== session.uid) {
     throw new Error('governed_identity_unavailable');
   }
-  const token = await user.getIdToken(true);
+  const token = await user.getIdToken();
+  if (getAuth(getApp()).currentUser !== user) throw new Error('auth_identity_changed');
   if (!token) throw new Error('governed_token_unavailable');
   return fetch(url, {
     ...init,
@@ -31,7 +32,9 @@ export function lookupCurrentGovernedShiftHistory(shiftId: string) {
     freshIdToken: async (expectedUid) => {
       const user = getAuth(getApp()).currentUser;
       if (!user || user.uid !== expectedUid) throw new Error('auth_identity_changed');
-      return user.getIdToken(true);
+      const token = await user.getIdToken();
+      if (getAuth(getApp()).currentUser !== user) throw new Error('auth_identity_changed');
+      return token;
     },
     runQuery: async ({ token, driverId, companyId, shiftId: exactShift }) => {
       const response = await fetch(RUN_QUERY, {
