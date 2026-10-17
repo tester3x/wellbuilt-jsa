@@ -1,4 +1,5 @@
 import SearchResults from '../../components/SearchResults';
+import { jsaHistoryNotice } from '../../services/jsaHistoryNotice';
 import {useFormKeyboard} from '../../components/useFormKeyboard';
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -1453,6 +1454,8 @@ export default function JsaHomeScreen() {
 
   const historyBlocksNewJsa = isSsoMode
     && historyLookup !== 'found';
+  const openingRequestedRead = !!welcomeReadRequestId && welcomeReadConsumed.current !== welcomeReadRequestId;
+  const historyNotice = jsaHistoryNotice(historyLookup, openingRequestedRead);
 
   // Auto-route to today's submitted JSA on app open. Rule: 1 JSA per day —
   // if it's already submitted, opening the app should drop the driver into
@@ -2220,17 +2223,19 @@ export default function JsaHomeScreen() {
           />
         )}
 
-        {workflowIsolation.mountForm && historyBlocksNewJsa && (
+        {workflowIsolation.mountForm && isSsoMode && historyNotice && (
           <View style={[styles.card, { borderColor: '#B45309', borderWidth: 1 }]}>
-            <Text style={styles.cardTitle}>{t('JSA status could not be verified')}</Text>
+            <Text style={styles.cardTitle}>{historyNotice === 'checking' ? 'Checking JSA…' : t('JSA status could not be verified')}</Text>
             <Text style={styles.cardSubtitle}>
-              {historyLookup === 'backend_required'
+              {historyNotice === 'checking'
+                ? (openingRequestedRead ? 'Opening the JSA for this job…' : 'Verifying this shift’s JSA…')
+                : historyNotice === 'backend_required'
                 ? 'Older JSA records require secure server verification before another JSA can be started.'
                 : 'WellBuilt could not securely verify this shift. Retry when service is available.'}
             </Text>
-            <TouchableOpacity style={[styles.button, { backgroundColor: accent }]} onPress={() => void loadTodaysSave()}>
+            {historyNotice !== 'checking' && <TouchableOpacity style={[styles.button, { backgroundColor: accent }]} onPress={() => void loadTodaysSave()}>
               <Text style={styles.buttonText}>{t('Retry secure check')}</Text>
-            </TouchableOpacity>
+            </TouchableOpacity>}
           </View>
         )}
 
