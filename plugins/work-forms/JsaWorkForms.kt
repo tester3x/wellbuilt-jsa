@@ -23,6 +23,7 @@ object JsaFormsMemory {
   private var expires=0L
   private var payload:String?=null
   @Synchronized fun clear():Long { revision++;payload=null;expires=0;return revision }
+  @Synchronized fun clearIfCurrent(expected:Long):Boolean { if(expected!=revision)return false;clear();return true }
   @Synchronized fun publish(expected:Long,until:Long,json:String):Boolean {
     if(expected!=revision||until<=System.currentTimeMillis()||until>System.currentTimeMillis()+120000||json.length>12000000)return false
     val p=JSONObject(json)
@@ -31,8 +32,9 @@ object JsaFormsMemory {
   }
   @Synchronized fun read(uri:Uri):ByteArray? {
     if(uri.authority!="com.syconik801.jsaapp.workforms"||uri.path!="/forms"||uri.queryParameterNames!=setOf("startDate","endDate"))return null
-    if(System.currentTimeMillis()>expires){clear();return null}
     val json=payload?:return null
+    // Polling a pending export must not invalidate the publisher's revision.
+    if(System.currentTimeMillis()>expires){clear();return null}
     val p=JSONObject(json)
     if(p.getString("startDate")!=uri.getQueryParameter("startDate")||p.getString("endDate")!=uri.getQueryParameter("endDate"))return null
     return json.toByteArray(Charsets.UTF_8)
@@ -41,6 +43,7 @@ object JsaFormsMemory {
 class JsaWorkFormsModule(context:ReactApplicationContext):ReactContextBaseJavaModule(context){
   override fun getName()="JsaWorkForms"
   @ReactMethod(isBlockingSynchronousMethod=true) fun clearWorkForms():Double=JsaFormsMemory.clear().toDouble()
+  @ReactMethod(isBlockingSynchronousMethod=true) fun clearWorkFormsIfCurrent(revision:Double):Boolean=JsaFormsMemory.clearIfCurrent(revision.toLong())
   @ReactMethod(isBlockingSynchronousMethod=true) fun publishWorkForms(revision:Double,expires:Double,json:String):Boolean=JsaFormsMemory.publish(revision.toLong(),expires.toLong(),json)
 }
 class JsaWorkFormsPackage:ReactPackage {

@@ -32,6 +32,6 @@ export async function refreshTicketTimeForms(period: {startDate:string;endDate:s
     const again=await loadUsableGovernedSession();
     if(!again||again.generation!==session.generation||again.uid!==session.uid||again.companyId!==session.companyId||again.driverId!==session.driverId||currentGovernedIdentityEpoch()!==epoch)return;
     const payload=JSON.stringify({schema:'wellbuilt.work-forms',schemaVersion:1,authVerified:true,generatedAt:new Date().toISOString(),driverId:session.driverId,companyId:session.companyId,driverName:session.displayName||session.legalName,legalName:session.legalName,timezone,...period,forms,missing:p.missing||[]});
-    bridge.publishWorkForms(revision,Date.now()+120000,payload);
-  }catch{clearTicketTimeForms();}
+    if(!bridge.publishWorkForms(revision,Date.now()+120000,payload))console.warn('[JSA-TicketTime] export_not_published');
+  }catch(error){console.warn('[JSA-TicketTime] export_failed', typeof (error as any)?.code==='string'?(error as any).code:'request_or_render');bridge.clearWorkFormsIfCurrent?.(revision);}
 }
