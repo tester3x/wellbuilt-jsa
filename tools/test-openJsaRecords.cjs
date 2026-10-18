@@ -10,4 +10,11 @@ new Function('require','module','exports',ts.transpileModule(fs.readFileSync('se
  if(n.endsWith('jsaGovernedHistoryLookupLive'))return{authenticatedGovernedFirestoreFetch:async()=>({ok:!fail,json:async()=>({fields:{currentShiftId:{stringValue:'2026-09-14_123'}}})})};
  throw Error(n);
 },m,m.exports);
-(async()=>{let result=await m.exports.ownOpenJsaRecords();assert.deepEqual(result.rows.map(r=>r.id),['open','current']);fail=true;result=await m.exports.ownOpenJsaRecords();assert.deepEqual(result.rows.map(r=>r.id),['open']);assert.equal(result.unverified,true);console.log('Open JSA list: owner filtering, explicit standalone close, verified shift and unavailable authority passed.');})().catch(e=>{console.error(e);process.exitCode=1});
+(async()=>{const older=m.exports.olderOpenStandaloneRecords;
+assert.deepEqual(older([{id:'old',workflow:'standalone',state:'open',date:'2026-09-22'},{id:'today',workflow:'standalone',state:'open',date:'2026-10-18'},{id:'closed',workflow:'standalone',state:'closed',date:'2026-09-22'},{id:'shift',workflow:'shift',state:'open',date:'2026-09-22'}],'2026-10-18').map(r=>r.id),['old']);
+rows.push({id:'legacy-hash',companyId:'c',driverHash:'d',workflow:'standalone',state:'open'});
+rows.push({id:'conflict',companyId:'c',driverId:'foreign',driverHash:'d',workflow:'standalone',state:'open'});
+assert.equal((await m.exports.ownJsaRecord('legacy-hash')).driverId,'d');
+await assert.rejects(()=>m.exports.ownJsaRecord('conflict'));
+rows.splice(rows.findIndex(r=>r.id==='legacy-hash'),1);
+let result=await m.exports.ownOpenJsaRecords();assert.deepEqual(result.rows.map(r=>r.id),['open','current']);fail=true;result=await m.exports.ownOpenJsaRecords();assert.deepEqual(result.rows.map(r=>r.id),['open']);assert.equal(result.unverified,true);console.log('Open JSA list: owner filtering, explicit standalone close, verified shift and unavailable authority passed.');})().catch(e=>{console.error(e);process.exitCode=1});

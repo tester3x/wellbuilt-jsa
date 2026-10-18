@@ -6,9 +6,16 @@ export async function ownJsaRecords(){
  const rows=JSON.parse(await AsyncStorage.getItem(STORAGE_KEYS.saves)||'[]');
  const current=await loadUsableGovernedSession();
  if(!current||current.uid!==session.uid||current.generation!==session.generation)throw new Error('Session changed. Reopen your JSA.');
- return rows.filter((r:any)=>r.companyId===session.companyId&&(r.driverId===session.driverId||r.driverHash===session.driverId));
+ return rows.filter((r:any)=>r.companyId===session.companyId&&(r.driverId===session.driverId||!r.driverId&&r.driverHash===session.driverId))
+   .map((r:any)=>({...r,driverId:session.driverId}));
 }
 export async function ownJsaRecord(id:string){const r=(await ownJsaRecords()).find((r:any)=>r.id===id);if(!r)throw new Error('This JSA is not available for the signed-in driver.');return r;}
+
+/** Older open standalone records need review before clearing a new manual form. */
+export function olderOpenStandaloneRecords(rows:any[],today:string){
+ return rows.filter(r=>r.workflow==='standalone'&&r.state==='open'&&typeof r.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(r.date)&&r.date<today)
+   .sort((a,b)=>a.date.localeCompare(b.date)||String(a.id).localeCompare(String(b.id)));
+}
 
 /** A saved signature alone is not evidence that a Suite shift is still open. */
 export async function ownOpenJsaRecords(){

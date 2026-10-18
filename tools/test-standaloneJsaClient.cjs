@@ -1,16 +1,16 @@
 const fs=require('fs'),ts=require('typescript'),assert=require('node:assert/strict'),crypto=require('node:crypto');
-const m={exports:{}};let session={uid:'u',generation:'g',driverId:'d',companyId:'c'},launch=null,calls=[],local=[];
+const m={exports:{}};let session={uid:'u',generation:'g',driverId:'d',companyId:'c'},launch=null,calls=[],local=[],closeState='closed';
 const source=fs.readFileSync('services/standaloneJsa.ts','utf8');const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true}}).outputText;
 new Function('require','module','exports',js)(name=>{
  if(name==='firebase/app')return{getApp:()=>({})};
- if(name==='firebase/functions')return{getFunctions:()=>({}),httpsCallable:()=>async body=>{calls.push(body);return{data:{allowed:true,companyId:'c',driverId:'d',record:{id:body.recordId}}};}};
+ if(name==='firebase/functions')return{getFunctions:()=>({}),httpsCallable:()=>async body=>{calls.push(body);return{data:{allowed:true,companyId:'c',driverId:'d',record:{id:body.recordId,companyId:'c',driverId:'d',state:body.operation==='close'?closeState:'open',closedAtMs:123}}};}};
  if(name==='expo-crypto')return{CryptoDigestAlgorithm:{SHA256:'sha256'},digestStringAsync:async(_,s)=>crypto.createHash('sha256').update(s).digest('hex')};
  if(name.endsWith('jsaGovernedAuthLive'))return{loadUsableGovernedSession:async()=>session};
  if(name.endsWith('jsaRuntime'))return{loadLaunchContext:async()=>launch};
  if(name.endsWith('jsaArtifactSnapshot'))return{adaptGovernedSnapshot:raw=>({ok:!!raw.signatureImage,value:{signature:raw.signatureImage}})};
  if(name==='@react-native-async-storage/async-storage')return{getItem:async key=>key==='saves'?JSON.stringify(local):null,setItem:async(_,v)=>{local=JSON.parse(v)}};
  if(name.endsWith('storageKeys'))return{STORAGE_KEYS:{saves:'saves'}};
- if(name==='./jsaRecord')return{ownJsaRecord:async id=>{const row=local.find(r=>r.id===id&&r.companyId===session.companyId&&r.driverId===session.driverId);if(!row)throw Error('Not owned');return row;}};
+ if(name==='./jsaRecord')return{ownJsaRecord:async id=>{const row=local.find(r=>r.id===id&&r.companyId===session.companyId&&(r.driverId===session.driverId||!r.driverId&&r.driverHash===session.driverId));if(!row)throw Error('Not owned');return {...row,driverId:session.driverId};}};
  throw Error(name);
 },m,m.exports);
 (async()=>{
@@ -33,6 +33,16 @@ new Function('require','module','exports',js)(name=>{
  local.push({...payload,id:'shift',workflow:'shift'});await assert.rejects(()=>api.getStandaloneRecord('shift'),/shift JSA/);
  await assert.rejects(()=>api.getStandaloneRecord('missing'),/Not owned/);
  launch={requestId:'required'};await assert.rejects(()=>api.getStandaloneRecord('selected'),/required JSA/);launch=null;
+ local.push({...payload,id:'hash-only',driverId:undefined,driverHash:'d',state:'open',standaloneRecordId:'H'.repeat(43)});
+ calls=[];await api.closeStandaloneJsa({id:'hash-only',driverId:'forged'});
+ assert.deepEqual(calls,[{operation:'close',recordId:'H'.repeat(43)}]);
+ assert.equal(local.find(r=>r.id==='hash-only').state,'closed');
+ assert.equal(local.find(r=>r.id==='incomplete').signatureImage,'');
+ local.push({...payload,id:'failed-close',state:'open',standaloneRecordId:'F'.repeat(43)});closeState='open';
+ await assert.rejects(()=>api.closeStandaloneJsa({id:'failed-close'}),/verified/);
+ assert.equal(local.find(r=>r.id==='failed-close').state,'open');closeState='closed';
+ await assert.rejects(()=>api.closeStandaloneJsa({id:'shift'}),/owner mismatch/);
+ local.push({...payload,id:'conflict',driverId:'other',driverHash:'d'});await assert.rejects(()=>api.closeStandaloneJsa({id:'conflict'}),/Not owned/);
  session=null;await assert.rejects(()=>api.standaloneCall({operation:'access'}));
  console.log('Client boundary checks passed, including selected-record isolation, preserved incomplete saves, and shift/owner/required-request rejection.');
 })().catch(e=>{console.error(e);process.exitCode=1});

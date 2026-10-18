@@ -80,11 +80,22 @@ export async function syncStandaloneHistory(): Promise<any[]> {
   return latest.filter((r:any)=>r.companyId===session.companyId && (r.driverId===session.driverId || r.driverHash===session.driverId));
 }
 export async function closeStandaloneJsa(item:any):Promise<void>{
+  const {ownJsaRecord}=await import('./jsaRecord');
+  item=await ownJsaRecord(item.id);
   const session=await loadUsableGovernedSession();
-  if(!session || item.companyId!==session.companyId || item.driverId!==session.driverId)throw new Error('JSA owner mismatch.');
+  if(!session || item.workflow!=='standalone'||item.companyId!==session.companyId || item.driverId!==session.driverId)throw new Error('JSA owner mismatch.');
   const saved = item.standaloneRecordId ? item.standaloneRecordId : (await persistStandaloneJsa(item)).record.id;
-  await standaloneCall({operation:'close',recordId:saved});
-  await syncStandaloneHistory();
+  const result=await standaloneCall({operation:'close',recordId:saved});
+  if(result?.record?.id!==saved||result.record.state!=='closed'||result.record.companyId!==session.companyId||result.record.driverId!==session.driverId)throw new Error('JSA close could not be verified. Retry.');
+  const current=await loadUsableGovernedSession();
+  if(!current||current.uid!==session.uid||current.generation!==session.generation||current.companyId!==session.companyId||current.driverId!==session.driverId)throw new Error('Session changed; retry.');
+  const storage=(await import('@react-native-async-storage/async-storage')).default;
+  const {STORAGE_KEYS}=await import('../constants/storageKeys');
+  const rows=JSON.parse(await storage.getItem(STORAGE_KEYS.saves)||'[]');
+  const latest=await loadUsableGovernedSession();
+  if(!latest||latest.uid!==session.uid||latest.generation!==session.generation||latest.companyId!==session.companyId||latest.driverId!==session.driverId)throw new Error('Session changed; retry.');
+  await storage.setItem(STORAGE_KEYS.saves,JSON.stringify(rows.map((r:any)=>r.id===item.id&&r.companyId===session.companyId&&(r.driverId===session.driverId||!r.driverId&&r.driverHash===session.driverId)
+    ?{...r,standaloneRecordId:saved,state:'closed',closedAtMs:result.record.closedAtMs}:r)));
 }
 
 /** Resolve only an owned local save, then read the canonical record. Route params are not authority. */

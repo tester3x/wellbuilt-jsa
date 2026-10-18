@@ -2032,9 +2032,23 @@ export default function JsaHomeScreen() {
     maybeLoadExisting();
   }, [driverName, truckNumber]);
 
-  const handleNext = () => {
+  const reviewOlderStandaloneJsas = async () => {
+    try {
+      const {loadLaunchContext}=await import('../../services/sso/jsaRuntime');
+      if(await loadLaunchContext())return false;
+      const {ownJsaRecords,olderOpenStandaloneRecords}=await import('../../services/jsaRecord');
+      if(olderOpenStandaloneRecords(await ownJsaRecords(),localCalendarDate()).length){
+        router.push('/open-jsas' as any);
+        Alert.alert(t('Open JSAs'),t('Review and close older open JSAs before starting a new JSA.'));
+        return false;
+      }
+      return true;
+    }catch{Alert.alert(t('Error'),t('Could not load your JSAs. Check your sign-in and retry.'));return false;}
+  };
+  const handleNext = async () => {
     if (!handleNextAllowed(workflowIsolation.blocked)) return;
     if (isNextDisabled) return;
+    if(!isSsoMode&&!await reviewOlderStandaloneJsas())return;
 
     // Flush buffered Well/Location text that the driver typed but never tapped
     // "+ Add" on. Without this, the typed entry is silently dropped at Next and
@@ -2102,7 +2116,9 @@ export default function JsaHomeScreen() {
     });
   };
 
-  const handleNewJsa = () => {
+  const handleNewJsa = async () => {
+    if(!await reviewOlderStandaloneJsas())return;
+    if(newStandalone){setSelectedOperator('');setOperatorQuery('');}
     setAddedWells([]);
     setAddedLocations([]);
     setLocationInput("");
@@ -2113,7 +2129,7 @@ export default function JsaHomeScreen() {
     setWellName("");
     setOtherInfo("");
   };
-  useEffect(()=>{if(newStandalone){handleNewJsa();setSelectedOperator('');setOperatorQuery('');setOperatorQuery('');}},[newStandalone]);
+  useEffect(()=>{if(newStandalone)void handleNewJsa();},[newStandalone]);
 
   const handleContinue = () => {
     if (!continueJsa) return;
