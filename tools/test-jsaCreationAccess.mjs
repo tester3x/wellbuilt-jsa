@@ -8,8 +8,9 @@ for (const patch of [{authenticated:false}, {driverId:null}, {companyId:null}, {
 const request = {requestId:'test-request',companyId:base.companyId,driverId:base.driverId,shiftId:'2026-09-13_080000',verified:true};
 assert.equal(decideJsaCreationAccess({...base,request}).kind,'standalone');
 assert.equal(decideJsaCreationAccess({...base,requiredLaunchPresent:true,request}).kind,'required');
-for(const patch of [{verified:false},{companyId:'other'},{driverId:'other'},{shiftId:''},{requestId:''}]) {
+for(const patch of [{verified:false},{companyId:'other'},{driverId:'other'},{requestId:''}]) {
   assert.equal(decideJsaCreationAccess({...base,requiredLaunchPresent:true,request:{...request,...patch}}).kind,'denied');
 }
 assert.equal(decideJsaCreationAccess({...base,requiredLaunchPresent:true}).kind,'denied');
+assert.equal(decideJsaCreationAccess({...base,requiredLaunchPresent:true,request:{...request,shiftId:null}}).kind,'required');
 console.log('13 standalone/required-access boundary cases passed.');

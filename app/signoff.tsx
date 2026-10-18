@@ -460,10 +460,15 @@ export default function SignoffScreen() {
       //
       // The choice is stamped into a diagnostic so a post-mortem can prove
       // the write side and the close-job read side picked the same scope.
-      const shiftIdInStorage = independent ? null : await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
+      // Governed work uses only the verified session's optional shift association.
+      // A calendar day and a stale local cache are never a shift identifier.
+      const governedBinding = resolved.hasLaunch ? (await loadGovernedSession())?.binding : null;
+      const shiftIdInStorage = independent ? null : resolved.hasLaunch
+        ? governedBinding?.shiftState === 'open' ? governedBinding.periodId || null : null
+        : await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
       const dateForPayload = new Date().toISOString().slice(0, 10);
-      const scopeSource: 'shiftId' | 'date' = shiftIdInStorage ? 'shiftId' : 'date';
-      const shiftIdForPayload = shiftIdInStorage || dateForPayload;
+      const scopeSource: 'shiftId' | 'date' | 'none' = shiftIdInStorage ? 'shiftId' : resolved.hasLaunch ? 'none' : 'date';
+      const shiftIdForPayload = shiftIdInStorage || (resolved.hasLaunch ? '' : dateForPayload);
 
       // operator — scopes the JSA WITHIN a shift. A driver running for two
       // oil companies in one shift gets two distinct JSAs. Source order:
@@ -517,7 +522,7 @@ export default function SignoffScreen() {
         driverId: driverHashForPayload,
         driverLegalName: driverLegalNameForPayload,
         companyId: companyIdForPayload,
-        shiftId: independent ? null : shiftIdForPayload,
+        shiftId: independent || resolved.hasLaunch && !shiftIdInStorage ? null : shiftIdForPayload,
         ...(independent ? { workflow: 'standalone' } : {}),
         operator: operatorForPayload,
         operatorSlug,

@@ -5,7 +5,7 @@
 export type JsaAccessDecision =
   | { kind: 'denied'; reason: 'authentication' | 'company_permission' | 'required_request' }
   | { kind: 'standalone'; companyId: string; driverId: string; shiftId: null }
-  | { kind: 'required'; companyId: string; driverId: string; shiftId: string; requestId: string };
+  | { kind: 'required'; companyId: string; driverId: string; shiftId: string|null; requestId: string };
 
 export function decideJsaCreationAccess(input: {
   authenticated: boolean;
@@ -13,16 +13,16 @@ export function decideJsaCreationAccess(input: {
   driverId: string | null;
   companyJsaAllowed: boolean;
   requiredLaunchPresent: boolean;
-  request: { requestId: string; companyId: string; driverId: string; shiftId: string; verified: boolean } | null;
+  request: { requestId: string; companyId: string; driverId: string; shiftId: string|null; verified: boolean } | null;
 }): JsaAccessDecision {
   if (!input.authenticated || !input.driverId) return { kind: 'denied', reason: 'authentication' };
   if (!input.companyId || !input.companyJsaAllowed) return { kind: 'denied', reason: 'company_permission' };
   if (input.requiredLaunchPresent) {
     const r = input.request;
-    if (!r?.verified || !r.requestId || !r.shiftId || r.companyId !== input.companyId || r.driverId !== input.driverId) {
+    if (!r?.verified || !r.requestId || r.companyId !== input.companyId || r.driverId !== input.driverId) {
       return { kind: 'denied', reason: 'required_request' };
     }
-    return { kind: 'required', companyId: input.companyId, driverId: input.driverId, shiftId: r.shiftId, requestId: r.requestId };
+    return { kind: 'required', companyId: input.companyId, driverId: input.driverId, shiftId: r.shiftId||null, requestId: r.requestId };
   }
   // A cached active shift or stale request must not silently bind independent work.
   return { kind: 'standalone', companyId: input.companyId, driverId: input.driverId, shiftId: null };
