@@ -1,0 +1,21 @@
+const fs=require('node:fs'),ts=require('typescript'),assert=require('node:assert/strict');
+let owner={uid:'one',generation:'session-1'},storage=new Map();
+const mod={exports:{}};
+const code=ts.transpileModule(fs.readFileSync('services/jsaStayReturn.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+new Function('require','exports',code)(name=>name.includes('async-storage')?{default:{getItem:async k=>storage.get(k),setItem:async(k,v)=>storage.set(k,v)}}:{loadUsableGovernedSession:async()=>owner},mod.exports);
+(async()=>{
+ const api=mod.exports,url='wellbuilt-tickets://jsa-return?v=1&requestId=test&status=read_completed';
+ assert.equal(await api.ticketsReturnForCurrentOwner(),null);
+ await api.rememberJsaStay(url);
+ assert.equal(await api.ticketsReturnForCurrentOwner(),url);
+ assert.equal(api.welcomeAlreadyEntered('one','session-1'),true);
+ owner={uid:'two',generation:'session-1'};
+ assert.equal(await api.ticketsReturnForCurrentOwner(),null);
+ assert.equal(api.welcomeAlreadyEntered('two','session-1'),false);
+ owner={uid:'one',generation:'session-2'};
+ assert.equal(await api.ticketsReturnForCurrentOwner(),null);
+ await api.rememberJsaStay('https://example.com');
+ assert.equal(await api.ticketsReturnForCurrentOwner(),null);
+ owner=null;assert.equal(await api.ticketsReturnForCurrentOwner(),null);
+ console.log('PASS: exact return retained, standalone empty, owner/session isolation and external URL rejection');
+})().catch(e=>{console.error(e);process.exitCode=1;});

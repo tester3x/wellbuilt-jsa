@@ -10,6 +10,7 @@ import {useAuth} from './contexts/AuthContext';
 import {jsaDocumentHtml} from '../services/jsaDocument';
 import BottomActionBar from '../components/BottomActionBar';
 import MoreMenu from '../components/MoreMenu';
+import BackToTickets from '../components/BackToTickets';
 export default function CurrentJsa(){
  const router=useRouter(),home=useJsaHome(),{t,lang}=useLanguage();
  const {session}=useAuth(),ownerKey=`${session?.uid}:${session?.generation}:${session?.companyId}:${session?.driverId}`;
@@ -22,7 +23,7 @@ export default function CurrentJsa(){
    <WebView source={{html:jsaDocumentHtml(current.record,undefined,{t,locale:lang==='es'?'es-MX':'en-US'})}} javaScriptEnabled={false} style={{flex:1}}/>
   </>:<View style={{padding:20}}><Text>{t('There is no open JSA for your current shift.')}</Text></View>}
   <BottomActionBar>
-   <Pressable onPress={()=>router.push('/(tabs)/history' as any)} style={{width:88,minHeight:52,alignItems:'center',justifyContent:'center'}}><Ionicons name="time-outline" size={26}/><Text>{t('Saved JSAs')}</Text></Pressable>
+   <BackToTickets/>
    <Pressable onPress={()=>{void home.refresh(true);router.replace('/(tabs)' as any);}} style={{width:88,minHeight:52,alignItems:'center',justifyContent:'center'}}><Ionicons name="home-outline" size={26}/><Text>{t('JSA home')}</Text></Pressable>
    <MoreMenu placement="bottom"/>
   </BottomActionBar>

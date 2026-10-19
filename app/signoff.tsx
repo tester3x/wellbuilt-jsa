@@ -1518,7 +1518,9 @@ export default function SignoffScreen() {
     return 'standalone';
   };
 
-  const handleStayInJsa = () => {
+  const handleStayInJsa = async () => {
+    await (await import('../services/jsaStayReturn')).rememberJsaStay(completeReturnScheme);
+    await (await import('../services/sso/jsaRuntime')).consumeGovernedLaunchAfterStay();
     // Staying — but PRESERVE jsa_returnTo so the persistent header chip on
     // the home screen can still deep-link back later.
     wbDiagLog({
@@ -1536,7 +1538,7 @@ export default function SignoffScreen() {
     });
     setShowCompleteModal(false);
     dismissStack();
-    router.replace(completedRecordId.current?({pathname:'/jsa-record',params:{id:completedRecordId.current}} as any):'/(tabs)');
+    router.replace('/(tabs)');
   };
   const handleReturnToOrigin = async () => {
     const action = routeAction('return');

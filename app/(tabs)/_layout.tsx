@@ -4,6 +4,7 @@ import { ActivityIndicator, Keyboard, Pressable, Text } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { colors } from '@/constants/colors';
 import MoreMenu from '@/components/MoreMenu';
+import BackToTickets from '@/components/BackToTickets';
 import BottomActionBar from '@/components/BottomActionBar';
 import {Ionicons} from '@expo/vector-icons';
 import {useJsaHome} from '../contexts/JsaHomeContext';
@@ -32,15 +33,7 @@ export function BottomBar({ state, navigation }: BottomTabBarProps) {
   const disabled=home.checking||!home.state;
   const primaryColor = indexSelected ? accent : colors.textMuted;
   return <BottomActionBar>
-    <Pressable accessibilityRole="tab" accessibilityState={{ selected: historySelected }} accessibilityLabel={t('Saved JSAs')}
-      style={{ width: 88, maxWidth: '100%', height: 52, alignItems: 'center', justifyContent: 'center' }}
-      onPress={() => {
-        const event = navigation.emit({ type: 'tabPress', target: historyRoute.key, canPreventDefault: true });
-        if (!historySelected && !event.defaultPrevented) navigation.navigate(historyRoute.name, historyRoute.params);
-      }}>
-      <Ionicons size={26} name="time-outline" color={historySelected ? accent : colors.textMuted} />
-      <Text numberOfLines={1} style={{ color: historySelected ? accent : colors.textMuted, fontSize: 12, lineHeight: 16, fontWeight: '600' }}>{t('Saved JSAs')}</Text>
-    </Pressable>
+    <BackToTickets />
     <Pressable accessibilityRole="button" accessibilityLabel={t(primaryLabel)}
       disabled={disabled} accessibilityState={{disabled}}
       style={{ width: 88, maxWidth: '100%', height: 52, alignItems: 'center', justifyContent: 'center' }}

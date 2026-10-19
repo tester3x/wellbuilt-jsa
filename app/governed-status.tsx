@@ -76,6 +76,10 @@ export default function GovernedStatusScreen() {
   };
 
   const onStayOnJsa = async () => {
+    const launch = await loadLaunchContext();
+    const returned = decideGovernedReturn({ launch, completion: launch && mode !== 'fail' && action
+      ? { requestId: launch.requestId, action, reused: params.reused === '1' } : null });
+    await (await import('../services/jsaStayReturn')).rememberJsaStay('open' in returned ? returned.open : null);
     await consumeGovernedLaunchAfterStay();
     router.replace('/(tabs)');
   };

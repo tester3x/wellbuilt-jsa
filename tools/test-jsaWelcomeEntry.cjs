@@ -25,7 +25,8 @@ async function welcome(options = {}) {
     exports,
     require: path => path.endsWith('jsaGovernedAuthLive') ? {
       loadUsableGovernedSession: async () => ++ownerReads > 1 && options.ownerChanged ? {...owner, generation: 'other'} : owner,
-    } : path.endsWith('jsaRuntime') ? runtime : path.endsWith('jsaGovernedJobFields') ? fields : {
+    } : path.endsWith('jsaStayReturn') ? {welcomeAlreadyEntered: () => !!options.stayed}
+    : path.endsWith('jsaRuntime') ? runtime : path.endsWith('jsaGovernedJobFields') ? fields : {
       standaloneAccess: async () => options.allowed !== false,
     },
     session: owner, pathname: options.pathname || '/',
@@ -67,6 +68,8 @@ function route(options = {}) {
   assert.deepEqual(await welcome(), {owner: 'owner:generation', request: null, name: 'Test', visible: true});
   const required = {launch: {requestId: 'read-1'}, context: read};
   assert.equal((await welcome(required)).request, 'read-1');
+  assert.deepEqual(await welcome({stayed: true}), {});
+  assert.equal((await welcome({...required, stayed: true})).request, 'read-1');
   for (const options of [
     {allowed: false}, {pathname: '/steps'}, {ownerChanged: true}, {staleInspection: true},
     {seen: 'owner:company:standalone'},

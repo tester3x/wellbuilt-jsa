@@ -239,7 +239,9 @@ function AppContent() {
       const { decideGovernedJobPopulate } = await import('../services/sso/jsaGovernedJobFields');
       const owner = await loadUsableGovernedSession();
       if (!owner || owner.uid !== session.uid || owner.generation !== session.generation) return;
+      const { welcomeAlreadyEntered } = await import('../services/jsaStayReturn');
       const launch = await loadLaunchContext();
+      if (!launch && welcomeAlreadyEntered(owner.uid, owner.generation)) return;
       const context = await loadRequestContext();
       const failure = await loadGovernedTerminalFailure();
       const populated = decideGovernedJobPopulate({ launchRequestId: launch?.requestId, context, explicitFailure: terminalFailureMatches(failure, launch?.requestId ?? null) });
