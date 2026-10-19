@@ -128,7 +128,7 @@ export default function AcknowledgeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <Stack.Screen options={{ title: t('Acknowledge JSA') }} />
       <View style={styles.body}>
         <Text style={styles.title}>{t('Acknowledge this JSA')}</Text>

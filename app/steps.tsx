@@ -134,7 +134,7 @@ export default function StepsScreen() {
 
   if (stepsGuard !== 'allowed') {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
         <GovernedIsolationSurface
           kind={guardReason === 'governed_failed' ? 'governed_failed'
             : guardReason === 'unverified_gate' ? 'unverified_gate'
@@ -372,10 +372,10 @@ const locationsList = useMemo(() => {
     );
   };
 
-  if(taskDraftLoading || taskDraftError) return <SafeAreaView style={styles.safeArea}><Text style={{padding:24}}>{t(taskDraftError || 'Restoring your assessment…')}</Text>{!!taskDraftError&&<TouchableOpacity onPress={()=>setTaskLoadRetry(n=>n+1)} style={{padding:24}}><Text>{t('Retry loading assessment')}</Text></TouchableOpacity>}</SafeAreaView>;
-  if((taskCatalogVersion===2 || jsaTemplate?.catalogVersion===2) && !taskSelection) return <SafeAreaView style={styles.safeArea}>{jobHandoff.source==='governed_snapshot' ? <Text>{t('Task-specific required-job assessments are not enabled yet. Return to Suite.')}</Text> : <TaskAssessmentPicker onChoose={selection=>void chooseTasks(selection)}/>}</SafeAreaView>;
+  if(taskDraftLoading || taskDraftError) return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}><Text style={{padding:24}}>{t(taskDraftError || 'Restoring your assessment…')}</Text>{!!taskDraftError&&<TouchableOpacity onPress={()=>setTaskLoadRetry(n=>n+1)} style={{padding:24}}><Text>{t('Retry loading assessment')}</Text></TouchableOpacity>}</SafeAreaView>;
+  if((taskCatalogVersion===2 || jsaTemplate?.catalogVersion===2) && !taskSelection) return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>{jobHandoff.source==='governed_snapshot' ? <Text>{t('Task-specific required-job assessments are not enabled yet. Return to Suite.')}</Text> : <TaskAssessmentPicker onChoose={selection=>void chooseTasks(selection)}/>}</SafeAreaView>;
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
       <Stack.Screen
         options={{
           title: t("Steps & Hazards"),

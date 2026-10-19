@@ -405,7 +405,7 @@ export default function ViewJsaScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
       <Stack.Screen
         options={{
           title: isEditing ? t("Edit JSA") : t("Job Safety Analysis"),

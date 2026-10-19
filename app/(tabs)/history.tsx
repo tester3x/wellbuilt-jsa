@@ -259,6 +259,7 @@ export default function HistoryTabScreen() {
         </View>
       )) : (
         <FlatList
+          style={{flex:1,overflow:'hidden'}}
           data={history}
           renderItem={renderItem}
           keyExtractor={(item) => item.id}

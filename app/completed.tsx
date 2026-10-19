@@ -176,7 +176,7 @@ export default function CompletedScreen() {
 
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
       <Stack.Screen
         options={{
           title: t("Completed"),

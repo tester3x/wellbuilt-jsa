@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { useTheme } from '../app/contexts/ThemeContext';
 import type { JsaBackgroundPackage } from '../services/jsaBackground';
 
@@ -12,28 +12,15 @@ const sources: Record<JsaBackgroundPackage, number> = {
 
 export default function JsaAppBackground() {
   const { backgroundPackageId } = useTheme();
-  const { width, height } = useWindowDimensions();
   const source = sources[backgroundPackageId];
-  const asset = Image.resolveAssetSource(source);
-  const sceneWidth = width;
-  const sceneHeight = sceneWidth * (asset.height / asset.width);
-  const sceneBottom = Math.max(72, Math.round(height * 0.035));
 
   return (
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.frame]}>
-      <Image source={source} style={styles.backdrop} resizeMode="cover" blurRadius={8} />
       <Image
+        testID="jsa-background-scene"
         source={source}
-        style={[
-          styles.scene,
-          {
-            width: sceneWidth,
-            height: sceneHeight,
-            left: 0,
-            bottom: sceneBottom,
-          },
-        ]}
-        resizeMode="stretch"
+        style={StyleSheet.absoluteFillObject}
+        resizeMode="cover"
       />
       <View style={[StyleSheet.absoluteFill, styles.wash]} />
     </View>
@@ -41,13 +28,6 @@ export default function JsaAppBackground() {
 }
 
 const styles = StyleSheet.create({
-  frame: { backgroundColor: '#dfe7e7' },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.24,
-  },
-  scene: {
-    position: 'absolute',
-  },
+  frame: { backgroundColor: '#dfe7e7', overflow: 'hidden' },
   wash: { backgroundColor: 'rgba(245,248,248,0.12)' },
 });

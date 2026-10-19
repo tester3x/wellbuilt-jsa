@@ -69,7 +69,8 @@ function NavigationStack() {
         headerTintColor: '#FFFFFF',
         headerTitleStyle: { fontWeight: '600', color: '#FFFFFF' },
         headerBackTitleStyle: { fontSize: 12 },
-        contentStyle: { backgroundColor: 'transparent' },
+        headerTransparent: false,
+        contentStyle: { backgroundColor: 'transparent', overflow: 'hidden' },
         headerRight: () => <MoreMenu />,
       }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

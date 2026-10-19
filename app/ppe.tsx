@@ -292,7 +292,7 @@ export default function PpeScreen() {
 
   if (jobGate !== 'ready') {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
+      <SafeAreaView edges={['left','right','bottom']} style={{ flex: 1, backgroundColor: 'transparent' }}>
         <GovernedIsolationSurface kind="connecting" variant="overlay" />
       </SafeAreaView>
     );
