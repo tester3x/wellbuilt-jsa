@@ -13,7 +13,7 @@ export async function ownJsaRecord(id:string){const r=(await ownJsaRecords()).fi
 
 /** Older open standalone records need review before clearing a new manual form. */
 export function olderOpenStandaloneRecords(rows:any[],today:string){
- return rows.filter(r=>r.workflow==='standalone'&&r.state==='open'&&typeof r.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(r.date)&&r.date<today)
+ return rows.filter(r=>r.workflow==='standalone'&&!r.jsaPeriodId&&r.state==='open'&&typeof r.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(r.date)&&r.date<today)
    .sort((a,b)=>a.date.localeCompare(b.date)||String(a.id).localeCompare(String(b.id)));
 }
 

@@ -2037,6 +2037,9 @@ export default function JsaHomeScreen() {
       const {loadLaunchContext}=await import('../../services/sso/jsaRuntime');
       if(await loadLaunchContext())return false;
       const {ownJsaRecords,olderOpenStandaloneRecords}=await import('../../services/jsaRecord');
+      if(!olderOpenStandaloneRecords(await ownJsaRecords(),localCalendarDate()).length)return true;
+      const {syncStandaloneHistory}=await import('../../services/standaloneJsa');
+      await syncStandaloneHistory();
       if(olderOpenStandaloneRecords(await ownJsaRecords(),localCalendarDate()).length){
         router.push('/open-jsas' as any);
         Alert.alert(t('Open JSAs'),t('Review and close older open JSAs before starting a new JSA.'));

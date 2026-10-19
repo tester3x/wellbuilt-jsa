@@ -42,15 +42,11 @@ export async function syncStandaloneHistory(): Promise<any[]> {
   const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
   const { STORAGE_KEYS } = await import('../constants/storageKeys');
   const local = JSON.parse(await AsyncStorage.getItem(STORAGE_KEYS.saves) || '[]');
-  for (const item of local) {
-    if (item.workflow === 'standalone' && !item.standaloneRecordId && item.driverId === session.driverId && item.companyId === session.companyId) {
-      // Preserve incomplete local saves for review; never let one prevent
-      // downloading or refreshing other signed records. Explicit create still rejects it.
-      if (!adaptGovernedSnapshot(item).ok) continue;
-      const saved = await persistStandaloneJsa(item);
-      item.standaloneRecordId = saved.record.id;
-    }
-  }
+  // History refresh is read-only. Do not re-publish old signed saves merely
+  // because a legacy local row lacks its canonical ID or driverId field.
+  const owned=(r:any)=>r.companyId===session.companyId&&(r.driverId===session.driverId||!r.driverId&&r.driverHash===session.driverId);
+  const canonicalIds=new Map<any,string>();
+  for(const item of local.filter(owned))canonicalIds.set(item,item.standaloneRecordId || (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256,`${session.companyId}:${session.driverId}:${item.id}`)).slice(0,43));
   const remote: any[] = [];
   let after: string | undefined;
   do {
@@ -60,20 +56,20 @@ export async function syncStandaloneHistory(): Promise<any[]> {
     after = records.length === 50 ? records[records.length-1].id : undefined;
   } while (after);
   const current = await loadUsableGovernedSession();
-  if (!current || current.generation !== session.generation) throw new Error('Session changed.');
+  if (!current || current.uid!==session.uid || current.generation !== session.generation || current.companyId!==session.companyId || current.driverId!==session.driverId) throw new Error('Session changed.');
   const latest = JSON.parse(await AsyncStorage.getItem(STORAGE_KEYS.saves) || '[]');
   for (const r of remote) {
-    const matched = local.find((x:any)=>x.standaloneRecordId===r.id && x.companyId===session.companyId && x.driverId===session.driverId);
+    const matched = local.find((x:any)=>owned(x)&&canonicalIds.get(x)===r.id);
     const snapshot = r.snapshot;
     const converted = { ...(matched || {}), ...snapshot, id:matched?.id || r.id, standaloneRecordId:r.id, workflow:'standalone',
-      companyId:r.companyId,driverId:r.driverId,driverHash:r.driverId,shiftId:null,state:r.state,
+      companyId:r.companyId,driverId:r.driverId,driverHash:r.driverId,shiftId:r.shiftId||null,jsaPeriodId:r.jsaPeriodId||null,jsaNumber:r.jsaNumber||null,state:r.state,closedAtMs:r.closedAtMs??null,
       timestamp:new Date(r.signedAtMs).toISOString(),date:snapshot.formDate || '',driverName:snapshot.printedName,
       signature:snapshot.printedName,signatureImage:`data:image/png;base64,${snapshot.signature.data}`,additions:r.additions || [],
       jobActivityName:r.job.activity,task:r.job.activity,wells:r.job.wells,wellName:r.job.wells[0]?.name || '',
       operator:r.job.operator || matched?.operator || '',assessmentSteps:r.job.assessmentSteps || matched?.assessmentSteps || [],
       ...(r.job.assessmentTemplates ? {assessmentTemplates:r.job.assessmentTemplates,assessmentPpeItems:r.job.assessmentPpeItems,assessmentPreparedItems:r.job.assessmentPreparedItems}: {}),
       ...(r.job.locationLayout ? {locationLayout:r.job.locationLayout}: {}) };
-    const i = latest.findIndex((x:any)=>x.id===converted.id && x.companyId===r.companyId && x.driverId===r.driverId);
+    const i = latest.findIndex((x:any)=>x.id===converted.id && owned(x));
     if(i<0) latest.push(converted); else latest[i]=converted;
   }
   await AsyncStorage.setItem(STORAGE_KEYS.saves,JSON.stringify(latest));

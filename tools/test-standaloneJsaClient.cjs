@@ -1,9 +1,9 @@
 const fs=require('fs'),ts=require('typescript'),assert=require('node:assert/strict'),crypto=require('node:crypto');
-const m={exports:{}};let session={uid:'u',generation:'g',driverId:'d',companyId:'c'},launch=null,calls=[],local=[],closeState='closed';
+const m={exports:{}};let session={uid:'u',generation:'g',driverId:'d',companyId:'c'},launch=null,calls=[],local=[],closeState='closed',remoteRecords=[];
 const source=fs.readFileSync('services/standaloneJsa.ts','utf8');const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true}}).outputText;
 new Function('require','module','exports',js)(name=>{
  if(name==='firebase/app')return{getApp:()=>({})};
- if(name==='firebase/functions')return{getFunctions:()=>({}),httpsCallable:()=>async body=>{calls.push(body);return{data:{allowed:true,companyId:'c',driverId:'d',record:{id:body.recordId,companyId:'c',driverId:'d',state:body.operation==='close'?closeState:'open',closedAtMs:123}}};}};
+ if(name==='firebase/functions')return{getFunctions:()=>({}),httpsCallable:()=>async body=>{calls.push(body);return{data:{records:body.operation==='list'?remoteRecords:undefined,allowed:true,companyId:'c',driverId:'d',record:{id:body.recordId,companyId:'c',driverId:'d',state:body.operation==='close'?closeState:'open',closedAtMs:123}}};}};
  if(name==='expo-crypto')return{CryptoDigestAlgorithm:{SHA256:'sha256'},digestStringAsync:async(_,s)=>crypto.createHash('sha256').update(s).digest('hex')};
  if(name.endsWith('jsaGovernedAuthLive'))return{loadUsableGovernedSession:async()=>session};
  if(name.endsWith('jsaRuntime'))return{loadLaunchContext:async()=>launch};
@@ -43,6 +43,15 @@ new Function('require','module','exports',js)(name=>{
  assert.equal(local.find(r=>r.id==='failed-close').state,'open');closeState='closed';
  await assert.rejects(()=>api.closeStandaloneJsa({id:'shift'}),/owner mismatch/);
  local.push({...payload,id:'conflict',driverId:'other',driverHash:'d'});await assert.rejects(()=>api.closeStandaloneJsa({id:'conflict'}),/Not owned/);
+ const legacy={...payload,id:'sept22',driverId:undefined,driverHash:'d',state:'open',date:'2026-09-22'};
+ local=[legacy,{...legacy,id:'foreign',driverId:'foreign'}];
+ const canonical=crypto.createHash('sha256').update('c:d:sept22').digest('hex').slice(0,43);
+ remoteRecords=[{id:canonical,workflow:'standalone',companyId:'c',driverId:'d',state:'closed',signedAtMs:1,closedAtMs:9,snapshot:{formDate:'2026-09-22',printedName:'Original name',signature:{data:'saved-png'}},job:{activity:'Original activity',wells:[]}}];
+ calls=[];await api.syncStandaloneHistory();
+ assert.deepEqual(calls,[{operation:'list'}]);
+ assert.equal(local.length,2);assert.equal(local.find(r=>r.id==='sept22').state,'closed');
+ assert.equal(local.find(r=>r.id==='sept22').signatureImage,'data:image/png;base64,saved-png');
+ assert.equal(local.find(r=>r.id==='foreign').state,'open');
  session=null;await assert.rejects(()=>api.standaloneCall({operation:'access'}));
  console.log('Client boundary checks passed, including selected-record isolation, preserved incomplete saves, and shift/owner/required-request rejection.');
 })().catch(e=>{console.error(e);process.exitCode=1});
