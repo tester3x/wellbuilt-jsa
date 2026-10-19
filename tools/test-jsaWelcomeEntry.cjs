@@ -81,9 +81,13 @@ function route(options = {}) {
   assert.equal(actions[1][1].pathname, '/steps');
   assert.equal(actions[1][1].params.wellName, 'Test Well');
   assert.equal(actions[1][1].params.jobActivityName, 'Service Work');
-  for (const options of [{request: 'different'}, {hydrated: false}, {allowed: false},
+  // A verified request must enter without waiting for unrelated saved history.
+  const withoutHistory = route({hydrated: false});
+  assert.equal(withoutHistory[1][1].pathname, '/steps');
+  assert.equal(withoutHistory[1][1].params.wellName, 'Test Well');
+  for (const options of [{request: 'different'}, {allowed: false},
     {consumed: 'read-1'}, {context: {...read, intent: 'acknowledge'}},
     {context: {...read, state: 'completed'}}]) assert.deepEqual(route(options), []);
-  console.log('PASS: actual Welcome callback (12 cases) and request-bound Continue routing (7 cases)');
+  console.log('PASS: Welcome ownership, request-bound routing, and entry without history hydration');
 })().catch(error => {console.error(error); process.exitCode = 1;});
 

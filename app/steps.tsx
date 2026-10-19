@@ -426,6 +426,7 @@ const locationsList = useMemo(() => {
               )}
             </View>
             <View style={styles.navButtons}>
+              <View style={styles.navSlot}>
               <TouchableOpacity
                 style={[
                   styles.navButton,
@@ -448,6 +449,8 @@ const locationsList = useMemo(() => {
                   {t("Previous")}
                 </Text>
               </TouchableOpacity>
+              </View>
+              <View style={styles.navSlot}>
               <TouchableOpacity
                 style={[styles.navButton, { borderColor: accent }]}
                 onPress={() => {
@@ -527,7 +530,10 @@ const locationsList = useMemo(() => {
                   {isLast ? t("PPE Checklist") : t("Next")}
                 </Text>
               </TouchableOpacity>
+              </View>
+              <View style={styles.navSlot}>
               <MoreMenu placement="bottom" compact />
+              </View>
             </View>
           </View>
         </View>
@@ -656,11 +662,15 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
   },
   progressGroup: {
+    position: 'relative',
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
   progressCheck: {
+    position: 'absolute',
+    left: '100%',
+    marginLeft: 6,
     width: 22,
     height: 22,
     borderRadius: 11,
@@ -708,6 +718,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primary,
     backgroundColor: colors.card,
+  },
+  navSlot: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   navButtonDisabled: {
     borderColor: stepColors.borderStrong,

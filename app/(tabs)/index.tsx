@@ -398,7 +398,7 @@ export default function JsaHomeScreen() {
       hydrationSequenceRef.current++;
       dayStatusSequenceRef.current++;
     };
-  }, [session?.uid, session?.generation, session?.driverId, session?.companyId, isSsoMode]);
+  }, [session?.uid, session?.generation, session?.driverId, session?.companyId]);
   // vc51.9B: the TYPED verdict from the last refresh — auto-navigation and
   // the "Current" banner label consume it; 'unverified' never presents a
   // record as current (cached state is a hint, never authority).
@@ -1481,7 +1481,9 @@ export default function JsaHomeScreen() {
 
   useEffect(() => {
     if (!welcomeReadRequestId || welcomeReadConsumed.current === welcomeReadRequestId) return;
-    if (!hydrationDone || !workflowIsolation.mountForm || governedJobPopulate.kind !== 'populate') return;
+    // The verified governed snapshot owns this entry. Saved-history hydration
+    // is independent and must not hold navigation until a foreground refresh.
+    if (!workflowIsolation.mountForm || governedJobPopulate.kind !== 'populate') return;
     if (governedJobPopulate.requestId !== welcomeReadRequestId) return;
     const handoff = applyGovernedJobHandoff({ populate: governedJobPopulate, wellsParam: '[]', wellNameParam: '', jobActivityParam: '' });
     if (handoff.source !== 'governed_snapshot') return;
@@ -1490,7 +1492,7 @@ export default function JsaHomeScreen() {
     router.push({ pathname: '/steps', params: { driverName, truckNumber, date,
       wells: handoff.wells, wellName: handoff.wellName, jobActivityName: handoff.jobActivityName,
       jsaSessionId: Date.now().toString() } });
-  }, [welcomeReadRequestId, hydrationDone, workflowIsolation.mountForm, governedJobPopulate, driverName, truckNumber, date, router]);
+  }, [welcomeReadRequestId, workflowIsolation.mountForm, governedJobPopulate, driverName, truckNumber, date, router]);
 
   const autoRoutedRef = useRef(false);
   useEffect(() => {
