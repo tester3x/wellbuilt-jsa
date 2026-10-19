@@ -60,6 +60,7 @@ type Params = {
 };
 
 export default function SignoffScreen() {
+  const [reviewOpenedAt] = useState(() => new Date());
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
   const { t, lang } = useLanguage();
@@ -1714,7 +1715,9 @@ export default function SignoffScreen() {
                 <Text style={{ color: accent, fontSize: 15, fontWeight: '600' }}>{t("Tap to Sign")}</Text>
               </TouchableOpacity>
             )}
-            <Text style={{color:colors.textMuted,marginTop:6}}>Date: {params.date} · Signing time is recorded when you submit.</Text>
+            <Text style={{color:colors.textMuted,marginTop:6}}>
+              {params.date} · {reviewOpenedAt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+            </Text>
             <Text style={{ color: colors.textDark, marginTop: 6, fontWeight: '600' }}>{t('Legal name')}</Text>
             <TextInput
               ref={nameInputRef}
