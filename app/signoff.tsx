@@ -6,6 +6,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+    ActivityIndicator,
     Image,
     KeyboardAvoidingView,
     Linking,
@@ -60,6 +61,7 @@ type Params = {
 };
 
 export default function SignoffScreen() {
+  const [submitting, setSubmitting] = useState(false);
   const [reviewOpenedAt] = useState(() => new Date());
   const params = useLocalSearchParams<Params>();
   const router = useRouter();
@@ -1477,6 +1479,7 @@ export default function SignoffScreen() {
     // Wrap in a top-level catch so ANY failure in saveAndGo still surfaces
     // the modal (driver must not be stranded on signoff after tap).
     submitLockRef.current = true;
+    setSubmitting(true);
     saveAndGo().catch((err) => {
       console.error('[JSA-Signoff] saveAndGo failed — forcing HONEST modal:', err);
       if (skipForcedSubmitted) return;
@@ -1489,6 +1492,7 @@ export default function SignoffScreen() {
       setShowCompleteModal(true);
     }).finally(() => {
       submitLockRef.current = false;
+      setSubmitting(false);
     });
   };
 
@@ -1752,8 +1756,9 @@ export default function SignoffScreen() {
         <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} style={[footer.button, { borderColor: accent }]}><Text style={footer.text}>{t("Back")}</Text></TouchableOpacity>
         </View>
         <View style={footer.slot}>
-        <TouchableOpacity style={[footer.button, { borderColor: accent }]} onPress={handleSubmit}>
-          <Text style={footer.text}>{t("Submit JSA")}</Text>
+        <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: submitting, busy: submitting }} disabled={submitting} style={[footer.button, { borderColor: accent, flexDirection: 'row', gap: 6 }]} onPress={handleSubmit}>
+          {submitting && <ActivityIndicator size="small" color={accent} />}
+          <Text style={footer.text}>{submitting ? t("Submitting…") : t("Submit JSA")}</Text>
         </TouchableOpacity>
         </View>
         <View style={footer.slot}>
