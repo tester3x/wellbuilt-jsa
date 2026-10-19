@@ -9,7 +9,7 @@ export function resumeScreen(pathname:string,params:Record<string,unknown>){
  if(!routes.has(pathname))return null;
  const safe:Record<string,string>={};
  for(const [name,value] of Object.entries(params))if(!forbidden.test(name)&&typeof value==='string'&&value.length<100000)safe[name]=value;
- delete safe.welcomeReadRequestId;delete safe.newStandalone;
+ delete safe.welcomeReadRequestId;delete safe.newStandalone;delete safe.details;
  return {pathname:pathname==='/'?'/(tabs)':pathname,params:safe};
 }
 export async function rememberJsaScreen(pathname:string,params:Record<string,unknown>){

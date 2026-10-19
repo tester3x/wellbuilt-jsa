@@ -16,6 +16,10 @@ const LanguageContext = createContext<LanguageContextValue | undefined>(undefine
 const translations: Record<Language, Record<string, string>> = {
   en: {},
   es: {
+    "Your JSA": "Su JSA",
+    "Read and sign on your first job. Later jobs follow your company acknowledgement policy. Saved JSAs remain available after your shift ends.": "Lea y firme en su primer trabajo. Los siguientes trabajos siguen la política de confirmación de su empresa. Los JSA guardados siguen disponibles después de terminar su turno.",
+    "Jobs opened from Tickets bring their job details with them. To prepare a standalone JSA, open Job Details.": "Los trabajos abiertos desde Tickets incluyen sus detalles. Para preparar un JSA independiente, abra Detalles del Trabajo.",
+    "View your JSAs or open Job Details to prepare a standalone JSA.": "Vea sus JSA o abra Detalles del Trabajo para preparar un JSA independiente.",
     "Job Safety Analysis": "AnÃ¡lisis de Seguridad de Trabajo",
     "Digital JSA": "JSA Digital",
     "Job Details": "Detalles del Trabajo",

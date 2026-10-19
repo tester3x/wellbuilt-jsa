@@ -65,7 +65,7 @@ export default function WelcomeModal({
           <Text style={styles.subtitle}>{t('Welcome to WellBuilt JSA')}</Text>
           <Text style={styles.date}>{todayLong(locale)}</Text>
           <Text style={[styles.subtitle, { textAlign: 'center', marginBottom: 16 }]}>
-            {t(nextStep === 'read' ? 'Your job details are ready. Continue to read your JSA.' : 'Add your job and locations, then read your JSA.')}
+            {t(nextStep === 'read' ? 'Your job details are ready. Continue to read your JSA.' : 'View your JSAs or open Job Details to prepare a standalone JSA.')}
           </Text>
           <TouchableOpacity style={styles.btn} onPress={onDismiss}>
             <Text style={styles.btnText}>{t('Continue')}</Text>

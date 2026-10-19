@@ -82,7 +82,7 @@ import { useTheme } from "../contexts/ThemeContext";
 
 export default function JsaHomeScreen() {
   const router = useRouter();
-  const { welcomeReadRequestId,newStandalone } = useLocalSearchParams<{ welcomeReadRequestId?: string;newStandalone?:string }>();
+  const { welcomeReadRequestId,newStandalone,details } = useLocalSearchParams<{ welcomeReadRequestId?: string;newStandalone?:string;details?:string }>();
   const welcomeReadConsumed = useRef('');
   const { session, logout } = useAuth();
   const {
@@ -2206,6 +2206,12 @@ export default function JsaHomeScreen() {
       >
         {/* === PINNED HEADER (outside ScrollView) === */}
         <View style={styles.header}>
+          {!isSsoMode && !!(details || newStandalone) && (
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('JSA home')}
+              style={{padding:12}} onPress={()=>router.setParams({details:undefined,newStandalone:undefined})}>
+              <Text style={{fontSize:26,color:accent}}>‹</Text>
+            </TouchableOpacity>
+          )}
           <View style={styles.headerLeft}>
             {logoUrl ? (
               <Image
@@ -2227,6 +2233,19 @@ export default function JsaHomeScreen() {
           </View>
         </View>
 
+        {!isSsoMode && !details && !newStandalone && workflowIsolation.mountForm && hasGovernedIdentity && standaloneAllowed ? (
+          <View style={{flex:1,padding:16,gap:16}}>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>{t('Your JSA')}</Text>
+              <Text style={styles.cardSubtitle}>{t('Read and sign on your first job. Later jobs follow your company acknowledgement policy. Saved JSAs remain available after your shift ends.')}</Text>
+              <Text style={styles.label}>{session?.legalName || session?.displayName || driverName}</Text>
+              <Text style={styles.cardSubtitle}>{t('Jobs opened from Tickets bring their job details with them. To prepare a standalone JSA, open Job Details.')}</Text>
+            </View>
+            <TouchableOpacity style={[styles.button,{backgroundColor:accent}]} onPress={()=>router.push('/open-jsas' as any)}>
+              <Text style={styles.buttonText}>{t('Open JSAs')}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : <>
         {/* Persistent "View Current Shift JSA" entry — shows when a JSA was
             submitted today (STORAGE_KEYS.saves has today's record) but no
             tab is currently open (activeJsas empty). Covers the
@@ -2258,7 +2277,7 @@ export default function JsaHomeScreen() {
           </View>
         )}
 
-        {workflowIsolation.mountForm && authoritySurface !== 'unverified_gate' && todaysJsaSave && activeJsas.length === 0 && (() => {
+        {isSsoMode && workflowIsolation.mountForm && authoritySurface !== 'unverified_gate' && todaysJsaSave && activeJsas.length === 0 && (() => {
           // vc51.9B: "Current" wording ONLY for a verified open matching
           // period; anything else is honestly labeled a previous JSA
           // (still viewable — viewJsa shows its saved date). Standalone
@@ -2313,7 +2332,7 @@ export default function JsaHomeScreen() {
         })()}
 
         {/* JSA Active Banner + Tabs */}
-        {jsaCompletedToday && (
+        {isSsoMode && jsaCompletedToday && (
           <>
             <View style={{ backgroundColor: '#166534', borderRadius: 12, padding: 16, marginBottom: activeJsas.length > 1 ? 0 : 16, borderBottomLeftRadius: activeJsas.length > 1 ? 0 : 12, borderBottomRightRadius: activeJsas.length > 1 ? 0 : 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -2407,7 +2426,7 @@ export default function JsaHomeScreen() {
           keyboardShouldPersistTaps="handled"
         >
         {/* Living JSA Dashboard — full paper JSA per tab */}
-        {jsaCompletedToday && currentJsa && !newStandalone && (
+        {isSsoMode && jsaCompletedToday && currentJsa && !newStandalone && (
           <>
             {currentJsa.savedData?.workflow==='standalone' && currentJsa.savedData?.state!=='closed' && (
               <TouchableOpacity style={{padding:16,marginBottom:10,borderRadius:12,backgroundColor:accent}} onPress={()=>router.push({pathname:'/add-location',params:{id:String(currentJsa.savedData.id)}} as any)}>
@@ -2543,7 +2562,7 @@ export default function JsaHomeScreen() {
           </View>
         )}
 
-        {(jsaCompletedToday && activeJsaIndex >= 0 && !newStandalone) || !hasGovernedIdentity || !standaloneAllowed || isSsoMode || !workflowIsolation.mountForm ? null : (
+        {(jsaCompletedToday && activeJsaIndex >= 0 && !newStandalone && !details) || !hasGovernedIdentity || !standaloneAllowed || isSsoMode || !workflowIsolation.mountForm ? null : (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t("Job Details")}</Text>
           <Text style={styles.cardSubtitle}>
@@ -2885,6 +2904,13 @@ export default function JsaHomeScreen() {
             />
           </View>
 
+
+        </View>
+        )}
+        </ScrollView>
+
+        {workflowIsolation.mountForm && hasGovernedIdentity && standaloneAllowed && !isSsoMode && !(jsaCompletedToday && activeJsaIndex >= 0 && !newStandalone && !details) && (
+          <View style={{paddingHorizontal:16,paddingVertical:10,backgroundColor:colors.glassSurface}}>
           {continueJsa ? (
             <>
               <View style={styles.incompleteJsaCard}>
@@ -2940,64 +2966,10 @@ export default function JsaHomeScreen() {
               )}
             </>
           )}
-        </View>
-        )}
-        </ScrollView>
-
-        {/* Fixed footer buttons — outside ScrollView, pinned to bottom */}
-        {jsaCompletedToday && currentJsa && (
-          <View style={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: accent, marginBottom: 0 }]}
-              onPress={() => setShowAddWellModal(true)}
-            >
-              <Text style={styles.buttonText}>{t("+ Add Well / Location")}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#dc2626', marginBottom: 0 }]}
-              onPress={() => {
-                Alert.alert(
-                  t("Close JSA"),
-                  t("This will finalize this JSA with all job sites visited. A final PDF will be saved."),
-                  [
-                    { text: t("Cancel"), style: "cancel" },
-                    {
-                      text: t("Close & Save"),
-                      style: "destructive",
-                      onPress: () => {
-                        // Track dismissed ID so hydration doesn't re-add it
-                        const dismissedJsa = activeJsas[activeJsaIndex];
-                        if (dismissedJsa?.id) {
-                          dismissedIdsRef.current.add(dismissedJsa.id);
-                          AsyncStorage.getItem('@jsa/dismissedIds').then(raw => {
-                            const list = raw ? JSON.parse(raw) : [];
-                            list.push(dismissedJsa.id);
-                            AsyncStorage.setItem('@jsa/dismissedIds', JSON.stringify(list)).catch(() => {});
-                          }).catch(() => {});
-                        }
-                        setActiveJsas(prev => prev.filter((_, i) => i !== activeJsaIndex));
-                        setActiveJsaIndex(0);
-                        if (activeJsas.length <= 1) {
-                          setJsaCompletedTime(null);
-                          setJsaPdfUrl(null);
-                          setAddedWells([]);
-                          setAddedLocations([]);
-                          setJobActivityName('');
-                          setPusher('');
-                          setWellName('');
-                          setOtherInfo('');
-                          setDate(localCalendarDate());
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-            >
-              <Text style={[styles.buttonText, { color: '#dc2626' }]}>{t("Close & Save JSA")}</Text>
-            </TouchableOpacity>
           </View>
         )}
+
+        </>}
       </KeyboardAvoidingView>
 
       {/* Add Well / Location Modal — living document */}
@@ -3124,12 +3096,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "transparent",
+    overflow: "hidden",
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 96,
+    paddingBottom: 24,
   },
   header: {
+    backgroundColor: "#dfe7e7",
+    zIndex: 2,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",

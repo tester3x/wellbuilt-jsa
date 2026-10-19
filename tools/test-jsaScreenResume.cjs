@@ -17,5 +17,6 @@ new Function('require','exports',js)(name=>{
  owner={...owner,companyId:'c',uid:'other'};assert.equal(await api.lastJsaScreen(),null);
  assert.equal(api.resumeScreen('/sso/callback',{code:'secret'}),null);
  assert.equal(api.resumeScreen('/unexpected',{}),null);
+ assert.deepEqual(api.resumeScreen('/(tabs)',{details:'1',newStandalone:'old'}),{pathname:'/(tabs)',params:{}});
  console.log('PASS: screen resume, refreshed session, required-request priority, owner isolation and credential exclusion');
 })().catch(e=>{console.error(e);process.exitCode=1});
