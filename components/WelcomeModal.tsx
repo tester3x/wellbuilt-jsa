@@ -5,6 +5,7 @@
 import React from 'react';
 import {
   Image,
+  ActivityIndicator,
   Modal,
   StyleSheet,
   Text,
@@ -13,6 +14,7 @@ import {
 } from 'react-native';
 import { colors } from '../constants/colors';
 import { useLanguage } from '../app/contexts/LanguageContext';
+import {useJsaHome} from '../app/contexts/JsaHomeContext';
 
 interface Props {
   visible: boolean;
@@ -48,6 +50,8 @@ export default function WelcomeModal({
   nextStep = 'details',
 }: Props) {
   const { lang, t } = useLanguage();
+  const home=useJsaHome();
+  const checking=nextStep==='details'&&home.checking;
   const locale = lang === 'es' ? 'es-MX' : 'en-US';
   return (
     <Modal visible={visible} transparent animationType="fade">
@@ -65,10 +69,10 @@ export default function WelcomeModal({
           <Text style={styles.subtitle}>{t('Welcome to WellBuilt JSA')}</Text>
           <Text style={styles.date}>{todayLong(locale)}</Text>
           <Text style={[styles.subtitle, { textAlign: 'center', marginBottom: 16 }]}>
-            {t(nextStep === 'read' ? 'Your job details are ready. Continue to read your JSA.' : 'View your JSAs or open Job Details to prepare a standalone JSA.')}
+            {t(nextStep === 'read' ? 'Your job details are ready. Continue to read your JSA.' : 'Start a new JSA or resume the JSA for your current shift.')}
           </Text>
-          <TouchableOpacity style={styles.btn} onPress={onDismiss}>
-            <Text style={styles.btnText}>{t('Continue')}</Text>
+          <TouchableOpacity style={styles.btn} onPress={onDismiss} disabled={checking} accessibilityState={{disabled:checking}}>
+            {checking?<ActivityIndicator color={colors.textDark}/>:<Text style={styles.btnText}>{t('Continue')}</Text>}
           </TouchableOpacity>
         </View>
       </View>

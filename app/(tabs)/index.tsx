@@ -79,9 +79,11 @@ import { createShiftRefreshCoordinator, type ShiftRefreshResult } from "../../se
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
+import {useJsaHome} from '../contexts/JsaHomeContext';
 
 export default function JsaHomeScreen() {
   const router = useRouter();
+  const home=useJsaHome();
   const { welcomeReadRequestId,newStandalone,details } = useLocalSearchParams<{ welcomeReadRequestId?: string;newStandalone?:string;details?:string }>();
   const welcomeReadConsumed = useRef('');
   const { session, logout } = useAuth();
@@ -2237,13 +2239,11 @@ export default function JsaHomeScreen() {
           <View style={{flex:1,padding:16,gap:16}}>
             <View style={styles.card}>
               <Text style={styles.cardTitle}>{t('Your JSA')}</Text>
-              <Text style={styles.cardSubtitle}>{t('Read and sign on your first job. Later jobs follow your company acknowledgement policy. Saved JSAs remain available after your shift ends.')}</Text>
+              <Text style={styles.cardSubtitle}>{t(home.checking?'Checking your shift and JSA…':home.error?'Could not verify your shift and JSA.':home.state?.action==='resume'?'Your current shift has an open JSA. Use Resume JSA below.':home.state?.shiftState==='open'?'Your shift has no open JSA. Use New JSA below.':'You are off shift. Use New JSA below.')}</Text>
               <Text style={styles.label}>{session?.legalName || session?.displayName || driverName}</Text>
-              <Text style={styles.cardSubtitle}>{t('Jobs opened from Tickets bring their job details with them. To prepare a standalone JSA, open Job Details.')}</Text>
+              {!!home.state?.active?.jsaNumber&&<Text style={styles.cardSubtitle}>{home.state.active.jsaNumber}</Text>}
+              {!!home.error&&<TouchableOpacity accessibilityRole="button" onPress={()=>void home.refresh(true)} style={{paddingVertical:12,flexDirection:'row',gap:8}}><Text style={{color:accent,fontWeight:'600'}}>{t('Retry JSA check')}</Text></TouchableOpacity>}
             </View>
-            <TouchableOpacity style={[styles.button,{backgroundColor:accent}]} onPress={()=>router.push('/open-jsas' as any)}>
-              <Text style={styles.buttonText}>{t('Open JSAs')}</Text>
-            </TouchableOpacity>
           </View>
         ) : <>
         {/* Persistent "View Current Shift JSA" entry — shows when a JSA was

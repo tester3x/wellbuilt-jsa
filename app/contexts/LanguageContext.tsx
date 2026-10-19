@@ -16,6 +16,18 @@ const LanguageContext = createContext<LanguageContextValue | undefined>(undefine
 const translations: Record<Language, Record<string, string>> = {
   en: {},
   es: {
+    "Resume JSA": "Reanudar JSA",
+    "Open JSA": "JSA abierto",
+    "Current JSA": "JSA actual",
+    "JSA home": "Inicio de JSA",
+    "Checking your shift and JSA…": "Verificando su turno y JSA…",
+    "Could not verify your shift and JSA.": "No se pudo verificar su turno y JSA.",
+    "Your current shift has an open JSA. Use Resume JSA below.": "Su turno actual tiene un JSA abierto. Use Reanudar JSA abajo.",
+    "Your shift has no open JSA. Use New JSA below.": "Su turno no tiene un JSA abierto. Use Nuevo JSA abajo.",
+    "You are off shift. Use New JSA below.": "Está fuera de turno. Use Nuevo JSA abajo.",
+    "Retry JSA check": "Volver a verificar JSA",
+    "There is no open JSA for your current shift.": "No hay un JSA abierto para su turno actual.",
+    "Start a new JSA or resume the JSA for your current shift.": "Inicie un JSA nuevo o reanude el JSA de su turno actual.",
     "Your JSA": "Su JSA",
     "Read and sign on your first job. Later jobs follow your company acknowledgement policy. Saved JSAs remain available after your shift ends.": "Lea y firme en su primer trabajo. Los siguientes trabajos siguen la política de confirmación de su empresa. Los JSA guardados siguen disponibles después de terminar su turno.",
     "Jobs opened from Tickets bring their job details with them. To prepare a standalone JSA, open Job Details.": "Los trabajos abiertos desde Tickets incluyen sus detalles. Para preparar un JSA independiente, abra Detalles del Trabajo.",

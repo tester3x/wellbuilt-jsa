@@ -16,14 +16,14 @@ export default function MoreMenu({ placement = 'header', compact = false }: { pl
   return <>
     <Pressable accessibilityRole="button" accessibilityLabel={t('More')}
       onPress={() => setVisible(true)} style={[styles.trigger, placement === 'bottom' && { width: compact ? 56 : 88, maxWidth: '100%', height: 52 }]}>
-      <Text style={styles.dots}>•••</Text>
+      <Ionicons name="ellipsis-horizontal" size={26} color={colors.textDark}/>
       {placement === 'bottom' && <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 16, fontWeight: '600' }}>{t('More')}</Text>}
     </Pressable>
     <Modal transparent visible={visible} animationType="fade" onRequestClose={() => setVisible(false)}>
       <Pressable style={styles.backdrop} accessibilityLabel={t('Close menu')} onPress={() => setVisible(false)}>
-        <View style={[styles.menu, placement === 'bottom' ? { bottom: Math.max(insets.bottom, 8) + 64 } : { top: insets.top + 52 }]}>
-          {([{ label: 'Open JSAs', route: '/open-jsas', icon: 'shield-checkmark-outline' }, { label: 'New JSA', route: '/(tabs)', icon: 'add-circle-outline' }, { label: 'Saved JSAs', route: '/(tabs)/history', icon: 'time-outline' },
-            { label: 'Settings', route: '/settings', icon: 'settings-outline' }, { label: 'Switcher', route: '/switcher', icon: 'apps-outline' }] as const).map(item =>
+        <View testID="jsa-more-menu" style={[styles.menu, placement === 'bottom' ? { bottom: Math.max(insets.bottom, 8) + 64 } : { top: insets.top + 52 }]}>
+          {([{ label: 'New JSA', route: '/(tabs)', icon: 'add-circle-outline' }, { label: 'Open JSA', route: '/open-jsas', icon: 'shield-checkmark-outline' }, { label: 'Saved JSAs', route: '/(tabs)/history', icon: 'time-outline' },
+            { label: 'Switcher', route: '/switcher', icon: 'apps-outline' }, { label: 'Settings', route: '/settings', icon: 'settings-outline' }] as const).map(item =>
             <Pressable key={item.route} accessibilityRole="button" style={styles.item} onPress={() => {
               setVisible(false);
               if (item.label === 'Switcher') setSwitcherVisible(true);

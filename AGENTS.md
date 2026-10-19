@@ -21,4 +21,4 @@
 - Keep each app's branding. Consistency means placement and behavior, not identical colors.
 - More holds app-specific secondary options plus shared Settings and Switcher; avoid an oversized menu.
 - Switcher opens a dismissible two-by-two app modal, excluding the current app and respecting the existing app availability filter. No floating Switcher badge.
-- JSA main bar: Saved JSAs | Job Details | ... More. Further app migrations must be verified individually.
+- JSA main bar: Saved JSAs | Resume JSA or New JSA | ... More, each with an icon. Resolve the center action from verified current-shift/JSA state, never stale local open rows. More top to bottom: New JSA, Open JSA, Saved JSAs, Switcher, Settings, optional About. This user-approved standard supersedes the older Job Details center label. Further app migrations must be verified individually.

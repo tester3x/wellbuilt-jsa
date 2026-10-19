@@ -45,6 +45,7 @@ import type { LogoutWatcherBinding } from '../services/sso/jsaLogoutWatcherContr
 
 import { colors } from '../constants/colors';
 import JsaAppBackground from '../components/JsaAppBackground';
+import {JsaHomeProvider} from './contexts/JsaHomeContext';
 
 // Module-scoped session flag — once "Remind me later" is tapped, the
 // unfinished-JSA modal stays suppressed for the remainder of this app
@@ -755,6 +756,7 @@ function AppContent() {
   return (
     <ThemeProvider>
       <NavThemeProvider value={navigationTheme}>
+        <JsaHomeProvider>
         <View style={{ flex: 1, backgroundColor: 'transparent' }}>
           <JsaAppBackground />
           <NavigationStack />
@@ -886,6 +888,7 @@ function AppContent() {
           )}
         </View>
         <StatusBar style="light" />
+        </JsaHomeProvider>
       </NavThemeProvider>
     </ThemeProvider>
   );
