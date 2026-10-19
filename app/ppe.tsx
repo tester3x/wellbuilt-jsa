@@ -1,4 +1,5 @@
 import MoreMenu from '../components/MoreMenu';
+import { jsaFlowFooterStyles as footer } from '../components/jsaFlowFooterStyles';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -401,12 +402,18 @@ export default function PpeScreen() {
         </View>
 
         </ScrollView>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: colors.glassSurface }}>
-          <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} style={{ padding: 12, minHeight: 48, justifyContent: "center" }}><Text>{t('Back')}</Text></TouchableOpacity>
-          <TouchableOpacity style={[styles.nextButton, { backgroundColor: accent, flex: 1 }]} onPress={handleNext}>
-            <Text style={styles.nextButtonText}>{t("Next")}</Text>
+        <View style={[footer.bar, footer.row]}>
+          <View style={footer.slot}>
+          <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} style={[footer.button, { borderColor: accent }]}><Text style={footer.text}>{t('Back')}</Text></TouchableOpacity>
+          </View>
+          <View style={footer.slot}>
+          <TouchableOpacity style={[footer.button, { borderColor: accent }]} onPress={handleNext}>
+            <Text style={footer.text}>{t("Next")}</Text>
           </TouchableOpacity>
+          </View>
+          <View style={footer.slot}>
           <MoreMenu placement="bottom" compact />
+          </View>
         </View>
         </View>
       </KeyboardAvoidingView>

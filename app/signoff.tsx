@@ -1,6 +1,7 @@
 import { BrandedAlert as Alert } from '../services/brandedAlert';
 import {useFormKeyboard} from '../components/useFormKeyboard';
 import MoreMenu from '../components/MoreMenu';
+import { jsaFlowFooterStyles as footer } from '../components/jsaFlowFooterStyles';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -1743,12 +1744,18 @@ export default function SignoffScreen() {
           />
 
       </ScrollView>
-      <View style={styles.submitFooter}>
-        <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} style={{ padding: 12, minHeight: 48, justifyContent: "center" }}><Text>{t("Back")}</Text></TouchableOpacity>
-        <TouchableOpacity style={[styles.submitButton, { backgroundColor: accent, flex: 1 }]} onPress={handleSubmit}>
-          <Text style={styles.submitText}>{t("Submit JSA")}</Text>
+      <View style={[footer.bar, footer.row]}>
+        <View style={footer.slot}>
+        <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} style={[footer.button, { borderColor: accent }]}><Text style={footer.text}>{t("Back")}</Text></TouchableOpacity>
+        </View>
+        <View style={footer.slot}>
+        <TouchableOpacity style={[footer.button, { borderColor: accent }]} onPress={handleSubmit}>
+          <Text style={footer.text}>{t("Submit JSA")}</Text>
         </TouchableOpacity>
+        </View>
+        <View style={footer.slot}>
         <MoreMenu placement="bottom" compact />
+        </View>
       </View>
     </KeyboardAvoidingView>
 

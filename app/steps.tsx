@@ -3,6 +3,7 @@ import {loadTaskSelectionDraft,freezeTaskSelectionDraft} from '../services/jsaTa
 import TaskAssessmentPicker from '../components/TaskAssessmentPicker';
 import {assembleTaskAssessments,loadTaskAssessments} from '../services/jsaTaskTemplates';
 import MoreMenu from '../components/MoreMenu';
+import { jsaFlowFooterStyles as footer } from '../components/jsaFlowFooterStyles';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -409,7 +410,7 @@ const locationsList = useMemo(() => {
         </ScrollView>
 
         {/* Navigation */}
-        <View style={styles.navBar}>
+        <View style={footer.bar}>
           <View style={styles.navRow}>
             <View style={styles.progressGroup}>
               <Text style={styles.progressText}>
@@ -425,11 +426,11 @@ const locationsList = useMemo(() => {
                 </Animated.View>
               )}
             </View>
-            <View style={styles.navButtons}>
-              <View style={styles.navSlot}>
+            <View style={[footer.row, { alignSelf: 'stretch' }]}>
+              <View style={footer.slot}>
               <TouchableOpacity
                 style={[
-                  styles.navButton,
+                  footer.button,
                   { borderColor: accent },
                   isFirst && styles.navButtonDisabled,
                 ]}
@@ -442,7 +443,7 @@ const locationsList = useMemo(() => {
               >
                 <Text
                   style={[
-                    styles.navButtonText,
+                    footer.text,
                     isFirst && styles.navButtonTextDisabled,
                   ]}
                 >
@@ -450,9 +451,9 @@ const locationsList = useMemo(() => {
                 </Text>
               </TouchableOpacity>
               </View>
-              <View style={styles.navSlot}>
+              <View style={footer.slot}>
               <TouchableOpacity
-                style={[styles.navButton, { borderColor: accent }]}
+                style={[footer.button, { borderColor: accent }]}
                 onPress={() => {
                   triggerCheck();
                   const proceed = () => {
@@ -525,13 +526,13 @@ const locationsList = useMemo(() => {
                 }}
               >
                 <Text
-                  style={styles.navButtonText}
+                  style={footer.text}
                 >
                   {isLast ? t("PPE Checklist") : t("Next")}
                 </Text>
               </TouchableOpacity>
               </View>
-              <View style={styles.navSlot}>
+              <View style={footer.slot}>
               <MoreMenu placement="bottom" compact />
               </View>
             </View>
