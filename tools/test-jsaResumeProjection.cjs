@@ -1,0 +1,11 @@
+const fs=require('fs'),ts=require('typescript'),assert=require('node:assert/strict');
+const m={exports:{}};new Function('module','exports',ts.transpileModule(fs.readFileSync('services/jsaResumeProjection.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText)(m,m.exports);
+const {enrichResumedJsa,jsaDisplayReference}=m.exports;
+const owner={companyId:'c',driverId:'d'},record={id:'request',driverName:'Driver',signatureImage:'data:image/png;base64,abc=',stepAcks:{one:true},assessmentArchiveUnavailable:true};
+const local={...owner,governedRequestRef:'request',assessmentSteps:[{id:'one',title:'Original four-topic assessment'}]};
+const adapt=()=>({ok:true,value:{printedName:'Driver',signature:{mimeType:'image/png',data:'abc='},stepAcks:{one:true}}});
+assert.equal(enrichResumedJsa(record,[local],owner,adapt).assessmentSteps[0].title,'Original four-topic assessment');
+for(const r of [{...local,companyId:'foreign'},{...local,governedRequestRef:'other'},{...local,assessmentSteps:[{id:'wrong'}]}])assert.equal(enrichResumedJsa(record,[r],owner,adapt),record);
+assert.equal(enrichResumedJsa({...record,signatureImage:'data:image/png;base64,xyz='},[local],owner,adapt).assessmentArchiveUnavailable,true);
+assert.equal(jsaDisplayReference('JSA-'+ 'a'.repeat(43)).length<30,true);assert.equal(jsaDisplayReference('JSA-20261019-000001'),'JSA-20261019-000001');
+console.log('Resume projection: exact saved content, request and owner isolation, mismatched topic rejection, compact references passed.');

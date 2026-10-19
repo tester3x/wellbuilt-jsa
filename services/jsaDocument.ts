@@ -1,3 +1,4 @@
+import {jsaDisplayReference} from './jsaResumeProjection';
 import {selectedAssessmentLabels} from './jsaAssessmentLabels';
 import {JSA_STEPS,PPE_ITEMS,PREPARED_FOR_WORK_ITEMS} from '../constants/jsaTemplate';
 import {additionHasDifferences,resolveLocationLayout,type LocationsCoveredPlacement,type LocationDifferencesPlacement} from './jsaLocationLayout';
@@ -36,7 +37,7 @@ function locationSections(r:any,t:Translator,locale:string){
 /** Read/print is a projection only. It never signs, closes, or edits a record. */
 export function jsaDocumentHtml(r:any,width?:3|4,options:DocumentLocale={}):string{
  const t=options.t||identity;const locale=options.locale||'en-US';
- const steps=Array.isArray(r.assessmentSteps)&&r.assessmentSteps.length?r.assessmentSteps:JSA_STEPS;
+ const steps=Array.isArray(r.assessmentSteps)&&r.assessmentSteps.length?r.assessmentSteps:r.assessmentArchiveUnavailable?[]:JSA_STEPS;
  const archived=Array.isArray(r.assessmentSteps)&&r.assessmentSteps.length>0;
  let ppe=r.ppeSelected || {};if(typeof ppe==='string'){try{ppe=JSON.parse(ppe);}catch{ppe={};}}ppe=ppe.selected || ppe;
  const signature=String(r.signatureImage||'');const image=/^data:image\/png;base64,[A-Za-z0-9+/=\s]+$/.test(signature)?signature:/^[A-Za-z0-9+/=\s]+$/.test(signature)&&signature?`data:image/png;base64,${signature}`:'';
@@ -47,16 +48,17 @@ export function jsaDocumentHtml(r:any,width?:3|4,options:DocumentLocale={}):stri
  @page{size:${width?`${width}in 11in`:'letter'};margin:${width?'8px':'24px'}}
  body{font-family:Arial,sans-serif;color:#000;margin:0;padding:8px;font-size:${width?'13':'12'}px;font-weight:${width?'600':'400'};line-height:1.35;overflow-wrap:anywhere}
  h1{font-size:20px}h2{font-size:16px;margin:14px 0 5px}h3{font-size:14px;margin:9px 0 3px}h2,h3{break-after:avoid;page-break-after:avoid}.signature,.location-row,.difference{break-inside:avoid;page-break-inside:avoid}.item{break-inside:avoid;margin:5px 0}img{max-width:100%;width:240px;height:70px;object-fit:contain}.signature img{filter:brightness(0)}.note{border:1px solid;padding:7px}.footer{margin-top:15px;border-top:1px solid;padding-top:6px}.location-block{margin-top:10px}.location-row{border-bottom:1px solid #bbb;padding:5px 0}.location-row div{display:flex;justify-content:space-between;gap:10px}.location-row small,.difference small{display:block;color:#555;font-size:10px}.location-note{font-size:10px;color:#444}.difference{border-left:3px solid #555;padding-left:8px;margin:8px 0}
- </style></head><body><h1>WellBuilt · ${escape(t('Job Safety Analysis'))}</h1>${r.jsaNumber?`<div>${escape(t("JSA number"))}: ${escape(r.jsaNumber)}</div>`:""}
+ </style></head><body><h1>${escape(r.companyName||'WellBuilt')} · ${escape(t('Job Safety Analysis'))}</h1>${r.jsaNumber?`<div>${escape(t("JSA number"))}: ${escape(jsaDisplayReference(r.jsaNumber))}</div>`:""}
  <div>${escape(recordCustomer(r,t))}</div><div>${escape(r.driverName)} · ${escape(t('Truck'))} ${escape(r.truckNumber)} · ${escape(r.date)}</div>
  ${slot('after-job-details')}
+ ${(r.coveredJobs||[]).length?`<section><h2>${escape(t('Jobs acknowledged on this JSA'))}</h2>${r.coveredJobs.map((j:any)=>`<div class="location-row"><b>${escape(j.wellName)}</b><div>${escape(j.jobType)}${j.dropOff?' · '+escape(j.dropOff):''}</div><small>${escape(signingTime(j.recordedAtMs,locale,t('Not recorded')))}</small></div>`).join('')}</section>`:''}
  ${(r.assessmentTemplates||[]).length?`<h2>${escape(t('Company assessments'))}</h2>${r.assessmentTemplates.map((template:any)=>`<div>${escape(template.name)} · ${escape(t('Version'))} ${escape(template.version)}</div>`).join('')}`:''}
- <h2>${escape(t('Steps, hazards and controls'))}</h2>${!archived?`<p class="note">${escape(t('Reference only: the original step text was not stored with this older JSA. The steps below are the current built-in reference, not proof of what was originally read.'))}</p>`:''}
+ <h2>${escape(t('Steps, hazards and controls'))}</h2>${r.assessmentArchiveUnavailable?`<p class="note">${escape(t('The original assessment text is not available on this device. Your signed answers, signature and recorded acknowledgements are shown below.'))}</p>`:!archived?`<p class="note">${escape(t('Reference only: the original step text was not stored with this older JSA. The steps below are the current built-in reference, not proof of what was originally read.'))}</p>`:''}
  ${steps.map((s:any)=>`<h3>${escape(t(s.title))}</h3>${(s.items||[]).map((i:any)=>`<div class="item"><b>${escape(t('Hazard:'))}</b> ${escape(t(i.hazard))}<br><b>${escape(t('Controls:'))}</b> ${escape(t(i.controls))}</div>`).join('')}`).join('')}
  ${slot('after-assessment')}
  <h2>${escape(t('PPE selected'))}</h2><div>${selectedAssessmentLabels(ppe,r.assessmentPpeItems||PPE_ITEMS).map((label:string)=>escape(t(label))).join(', ')}${(r.ppeOtherItems||[]).map((x:string)=>`, ${escape(x)}`).join('')}</div>
  <h2>${escape(t('Prepared for work'))}</h2><div>${selectedAssessmentLabels(r.prepared,r.assessmentPreparedItems||PREPARED_FOR_WORK_ITEMS).map((label:string)=>escape(t(label))).join(', ')}</div><h2>${escape(t('Notes'))}</h2><div>${escape(r.notes||'—')}</div>
  <section class="signature"><h2>${escape(t('Original signature'))}</h2>${image?`<img src="${image}" alt="${escape(t('Driver signature'))}">`:`<div>${escape(t('Signature image unavailable in this saved record.'))}</div>`}<div>${escape(r.driverLegalName||r.signature||r.driverName)}</div><div>${escape(t('Signed:'))} ${escape(signingTime(r.timestamp||r.createdAt,locale,t('Not recorded')))}</div></section>
  ${slot('after-signature')}
- <div class="footer">WellBuilt JSA · ${escape(t('Record'))} ${escape(r.id)} · ${escape(t('Original signature and later acknowledgements remain separate.'))}</div></body></html>`;
+ <div class="footer">WellBuilt JSA · ${escape(t('Record'))} ${escape(jsaDisplayReference('JSA-'+r.id))} · ${escape(t('Original signature and later acknowledgements remain separate.'))}</div></body></html>`;
 }

@@ -4,6 +4,7 @@ const base={protocolVersion:1,companyId:'c',driverId:'d',shiftState:'none',shift
 let reply=base,change=false;
 const m={exports:{}};
 new Function('require','module','exports',ts.transpileModule(fs.readFileSync('services/jsaHome.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText)(n=>{
+ if(n==='./jsaResumeProjection')return {enrichResumedJsa:r=>r};
  if(n==='firebase/app')return {getApp:()=>({})};
  if(n==='firebase/functions')return {getFunctions:()=>({}),httpsCallable:()=>async b=>{body=b;if(change)session={...session,generation:'other'};return {data:reply};}};
  if(n.endsWith('jsaGovernedAuthLive'))return {loadUsableGovernedSession:async()=>session};throw Error(n);

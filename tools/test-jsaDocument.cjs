@@ -23,3 +23,9 @@ for(const width of [undefined,3,4]){
 }
 assert.equal(signingTime(undefined),'Not recorded');assert.equal(signingTime('bad'),'Not recorded');
 console.log('JSA documents: paper/3-inch/4-inch content, signature, additions, escaping, immutable projection and legacy reference passed.');
+
+const resumed=jsaDocumentHtml({...record,companyName:'Test Hauler',assessmentSteps:[],assessmentArchiveUnavailable:true,jsaNumber:'JSA-'+ 'A'.repeat(43),coveredJobs:[{wellName:'Acknowledged Site',jobType:'Production Water',recordedAtMs:1000}]});
+assert.ok(resumed.includes('Test Hauler · Job Safety Analysis'));
+assert.ok(resumed.includes('Acknowledged Site'));assert.ok(resumed.includes('Jobs acknowledged on this JSA'));
+assert.ok(resumed.includes('original assessment text is not available'));assert.ok(!resumed.includes('Driving on location'));
+assert.ok(!resumed.includes('JSA-'+ 'A'.repeat(43)));

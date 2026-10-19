@@ -1,3 +1,4 @@
+import {jsaDisplayReference} from '../../services/jsaResumeProjection';
 import { BrandedAlert as Alert } from '../../services/brandedAlert';
 import SearchResults from '../../components/SearchResults';
 import { jsaHistoryNotice } from '../../services/jsaHistoryNotice';
@@ -2243,7 +2244,7 @@ export default function JsaHomeScreen() {
               <Text style={styles.cardTitle}>{t('Your JSA')}</Text>
               <Text style={styles.cardSubtitle}>{t(home.checking?'Checking your shift and JSA…':home.error?'Could not verify your shift and JSA.':home.state?.action==='resume'?'Your current shift has an open JSA. Use Resume JSA below.':home.state?.shiftState==='open'?'Your shift has no open JSA. Use New JSA below.':'You are off shift. Use New JSA below.')}</Text>
               <Text style={styles.label}>{session?.legalName || session?.displayName || driverName}</Text>
-              {!!home.state?.active?.jsaNumber&&<Text style={styles.cardSubtitle}>{home.state.active.jsaNumber}</Text>}
+              {!!home.state?.active?.jsaNumber&&<Text style={styles.cardSubtitle}>{jsaDisplayReference(home.state.active.jsaNumber)}</Text>}
               {!!home.error&&<TouchableOpacity accessibilityRole="button" onPress={()=>void home.refresh(true)} style={{paddingVertical:12,flexDirection:'row',gap:8}}><Text style={{color:accent,fontWeight:'600'}}>{t('Retry JSA check')}</Text></TouchableOpacity>}
             </View>
           </View>
