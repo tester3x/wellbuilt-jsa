@@ -1,3 +1,4 @@
+import {subscribeJsaViewReconnect} from '../../services/jsaViewReconnect';
 import React,{createContext,useCallback,useContext,useEffect,useRef,useState} from 'react';
 import {AppState} from 'react-native';
 import {useAuth} from './AuthContext';
@@ -19,7 +20,7 @@ export function JsaHomeProvider({children}:{children:React.ReactNode}){
    .finally(()=>{if(flight.current?.promise===promise)flight.current=null;});
   flight.current={key,promise};return promise;
  },[key]);
- useEffect(()=>{void refresh();const sub=AppState.addEventListener('change',s=>{if(s==='active')void refresh(true);});return()=>{sub.remove();++sequence.current;flight.current=null;last.current={key:'',at:0};};},[refresh]);
+ useEffect(()=>{void refresh();const sub=AppState.addEventListener('change',s=>{if(s==='active')void refresh(true);});const reconnect=subscribeJsaViewReconnect(()=>void refresh(true));return()=>{reconnect();sub.remove();++sequence.current;flight.current=null;last.current={key:'',at:0};};},[refresh]);
  const current=value.key===key?value:{state:null,checking:true,error:''};
  return <Context.Provider value={{state:current.state,checking:current.checking,error:current.error,refresh}}>{children}</Context.Provider>;
 }

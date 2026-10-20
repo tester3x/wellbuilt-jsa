@@ -1,4 +1,5 @@
-import React,{useCallback,useState} from 'react';
+import {subscribeJsaViewReconnect} from '../services/jsaViewReconnect';
+import React,{useCallback,useEffect,useState} from 'react';
 import {ActivityIndicator,Pressable,Text,View} from 'react-native';
 import {Stack,useFocusEffect,useRouter} from 'expo-router';
 import {WebView} from 'react-native-webview';
@@ -16,6 +17,7 @@ export default function CurrentJsa(){
  const {session}=useAuth(),ownerKey=`${session?.uid}:${session?.generation}:${session?.companyId}:${session?.driverId}`;
  const [value,setValue]=useState<JsaHomeState|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
  useFocusEffect(useCallback(()=>{let active=true;setValue(null);setError('');void readCachedJsaHome('read').then(cached=>{if(active&&cached)setValue(cached);return loadJsaHome('read');}).then(v=>{if(active)setValue(v);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[retry,ownerKey]));
+ useEffect(()=>subscribeJsaViewReconnect(()=>setRetry(n=>n+1)),[]);
  const current=value?.companyId===session?.companyId&&value?.driverId===session?.driverId?value:null;
  return <View style={{flex:1}}><Stack.Screen options={{title:t('Current JSA'),headerRight:()=>null}}/>
   {!current&&!error?<ActivityIndicator style={{margin:24}}/>:error?<View style={{padding:20}}><Text>{t(error)}</Text><Pressable onPress={()=>setRetry(n=>n+1)} style={{paddingVertical:16}}><Text>{t('Retry JSA check')}</Text></Pressable></View>:current?.action==='resume'&&current.record?<>
