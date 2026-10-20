@@ -191,8 +191,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           && governed.uid === governedInspection.binding.uid
           && governed.driverId === governedInspection.binding.driverId
           && governed.companyId === governedInspection.binding.companyId) {
-          void import('../../services/deviceAccount').then(m=>m.publishJsaDeviceAccount(true)).catch(()=>{});
-        setSession(governedPresentationSession(governed));
+          // Restoring a saved session must not replace the device login or
+          // revive a login that another app has signed out.
+          void import('../../services/deviceAccount').then(m=>m.publishJsaDeviceAccount()).catch(()=>{});
+          setSession(governedPresentationSession(governed));
           setMode('authenticated');
           void import('../../services/standaloneJsa').then(m=>m.standaloneAccess(true)).catch(()=>{});
           return;
@@ -280,6 +282,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setError('Secure sign-in could not verify this JSA session.');
           return false;
         }
+        // Only this successful, user-entered login can replace a device login.
+        void import('../../services/deviceAccount').then(m=>m.publishJsaDeviceAccount(true)).catch(()=>{});
         setSession(governedPresentationSession(governed));
         setMode("authenticated");
         return true;
@@ -349,6 +353,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    console.info('WB_ACCOUNT_LOGOUT app=jsa');
     await import('../../services/deviceAccount').then(m=>m.revokeJsaDeviceAccount()).catch(()=>{});
     registrationAttemptRef.current++;
     registrationPollGuardRef.current.invalidate();
