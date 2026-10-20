@@ -189,7 +189,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           && governed.uid === governedInspection.binding.uid
           && governed.driverId === governedInspection.binding.driverId
           && governed.companyId === governedInspection.binding.companyId) {
-          setSession(governedPresentationSession(governed));
+          void import('../../services/deviceAccount').then(m=>m.publishJsaDeviceAccount(true)).catch(()=>{});
+        setSession(governedPresentationSession(governed));
           setMode('authenticated');
           void import('../../services/standaloneJsa').then(m=>m.standaloneAccess(true)).catch(()=>{});
           return;
@@ -346,6 +347,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    await import('../../services/deviceAccount').then(m=>m.revokeJsaDeviceAccount()).catch(()=>{});
     registrationAttemptRef.current++;
     registrationPollGuardRef.current.invalidate();
     identityReadRef.current++;

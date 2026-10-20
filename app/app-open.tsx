@@ -12,6 +12,7 @@ export default function PlatformJsaOpen(){
  const params=useLocalSearchParams();const [error,setError]=useState(false);
  useEffect(()=>{let active=true;
   void (async()=>{
+   await import('../services/deviceAccount').then(m=>m.restoreJsaDeviceAccount());
    const hint=parsePlatformOwnerHint(params);if(!hint.ok)throw Error('invalid_entry');
    const inspection=await inspectGovernedIdentityStartupDetailed({preferCached:true});
    const session=await loadUsableGovernedSession();

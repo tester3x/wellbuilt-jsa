@@ -28,6 +28,7 @@ function refreshCachedIdentity(session: NonNullable<Awaited<ReturnType<typeof lo
     .catch(()=>{}).finally(()=>pendingRefresh.delete(session.generation));
 }
 export async function inspectGovernedIdentityStartupDetailed(options:{preferCached?:boolean}={}): Promise<GovernedIdentityInspection> {
+  void import('../deviceAccount').then(m=>m.publishJsaDeviceAccount()).catch(()=>{});
   await awaitGovernedAuthReady();
   const auth = getGovernedAuth();
   const rawSessionPresent = await hasRawGovernedSession();

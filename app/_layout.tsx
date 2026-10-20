@@ -898,7 +898,7 @@ function AppContent() {
   );
 }
 
-export default function RootLayout() {
+function JsaRootContent() {
   return (
     <SafeAreaProvider>
       <LanguageProvider>
@@ -932,3 +932,8 @@ const styles = StyleSheet.create({
   logoutRetry: { backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 14, marginTop: 20, alignItems: 'center' },
   logoutRetryText: { color: '#000', fontSize: 16, fontWeight: '800' },
 });
+
+const DeviceAccountGate=require('../modules/wellbuilt-platform/AccountGate');
+const restoreDeviceAccount=()=>import('../services/deviceAccount').then(m=>m.restoreJsaDeviceAccount());
+const clearDeviceAccount=async()=>{await import('../services/logoutJsaCompletely').then(m=>m.logoutJsaCompletely(()=>{}));};
+export default function RootLayout(){return <DeviceAccountGate restore={restoreDeviceAccount} clearLocal={clearDeviceAccount}><JsaRootContent /></DeviceAccountGate>;}
