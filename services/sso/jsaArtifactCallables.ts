@@ -1,3 +1,4 @@
+import {platformDelivery as delivery} from '../platformDelivery';
 /**
  * Authenticated jsaPersistGovernedArtifact client.
  * Same Firebase session + httpsCallable transport as get/complete.
@@ -37,7 +38,7 @@ export async function jsaPersistGovernedArtifact(
       'jsaPersistGovernedArtifact',
       { timeout: TIMEOUT_MS },
     );
-    const result = await callable(body.value);
+    const result = await delivery.attempt(()=>callable(body.value));
     const parsed = parsePersistResult(result.data);
     if (!parsed.ok) {
       logPersist('malformed');

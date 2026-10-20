@@ -23,6 +23,7 @@ function harness() {
     useRef:value=>({current:value}),useCallback:f=>f,useEffect:f=>effects.push(f)};
   const modules = {
     react,
+    "../../modules/wellbuilt-platform/AccountGate":{useAccountReady:()=>true},
     '../../services/driverAuth': {getPendingRegistration:async()=>null,checkRegistrationStatus:async()=>'pending',
       submitRegistration:(...args)=>submitRegistration(...args),
       clearPendingRegistration:()=>clearPendingRegistration()},

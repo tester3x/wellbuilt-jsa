@@ -1,3 +1,4 @@
+import {platformDelivery as delivery} from '../platformDelivery';
 /**
  * Thin Firebase callable wrappers for the held get/complete interface.
  * Bodies are exact-key only. No identity, names, or authority in the
@@ -83,7 +84,7 @@ export async function jsaCompleteReadRequest(
       'jsaCompleteReadRequest',
       { timeout: TIMEOUT_MS },
     );
-    const result = await callable({ requestId, action });
+    const result = await delivery.attempt(()=>callable({ requestId, action }));
     const parsed = parseCompleteResult(result.data);
     if (!parsed.ok) return { ok: false, refusal: 'malformed' };
     return { ok: true, result: parsed.value };

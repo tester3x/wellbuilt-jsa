@@ -96,6 +96,7 @@ function NavigationStack() {
 
 /** Inner component that gates on auth state + handles SSO deep links */
 function AppContent() {
+  const platformAccountReady=require('../modules/wellbuilt-platform/AccountGate').useAccountReady() as boolean;
   const colorScheme = useColorScheme();
   const baseNavigationTheme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
   const navigationTheme = {
@@ -264,6 +265,7 @@ function AppContent() {
   };
 
   const resolveUnauthSurface = async () => {
+    if(!platformAccountReady)return;
     const inspection = ++identityInspectionGeneration.current;
     setIdentityInspectionPending(true);
     try {
@@ -399,6 +401,7 @@ function AppContent() {
   // Direct-icon / cold start: begin Suite PKCE automatically. Never
   // substitute manual login for governed auth.
   useEffect(() => {
+    if(!platformAccountReady)return;
     let cancelled = false;
     (async () => {
       try {
@@ -465,7 +468,7 @@ function AppContent() {
       }
     })();
     return () => { cancelled = true; };
-  }, [isAuthenticated]);
+  }, [isAuthenticated,platformAccountReady]);
 
   // Full-screen immersive mode — hide Android navigation bar
   useEffect(() => {
@@ -899,6 +902,8 @@ function AppContent() {
 }
 
 function JsaRootContent() {
+  useEffect(()=>{let off:(()=>void)|undefined;let active=true;void import('../services/standaloneJsa').then(m=>{if(active)off=m.installStandaloneDelivery();});return()=>{active=false;off?.();};},[]);
+  useEffect(()=>{let off:(()=>void)|undefined;let active=true;void import('../services/sso/jsaArtifactLive').then(m=>{if(active)off=m.installJsaArtifactDelivery();});return()=>{active=false;off?.();};},[]);
   return (
     <SafeAreaProvider>
       <LanguageProvider>

@@ -72,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<GovernedDriverPresentation | null>(null);
   const [error, setError] = useState("");
   const [pendingName, setPendingName] = useState("");
+  const platformAccountReady=require('../../modules/wellbuilt-platform/AccountGate').useAccountReady() as boolean;
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const loginAttemptRef = React.useRef(0);
   const identityReadRef = React.useRef(0);
@@ -95,6 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // The ready signal emits its current revision on subscription, then after SSO.
   // Refresh presentation as well as root routing; an old context cannot own new work.
   useEffect(() => {
+    if(!platformAccountReady)return;
     let disposed = false;
     let unsubscribe: (() => void) | undefined;
     void import('../../services/sso/jsaRuntime').then(({ subscribeGovernedSessionRevision }) => {
@@ -112,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsubscribe?.();
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, []);
+  }, [platformAccountReady]);
 
   // Auto-poll for registration approval when pending
   useEffect(() => {

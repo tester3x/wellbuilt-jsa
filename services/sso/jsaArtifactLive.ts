@@ -1,3 +1,5 @@
+import {subscribeGovernedSessionRevision} from './jsaRuntime';
+import {platformDelivery as delivery} from '../platformDelivery';
 /**
  * AsyncStorage + live callable wiring for the governed artifact queue.
  */
@@ -32,6 +34,7 @@ export async function loadArtifactQueue(): Promise<ArtifactQueueItem[]> {
 
 export async function saveArtifactQueue(items: ArtifactQueueItem[]): Promise<void> {
   await AsyncStorage.setItem(GOVERNED_ARTIFACT_QUEUE_KEY, JSON.stringify(items));
+  void delivery.changed();
 }
 
 async function loadSaves(): Promise<unknown[]> {
@@ -58,20 +61,35 @@ async function stampSave(localRecordId: string, stamp: ArtifactSaveStamp): Promi
   if (changed) await AsyncStorage.setItem(STORAGE_KEYS.saves, JSON.stringify(next));
 }
 
+let queueWriteTail:Promise<unknown>=Promise.resolve();
 function liveStore(): ArtifactQueueStore {
+  const session=import('./jsaGovernedAuthLive').then(m=>m.loadUsableGovernedSession());
+  let seen=new Set<string>();
+  const current=async()=>{const expected=await session,live=await import('./jsaGovernedAuthLive').then(m=>m.loadUsableGovernedSession());if(!expected||!live||live.uid!==expected.uid||live.generation!==expected.generation||live.driverId!==expected.driverId||live.companyId!==expected.companyId)throw Error('Session changed');return expected;};
+  const ownedSaves=async()=>{const owner=await current();const saves=await loadSaves();await current();return saves.filter((v:any)=>v?.companyId===owner.companyId&&(v.driverId===owner.driverId||v.driverHash===owner.driverId));};
+  const ownedQueue=async()=>{const owner=await current(),saves=await ownedSaves();const ids=new Set(saves.map((r:any)=>r.id));const queue=await loadArtifactQueue();await current();return queue.filter(i=>i.owner?i.owner.uid===owner.uid&&i.owner.driverId===owner.driverId&&i.owner.companyId===owner.companyId:ids.has(i.localRecordId));};
   return {
     nowMs: () => Date.now(),
-    loadQueue: loadArtifactQueue,
-    saveQueue: saveArtifactQueue,
-    loadSaves,
-    stampSave,
-    complete: async (requestId, action, localRecordId) => completeAfterLocalSave(liveGovernedDeps(), {
+    loadQueue:async()=>{const rows=await ownedQueue();seen=new Set(rows.map(i=>i.requestId));return rows;},
+    saveQueue:async items=>{
+      const owner=await current(),observed=new Set(seen);
+      const run=queueWriteTail.then(async()=>{
+        await current();const latest=await loadArtifactQueue();await current();
+        const merged=new Map(latest.filter(i=>!observed.has(i.requestId)).map(i=>[i.requestId,i]));
+        for(const item of items)merged.set(item.requestId,{...item,owner:{uid:owner.uid,driverId:owner.driverId,companyId:owner.companyId}});
+        await saveArtifactQueue([...merged.values()]);
+      });queueWriteTail=run.catch(()=>{});await run;
+    },
+    loadSaves:ownedSaves,
+    stampSave:async(id,stamp)=>{await current();await stampSave(id,stamp);},
+    complete: async (requestId, action, localRecordId) => {await current();return completeAfterLocalSave(liveGovernedDeps(), {
       requestId,
       action,
       localRecordId,
       nowMs: Date.now(),
-    }),
+    });},
     persist: async (requestId, snapshot) => {
+      await current();
       const out = await jsaPersistGovernedArtifact(requestId, snapshot);
       return out.ok ? { ok: true, reused: out.result.reused } : { ok: false, status: out.status };
     },
@@ -83,6 +101,7 @@ function liveStore(): ArtifactQueueStore {
 
 export async function settleGovernedArtifactQueue(): Promise<void> {
   try {
+    if(!delivery.canAttempt())return;
     await settleArtifactQueue(liveStore());
   } catch {
     console.log(JSON.stringify({ tag: '[jsa-artifact-queue]', outcome: 'settle_failed' }));
@@ -120,3 +139,8 @@ export async function commitGovernedAfterLocalSave(input: {
 }) {
   return commitGovernedAfterLocalSaveWithStore(liveStore(), input);
 }
+
+export function installJsaArtifactDelivery(){const off=subscribeGovernedSessionRevision(()=>{void delivery.changed();});const unregister=delivery.register('jsa-artifacts',{
+ pending:async()=>(await liveStore().loadQueue()).filter(i=>i.artifactState!=='blocked'&&i.artifactState!=='succeeded').map(i=>i.nextAttemptAtMs),
+ flush:settleGovernedArtifactQueueIfAuthenticated,
+});return()=>{off();unregister();};}

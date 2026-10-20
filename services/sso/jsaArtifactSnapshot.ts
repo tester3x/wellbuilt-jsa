@@ -443,6 +443,7 @@ export type ArtifactStatusCode =
 export type ArtifactClass = 'retryable' | 'success' | 'blocked';
 
 export interface ArtifactQueueItem {
+  owner?: {uid:string;driverId:string;companyId:string};
   schemaVersion: typeof JSA_ARTIFACT_QUEUE_SCHEMA;
   requestId: string;
   localRecordId: string;
@@ -531,6 +532,7 @@ export function parseQueueItem(raw: unknown): ArtifactQueueItem | null {
   }
   return {
     schemaVersion: JSA_ARTIFACT_QUEUE_SCHEMA,
+    ...(o.owner && typeof o.owner==='object' && ['uid','driverId','companyId'].every(k=>typeof (o.owner as Record<string,unknown>)[k]==='string') ? {owner:o.owner as ArtifactQueueItem['owner']} : {}),
     requestId: o.requestId,
     localRecordId: o.localRecordId,
     snapshot: adapted.value,

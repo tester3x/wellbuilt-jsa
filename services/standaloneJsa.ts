@@ -1,9 +1,11 @@
+import {platformDelivery as delivery} from './platformDelivery';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {isTransientConnection} from './transientConnection';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import * as Crypto from 'expo-crypto';
 import { loadUsableGovernedSession } from './sso/jsaGovernedAuthLive';
+import {subscribeGovernedSessionRevision} from './sso/jsaRuntime';
 import { loadLaunchContext } from './sso/jsaRuntime';
 import { adaptGovernedSnapshot } from './sso/jsaArtifactSnapshot';
 
@@ -11,9 +13,13 @@ export async function standaloneCall(body: Record<string, unknown>): Promise<any
   const session = await loadUsableGovernedSession();
   if (!session) throw new Error('Sign in to WellBuilt JSA first.');
   const call = httpsCallable(getFunctions(getApp()), 'jsaStandalone', { timeout: 15000 });
-  const result = await call(body);
+  const mutation=body.operation==='create'||body.operation==='close';
+  const pending=mutation?{owner:{uid:session.uid,driverId:session.driverId,companyId:session.companyId},body}:null;
+  if(pending)await saveStandalonePending(pending);
+  const result = await delivery.attempt(()=>call(body));
   const current = await loadUsableGovernedSession();
   if (!current || current.uid !== session.uid || current.generation !== session.generation || current.companyId !== session.companyId || current.driverId!==session.driverId) throw new Error('Session changed; retry.');
+  if(pending)await removeStandalonePending(pending);
   return result.data;
 }
 export async function standaloneAccess(prewarm=false): Promise<boolean> {
@@ -188,3 +194,40 @@ export async function standaloneReportHtml(record:any,options?:{t?:(text:string,
     locationLayout:record.job.locationLayout,
     additions:record.additions||[]},undefined,options);
 }
+
+const STANDALONE_PENDING='@jsa/standalone-delivery-v1';
+type StandalonePending={owner:{uid:string;driverId:string;companyId:string};body:Record<string,unknown>};
+let standaloneWriteTail:Promise<unknown>=Promise.resolve();
+function mutateStandalone<T>(work:()=>Promise<T>):Promise<T>{const run=standaloneWriteTail.then(work,work);standaloneWriteTail=run.catch(()=>{});return run;}
+const pendingId=(p:StandalonePending)=>JSON.stringify([p.owner.uid,p.owner.driverId,p.owner.companyId,p.body.operation,p.body.recordId]);
+async function saveStandalonePending(entry:StandalonePending){await mutateStandalone(async()=>{
+ const rows:StandalonePending[]=JSON.parse(await AsyncStorage.getItem(STANDALONE_PENDING)||'[]');
+ const existing=rows.find(p=>pendingId(p)===pendingId(entry));
+ if(existing&&JSON.stringify(existing.body)!==JSON.stringify(entry.body))throw Error('An earlier JSA change is waiting to send.');
+ if(!existing)await AsyncStorage.setItem(STANDALONE_PENDING,JSON.stringify([...rows,entry]));
+ });void delivery.changed();}
+async function removeStandalonePending(entry:StandalonePending){await mutateStandalone(async()=>{
+ const rows:StandalonePending[]=JSON.parse(await AsyncStorage.getItem(STANDALONE_PENDING)||'[]');
+ await AsyncStorage.setItem(STANDALONE_PENDING,JSON.stringify(rows.filter(p=>pendingId(p)!==pendingId(entry)||JSON.stringify(p.body)!==JSON.stringify(entry.body))));
+ });void delivery.changed();}
+async function ownedStandalonePending(){const session=await loadUsableGovernedSession();if(!session)return [];
+ const rows:StandalonePending[]=JSON.parse(await AsyncStorage.getItem(STANDALONE_PENDING)||'[]');
+ return rows.filter(p=>p.owner.uid===session.uid&&p.owner.driverId===session.driverId&&p.owner.companyId===session.companyId);}
+export function installStandaloneDelivery(){const off=subscribeGovernedSessionRevision(()=>{void delivery.changed();});const unregister=delivery.register('jsa-standalone',{
+ pending:async()=>{
+  const session=await loadUsableGovernedSession();if(!session)return [];
+  const prefix='jsa.pendingAddition.v1:'+JSON.stringify([session.companyId,session.driverId]).slice(0,-1)+',';
+  const additions=(await AsyncStorage.getAllKeys()).filter(k=>k.startsWith(prefix));
+  return [...(await ownedStandalonePending()).map(()=>0),...additions.map(()=>0)];
+ },
+ flush:async()=>{
+  if(await loadLaunchContext())return;
+  for(const p of await ownedStandalonePending()){if(!delivery.canAttempt())break;await standaloneCall(p.body);}
+  const session=await loadUsableGovernedSession();if(!session)return;
+  for(const key of await AsyncStorage.getAllKeys()){
+   if(!key.startsWith('jsa.pendingAddition.v1:'))continue;
+   const owner=JSON.parse(key.slice('jsa.pendingAddition.v1:'.length));
+   if(owner[0]===session.companyId&&owner[1]===session.driverId&&delivery.canAttempt())await resumePendingStandaloneAddition(owner[2]);
+  }
+ },
+});return()=>{off();unregister();};}
