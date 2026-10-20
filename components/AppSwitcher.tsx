@@ -342,6 +342,12 @@ export default function AppSwitcher({ badgeSource, selfScheme, firestoreDb, getI
   const launchApp = useCallback(async (app: AppEntry) => {
     onClose?.();
     setIsOpen(false);
+    const target={scheme:app.deepLinkScheme,androidPackage:app.androidPackage};
+    const bare=buildPlatformAppEntryUrl(target);
+    if(bare?.endsWith('://')){try{await Linking.openURL(bare);}catch{Alert.alert(t('Not Installed'),`${app.name} is not installed on this device.`);}return;}
+    const session=await loadUsableGovernedSession();
+    const general=buildPlatformAppEntryUrl(target,session?{driverId:session.driverId,companyId:session.companyId}:undefined);
+    if(general){try{await Linking.openURL(general);}catch{Alert.alert(t('Not Installed'),`${app.name} is not installed on this device.`);}return;}
     try {
       let url = `${app.deepLinkScheme}://`;
 
