@@ -47,7 +47,7 @@ import { colors } from '../constants/colors';
 import JsaAppBackground from '../components/JsaAppBackground';
 import {JsaHomeProvider} from './contexts/JsaHomeContext';
 
-// Module-scoped session flag â€” once "Remind me later" is tapped, the
+// Module-scoped session flag — once "Remind me later" is tapped, the
 // unfinished-JSA modal stays suppressed for the remainder of this app
 // process even if the persistent AsyncStorage write loses or the modal
 // re-mounts. Cold-start of the app process resets the flag (intended:
@@ -114,10 +114,10 @@ function AppContent() {
   const screenParamsJson=JSON.stringify(screenParams);
   useEffect(()=>{void import('../services/jsaScreenResume').then(m=>m.rememberJsaScreen(pathname,JSON.parse(screenParamsJson))).catch(()=>{});},[pathname,screenParamsJson]);
   const [ssoInProgress, setSsoInProgress] = useState(true); // suppress login overlay until we check initial URL
-  // Count of governed /start candidates being processed â€” published by
+  // Count of governed /start candidates being processed — published by
   // the owner choke point (subscribeStartResolving), so EVERY entry
   // (route, Linking, getInitialURL, stored resume) raises the overlay.
-  // While > 0 the root shows only the connecting surface â€” historical
+  // While > 0 the root shows only the connecting surface — historical
   // local content (Job Details, saved acknowledgments, "Already
   // completed") must not paint as the active launch (field 8/13).
   const [startResolving, setStartResolving] = useState(0);
@@ -132,7 +132,7 @@ function AppContent() {
     return () => { cancelled = true; if (unsubscribe) unsubscribe(); };
   }, []);
 
-  // Unfinished-JSA compliance modal â€” shown when driver has prior-day JSAs
+  // Unfinished-JSA compliance modal — shown when driver has prior-day JSAs
   // with wells stamped but never signed off.
   const [unfinished, setUnfinished] = useState<UnfinishedJsa[]>([]);
   const [showUnfinished, setShowUnfinished] = useState(false);
@@ -172,7 +172,7 @@ function AppContent() {
       const todayStr = new Date().toISOString().slice(0, 10);
       const activeShiftId = await AsyncStorage.getItem('wellbuilt-current-shift-id').catch(() => null);
 
-      // "Remind me later" persistence â€” keyed by current scope so a new
+      // "Remind me later" persistence — keyed by current scope so a new
       // shift on the same calendar day re-arms the prompt (driver
       // explicitly started a new shift; we shouldn't carry over the
       // prior shift's dismissal). Falls back to date keying when no
@@ -180,10 +180,10 @@ function AppContent() {
       //
       // Two layers of suppression:
       //   1. session-level (module-scoped sessionUnfinishedSuppressed)
-      //      â€” survives modal re-mount within the same app process,
+      //      — survives modal re-mount within the same app process,
       //        immune to AsyncStorage write failures.
       //   2. persistent (AsyncStorage @jsa/unfinishedDismissed:{scope})
-      //      â€” survives app restart within the same shift/day.
+      //      — survives app restart within the same shift/day.
       const dismissKey = activeShiftId
         ? `@jsa/unfinishedDismissed:${activeShiftId}`
         : `@jsa/unfinishedDismissed:date:${todayStr}`;
@@ -192,16 +192,16 @@ function AppContent() {
 
       const list = await getUnfinishedJsas(session.driverId);
 
-      // Strict scope filter â€” fixes fresh-install bug where prior-date
+      // Strict scope filter — fixes fresh-install bug where prior-date
       // unfinished JSAs surfaced during an active shift. The active
       // screen shows ONLY current-shift records; prior days remain
       // accessible from the Saved JSAs tab.
       //
-      //   activeShiftId present â†’ keep j.shiftId === activeShiftId
-      //   activeShiftId absent  â†’ keep j.date    === todayStr
+      //   activeShiftId present → keep j.shiftId === activeShiftId
+      //   activeShiftId absent  → keep j.date    === todayStr
       //
       // Records failing the predicate are counted as historicalSuppressed
-      // (not deleted, not auto-discarded â€” just hidden from the active
+      // (not deleted, not auto-discarded — just hidden from the active
       // surface, accessible via Saved JSAs).
       const filtered: UnfinishedJsa[] = [];
       let historicalSuppressed = 0;
@@ -383,7 +383,7 @@ function AppContent() {
     resolveUnauthSurface();
   }, [platformAccountReady]);
 
-  // Authenticated artifact settlement â€” independent of navigation/screen.
+  // Authenticated artifact settlement — independent of navigation/screen.
   // Direct-icon and foreground recoveries must persist even when home
   // immediately routes a completed context to governed-status.
   useEffect(() => {
@@ -426,8 +426,8 @@ function AppContent() {
         if (cancelled) return;
         if (decision.action === 'handle_launch' && url) {
           const { consumeJsaStart, hrefAfterStart } = await import('../services/sso/jsaStartLive');
-          // Bootstrap url comes from getInitialURL â€” INITIAL provenance.
-          // This effect re-runs on isAuthenticated falseâ†’true, replaying
+          // Bootstrap url comes from getInitialURL — INITIAL provenance.
+          // This effect re-runs on isAuthenticated false→true, replaying
           // the task's ORIGINAL intent; it must never masquerade as live.
           const result = await consumeJsaStart(url, 'initial');
           // Stale replay / superseded / not-a-start: return IMMEDIATELY.
@@ -471,7 +471,7 @@ function AppContent() {
     return () => { cancelled = true; };
   }, [isAuthenticated,platformAccountReady]);
 
-  // Full-screen immersive mode â€” hide Android navigation bar
+  // Full-screen immersive mode — hide Android navigation bar
   useEffect(() => {
     const hideNavBar = () => {
       if (Platform.OS === 'android') {
@@ -530,15 +530,15 @@ function AppContent() {
     if(!platformAccountReady)return;
     const handleDeepLink = async (event: { url: string }) => {
       try {
-        // Cascade logout from WB S â€” only if this session was started via SSO
+        // Cascade logout from WB S — only if this session was started via SSO
         if (event.url?.includes('logout')) {
           const authMethod = await SecureStore.getItemAsync('jsa_authMethod');
           const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
           if (authMethod !== 'sso' && !(await loadGovernedSession())) {
-            console.log('[JSA] Ignoring logout deep link â€” session is manual, not SSO');
+            console.log('[JSA] Ignoring logout deep link — session is manual, not SSO');
             return;
           }
-          console.log('[JSA] Logout deep link received from WB S â€” clearing SSO session');
+          console.log('[JSA] Logout deep link received from WB S — clearing SSO session');
           await completeVerifiedLogout(() => router.replace('/login'));
           return;
         }
@@ -569,15 +569,15 @@ function AppContent() {
           return;
         }
 
-        // Governed WB-T launch â€” shared start owner. Never hash/name login.
+        // Governed WB-T launch — shared start owner. Never hash/name login.
         {
           const { isJsaStartUrl, consumeJsaStart, hrefAfterStart } =
             await import('../services/sso/jsaStartLive');
           if (isJsaStartUrl(event.url)) {
             await AsyncStorage.setItem('jsa_returnTo', 'wbt').catch(() => {});
-            // Linking 'url' event â€” a fresh LIVE delivery.
+            // Linking 'url' event — a fresh LIVE delivery.
             const result = await consumeJsaStart(event.url, 'live');
-            // Stale replay / superseded run â€” a launch that is not the
+            // Stale replay / superseded run — a launch that is not the
             // owned one may not touch UI or overlay state at all.
             if (result.kind === 'ignored') return;
             if (result.kind === 'fail_closed') {
@@ -597,7 +597,7 @@ function AppContent() {
         // JSA auto-fill from WB T / WB S / WB M: jsaapp://start?driverName=...&wellName=...&returnTo=...
         if (parsed.path === 'start' && parsed.queryParams) {
           console.log('[JSA] Start deep link received with params:', Object.keys(parsed.queryParams));
-          // SSO login if hash provided â€” never during a governed request.
+          // SSO login if hash provided — never during a governed request.
           let ssoOk = false;
           const { loadLaunchContext } = await import('../services/sso/jsaRuntime');
           if (await loadLaunchContext()) {
@@ -621,11 +621,11 @@ function AppContent() {
           if (governed && (!/^\d{4}-\d{2}-\d{2}_\d{6}$/.test(explicitShift) || (parsed.queryParams.hash && parsed.queryParams.name && !ssoOk))) {
             await markGovernedReturnRequired(parsed.queryParams.returnTo === 'wbt' ? 'wbt' : 'suite');
           }
-          // Store params for auto-fill â€” home screen reads these on mount
+          // Store params for auto-fill — home screen reads these on mount
           await AsyncStorage.setItem('jsa_autofill', JSON.stringify(parsed.queryParams));
           // ALSO persist jsa_returnTo here (in addition to (tabs)/index.tsx
           // line 180 which reads from autofill on hydration). This is the
-          // canonical write path for the source-app return label â€” landing
+          // canonical write path for the source-app return label — landing
           // here from WB T was previously relying on autofill consumption,
           // which was gated on autofillConsumedRef and only fired once per
           // mount. Writing the key immediately at deep-link-arrival makes
@@ -633,9 +633,9 @@ function AppContent() {
           if (parsed.queryParams.returnTo) {
             await AsyncStorage.setItem('jsa_returnTo', String(parsed.queryParams.returnTo)).catch(() => {});
           }
-          // WB-T fresh-read RECEIPT request (8/6) â€” same capture as the
-          // cold-start route: valid â†’ replace stored context (explicit
-          // restart); absent/invalid â†’ clear it (one request can never be
+          // WB-T fresh-read RECEIPT request (8/6) — same capture as the
+          // cold-start route: valid → replace stored context (explicit
+          // restart); absent/invalid → clear it (one request can never be
           // satisfied by another flow's parameters).
           {
             const { captureReadRequestFromParams } = await import('../services/wbtReadRequest');
@@ -684,18 +684,18 @@ function AppContent() {
         setSsoInProgress(false);
         return;
       }
-      // Start deep link â€” shared owner. Do not defer to start.tsx mounting.
+      // Start deep link — shared owner. Do not defer to start.tsx mounting.
       if (url.includes('/start') || url.includes('://start')) {
         const { isJsaStartUrl, consumeJsaStart, hrefAfterStart } =
           await import('../services/sso/jsaStartLive');
         const { isLegacyJsaLaunchUrl, parseJsaLaunchUrl } = await import('../services/sso/jsaLaunch');
         if (isJsaStartUrl(url) || isLegacyJsaLaunchUrl(url) || parseJsaLaunchUrl(url).ok) {
           await AsyncStorage.setItem('jsa_returnTo', 'wbt').catch(() => {});
-          // getInitialURL â€” INITIAL provenance: legitimate on cold start,
+          // getInitialURL — INITIAL provenance: legitimate on cold start,
           // but a warm re-read replays the task's original intent and must
           // never displace a live delivery.
           const result = await consumeJsaStart(url, 'initial');
-          // Stale replay / superseded run â€” never steers UI.
+          // Stale replay / superseded run — never steers UI.
           if (result.kind === 'ignored') return;
           if (result.kind === 'fail_closed') {
             await markGovernedReturnRequired('wbt');
@@ -709,7 +709,7 @@ function AppContent() {
           setSsoInProgress(result.kind === 'ready');
           return;
         }
-        console.log('[JSA] Cold start deep link with params â€” start.tsx will handle');
+        console.log('[JSA] Cold start deep link with params — start.tsx will handle');
         const parsed = Linking.parse(url);
         const qp = parsed.queryParams || {};
         let ssoOk = false;
@@ -720,7 +720,7 @@ function AppContent() {
         }
         // Persist returnTo immediately on cold start too (mirrors warm-
         // start handler above). start.tsx also writes this, but it only
-        // fires when start.tsx is the routed screen â€” _layout.tsx warm
+        // fires when start.tsx is the routed screen — _layout.tsx warm
         // start path bypasses start.tsx entirely.
         if (qp.returnTo) {
           await AsyncStorage.setItem('jsa_returnTo', String(qp.returnTo)).catch(() => {});
@@ -733,7 +733,7 @@ function AppContent() {
         setSsoInProgress(false);
         return;
       }
-      // SSO login deep link â€” login.tsx handles the actual auth,
+      // SSO login deep link — login.tsx handles the actual auth,
       // but we keep the overlay suppressed until auth state settles
       if (url.includes('login') && url.includes('hash=')) {
         const { loadUsableGovernedSession } = await import('../services/sso/jsaGovernedAuthLive');
@@ -743,7 +743,7 @@ function AppContent() {
           setSsoInProgress(false);
           return;
         }
-        console.log('[JSA] Cold start Suite card launch without a usable session â€” starting governed authorization');
+        console.log('[JSA] Cold start Suite card launch without a usable session — starting governed authorization');
         const { beginSuiteCardAuthorization } = await import('../services/sso/jsaSuiteCardLive');
         const result = await beginSuiteCardAuthorization();
         if (result === 'usable') router.replace('/(tabs)');
@@ -771,7 +771,7 @@ function AppContent() {
           <NavigationStack />
           <BrandedAlertHost />
 
-          {/* Welcome greeting â€” scoped to the authenticated entry/request, unless an unfinished-JSA
+          {/* Welcome greeting — scoped to the authenticated entry/request, unless an unfinished-JSA
               nag is also pending (compliance takes priority). */}
           {isAuthenticated && (
             <WelcomeModal
@@ -785,7 +785,7 @@ function AppContent() {
             />
           )}
 
-          {/* Unfinished JSA compliance modal â€” shown on auth + on foreground */}
+          {/* Unfinished JSA compliance modal — shown on auth + on foreground */}
           {isAuthenticated && (
             <UnfinishedJsasModal
               visible={showUnfinished}
@@ -817,7 +817,7 @@ function AppContent() {
               }}
               onClose={async () => {
                 // Two-layer "Remind me later" suppression:
-                //   1. Module-scoped session flag â€” instant, immune to
+                //   1. Module-scoped session flag — instant, immune to
                 //      AsyncStorage failure, and short-circuits any
                 //      subsequent re-check within this app process.
                 //   2. Persistent AsyncStorage flag keyed by the
@@ -843,7 +843,7 @@ function AppContent() {
             </View>
           )}
 
-          {/* Governed /start resolving â€” fail-closed presentation. While a
+          {/* Governed /start resolving — fail-closed presentation. While a
               valid launch candidate is being processed, only this
               connecting surface shows; historical local records never
               paint as the active launch. */}
