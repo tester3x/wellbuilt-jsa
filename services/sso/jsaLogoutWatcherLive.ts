@@ -50,6 +50,14 @@ async function consume(bound: LogoutWatcherBinding, value: unknown): Promise<boo
     return false;
   }
   if (decision.kind !== 'logout_required') return false;
+  // A verified device login is a newer authentication boundary than this
+  // cached JSA installation's baseline. An older Suite logout must not revoke
+  // the newly established shared login when this app is first reopened.
+  const {jsaDeviceAccount} = await import('../deviceAccount');
+  const device = await jsaDeviceAccount.read();
+  if (!watcherBindingMatches(bound, await currentGovernedWatcherBinding())) return false;
+  if (device && !device.revoked && watcherBindingMatches(bound, device.access.owner)
+    && typeof value === 'number' && value <= device.access.establishedAtMs) return false;
   // Advanced signals remain pending. Verified logout deletes the baseline;
   // inactive or failed logout must not consume the Suite event.
   return true;
