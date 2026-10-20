@@ -1,3 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {isTransientConnection} from './transientConnection';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import * as Crypto from 'expo-crypto';
@@ -14,11 +16,35 @@ export async function standaloneCall(body: Record<string, unknown>): Promise<any
   if (!current || current.uid !== session.uid || current.generation !== session.generation || current.companyId !== session.companyId || current.driverId!==session.driverId) throw new Error('Session changed; retry.');
   return result.data;
 }
-export async function standaloneAccess(): Promise<boolean> {
-  if (await loadLaunchContext()) return false;
-  const result = await standaloneCall({ operation: 'access' });
-  const session = await loadUsableGovernedSession();
-  return result?.allowed === true && result.companyId === session?.companyId && result.driverId === session?.driverId;
+export async function standaloneAccess(prewarm=false): Promise<boolean> {
+  if (!prewarm && await loadLaunchContext()) return false;
+  const session=await loadUsableGovernedSession();if(!session)return false;
+  const key='@jsa/access-view-v1/'+encodeURIComponent(JSON.stringify([session.uid,session.generation,session.companyId,session.driverId]));
+  const refresh=async():Promise<boolean>=>{
+  try {
+    const result=await standaloneCall({operation:'access'});
+    const current=await loadUsableGovernedSession();
+    if(!current||current.uid!==session.uid||current.generation!==session.generation||current.companyId!==session.companyId||current.driverId!==session.driverId)return false;
+    const allowed=result?.allowed===true&&result.companyId===session.companyId&&result.driverId===session.driverId;
+    if(allowed)await AsyncStorage.setItem(key,'verified');else await AsyncStorage.removeItem(key);
+    return allowed;
+  } catch(error) {
+    if(!isTransientConnection(error)){await AsyncStorage.removeItem(key);throw error;}
+    const current=await loadUsableGovernedSession();
+    if(!current||current.uid!==session.uid||current.generation!==session.generation||current.companyId!==session.companyId||current.driverId!==session.driverId)return false;
+    // Presentation cache only; save/submit always calls the authorized server.
+    return await AsyncStorage.getItem(key)==='verified';
+  }
+  };
+  // A verified, owner-bound presentation opens immediately. Refresh never grants
+  // write access; every server operation still checks current company policy.
+  if(!prewarm && await AsyncStorage.getItem(key)==='verified') {
+    const current=await loadUsableGovernedSession();
+    if(!current||current.uid!==session.uid||current.generation!==session.generation||current.companyId!==session.companyId||current.driverId!==session.driverId)return false;
+    void refresh().catch(()=>{});
+    return true;
+  }
+  return refresh();
 }
 export async function persistStandaloneJsa(payload: any): Promise<any> {
   if (await loadLaunchContext()) throw new Error('A required JSA request is active.');

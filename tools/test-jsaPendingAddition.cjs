@@ -4,6 +4,7 @@ const disk=new Map(),accepted=new Map();let count=0;
 const record={id:'R'.repeat(43),companyId:'c',driverId:'d',contentHash:'f'.repeat(64),additions:[]};
 const fields={location:'Fixture well',operator:'Fixture operator',activity:'Loading',hazards:'Fixture hazard',controls:'Fixture control',ppe:'Gloves'};
 function load(){const mod={exports:{}};new Function('require','module','exports',ts.transpileModule(fs.readFileSync('services/standaloneJsa.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true,target:ts.ScriptTarget.ES2020}}).outputText)(name=>{
+ if(name==='./transientConnection')return{isTransientConnection:()=>false};
  if(name==='firebase/app')return{getApp:()=>({})};
  if(name==='firebase/functions')return{getFunctions:()=>({}),httpsCallable:()=>async body=>{
   if(offline)throw Error('offline');

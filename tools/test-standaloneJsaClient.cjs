@@ -1,14 +1,15 @@
 const fs=require('fs'),ts=require('typescript'),assert=require('node:assert/strict'),crypto=require('node:crypto');
-const m={exports:{}};let session={uid:'u',generation:'g',driverId:'d',companyId:'c'},launch=null,calls=[],local=[],closeState='closed',remoteRecords=[];
+const cache=new Map();const m={exports:{}};let session={uid:'u',generation:'g',driverId:'d',companyId:'c'},launch=null,calls=[],local=[],closeState='closed',remoteRecords=[];
 const source=fs.readFileSync('services/standaloneJsa.ts','utf8');const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true}}).outputText;
 new Function('require','module','exports',js)(name=>{
+ if(name==='./transientConnection')return{isTransientConnection:()=>false};
  if(name==='firebase/app')return{getApp:()=>({})};
  if(name==='firebase/functions')return{getFunctions:()=>({}),httpsCallable:()=>async body=>{calls.push(body);return{data:{records:body.operation==='list'?remoteRecords:undefined,allowed:true,companyId:'c',driverId:'d',record:{id:body.recordId,companyId:'c',driverId:'d',state:body.operation==='close'?closeState:'open',closedAtMs:123}}};}};
  if(name==='expo-crypto')return{CryptoDigestAlgorithm:{SHA256:'sha256'},digestStringAsync:async(_,s)=>crypto.createHash('sha256').update(s).digest('hex')};
  if(name.endsWith('jsaGovernedAuthLive'))return{loadUsableGovernedSession:async()=>session};
  if(name.endsWith('jsaRuntime'))return{loadLaunchContext:async()=>launch};
  if(name.endsWith('jsaArtifactSnapshot'))return{adaptGovernedSnapshot:raw=>({ok:!!raw.signatureImage,value:{signature:raw.signatureImage}})};
- if(name==='@react-native-async-storage/async-storage')return{getItem:async key=>key==='saves'?JSON.stringify(local):null,setItem:async(_,v)=>{local=JSON.parse(v)}};
+ if(name==='@react-native-async-storage/async-storage')return{getItem:async key=>key==='saves'?JSON.stringify(local):cache.get(key)||null,setItem:async(k,v)=>{if(k==='saves')local=JSON.parse(v);else cache.set(k,v)},removeItem:async k=>cache.delete(k)};
  if(name.endsWith('storageKeys'))return{STORAGE_KEYS:{saves:'saves'}};
  if(name==='./jsaRecord')return{ownJsaRecord:async id=>{const row=local.find(r=>r.id===id&&r.companyId===session.companyId&&(r.driverId===session.driverId||!r.driverId&&r.driverHash===session.driverId));if(!row)throw Error('Not owned');return {...row,driverId:session.driverId};}};
  throw Error(name);

@@ -252,6 +252,7 @@ export async function persistAfterExchange(
     if (!finalized.ok) {
       throw new Error(`post_install_${finalized.finalization}_cleanup_${finalized.cleanup}`);
     }
+    void import('../standaloneJsa').then(m=>m.standaloneAccess(true)).catch(()=>{});
     return result.session;
   });
 }

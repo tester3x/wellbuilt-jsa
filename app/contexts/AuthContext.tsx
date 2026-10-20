@@ -191,6 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           && governed.companyId === governedInspection.binding.companyId) {
           setSession(governedPresentationSession(governed));
           setMode('authenticated');
+          void import('../../services/standaloneJsa').then(m=>m.standaloneAccess(true)).catch(()=>{});
           return;
         }
         setMode('error');
