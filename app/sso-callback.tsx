@@ -15,11 +15,13 @@ import { colors } from '../constants/colors';
 import { markGovernedReturnRequired } from '../services/shiftAuthorityStore';
 
 export default function JsaSsoCallbackRoute() {
+  const platformAccountReady=require("../modules/wellbuilt-platform/AccountGate").useAccountReady() as boolean;
   const params = useLocalSearchParams();
   const router = useRouter();
   const ran = useRef(false);
 
   useEffect(() => {
+    if(!platformAccountReady)return;
     if (ran.current) return;
     ran.current = true;
     void (async () => {
@@ -92,7 +94,7 @@ export default function JsaSsoCallbackRoute() {
         } as any);
       }
     })();
-  }, [params, router]);
+  }, [params, router,platformAccountReady]);
 
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>

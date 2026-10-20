@@ -17,10 +17,12 @@ import {
 } from '../services/sso/jsaStartLive';
 
 export default function StartScreen() {
+  const platformAccountReady=require("../modules/wellbuilt-platform/AccountGate").useAccountReady() as boolean;
   const router = useRouter();
   const params = useLocalSearchParams();
 
   useEffect(() => {
+    if(!platformAccountReady)return;
     (async () => {
       try {
         const fromParams = reconstructJsaStartUrl(params as Record<string, unknown>);
@@ -55,7 +57,7 @@ export default function StartScreen() {
         } as any);
       }
     })();
-  }, [router, params]);
+  }, [router, params,platformAccountReady]);
 
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
