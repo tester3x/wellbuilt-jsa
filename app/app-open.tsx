@@ -9,10 +9,10 @@ import {inspectGovernedIdentityStartupDetailed} from '../services/sso/jsaIdentit
 import {mintAttempt} from '../services/sso/jsaRuntime';
 import {buildAuthorizeUrl} from '../services/sso/jsaPkce';
 export default function PlatformJsaOpen(){
+ const platformAccountReady=require('../modules/wellbuilt-platform/AccountGate').useAccountReady() as boolean;
  const params=useLocalSearchParams();const [error,setError]=useState(false);
- useEffect(()=>{let active=true;
+ useEffect(()=>{if(!platformAccountReady)return;let active=true;
   void (async()=>{
-   await import('../services/deviceAccount').then(m=>m.restoreJsaDeviceAccount());
    const hint=parsePlatformOwnerHint(params);if(!hint.ok)throw Error('invalid_entry');
    const inspection=await inspectGovernedIdentityStartupDetailed({preferCached:true});
    const session=await loadUsableGovernedSession();
@@ -25,6 +25,6 @@ export default function PlatformJsaOpen(){
    if(active)await Linking.openURL(buildAuthorizeUrl(attempt));
   })().catch(()=>{if(active)setError(true);});
   return()=>{active=false;};
- },[params.driverId,params.companyId]);
+ },[platformAccountReady,params.driverId,params.companyId]);
  return <View style={{flex:1,justifyContent:'center',alignItems:'center'}}>{error?<Text>Could not establish JSA access. Your saved work is preserved. Return to Suite and retry.</Text>:<ActivityIndicator/>}</View>;
 }

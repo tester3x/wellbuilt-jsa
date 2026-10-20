@@ -7,8 +7,9 @@ import {createDeviceAccountClient,type DeviceAccountNative} from './deviceAccoun
 const native=require('../modules/wellbuilt-platform') as DeviceAccountNative|null;
 export const jsaDeviceAccount=createDeviceAccountClient(native,async(name,data)=>(await httpsCallable(getFunctions(app,'us-central1'),name,{timeout:15000})(data)).data);
 export async function restoreJsaDeviceAccount(){
- await awaitGovernedAuthReady();const saved=await loadGovernedSession(),uid=getGovernedAuth().currentUser?.uid;
+ await awaitGovernedAuthReady();const capturedUser=getGovernedAuth().currentUser;const saved=await loadGovernedSession(),uid=getGovernedAuth().currentUser?.uid;
  const finalized=saved?await installationFinalizedFor({status:'finalized',generation:saved.generation,uid:saved.uid,driverId:saved.driverId,companyId:saved.companyId}):false;
+ if(getGovernedAuth().currentUser!==capturedUser)throw Object.assign(Error('Account changed during local restore.'),{code:'platform/superseded'});
  return jsaDeviceAccount.restore('jsa',saved&&uid===saved.uid&&finalized?saved:null,async reply=>{
   const payload=parseManualLoginPayload({protocolVersion:1,customToken:reply.customToken,...reply.access.owner,displayName:reply.access.profile.displayName||undefined,legalName:reply.access.profile.legalName||undefined,jsaBinding:reply.jsaBinding});
   if(!payload.ok)throw Error('platform_binding_mismatch');

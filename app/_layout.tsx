@@ -944,4 +944,4 @@ const styles = StyleSheet.create({
 const DeviceAccountGate=require('../modules/wellbuilt-platform/AccountGate');
 const restoreDeviceAccount=()=>import('../services/deviceAccount').then(m=>m.restoreJsaDeviceAccount());
 const clearDeviceAccount=async()=>{await import('../services/logoutJsaCompletely').then(m=>m.logoutJsaCompletely(()=>{}));};
-export default function RootLayout(){return <DeviceAccountGate restore={restoreDeviceAccount} clearLocal={clearDeviceAccount}><JsaRootContent /></DeviceAccountGate>;}
+export default function RootLayout(){return <DeviceAccountGate restore={restoreDeviceAccount} returnToHub={()=>{void import('react-native').then(m=>m.Linking.openURL('wellbuilt-suite://home'));}} clearLocal={clearDeviceAccount}><JsaRootContent /></DeviceAccountGate>;}
