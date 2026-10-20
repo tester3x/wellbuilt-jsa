@@ -2,8 +2,12 @@ const fs=require('fs'),ts=require('typescript'),assert=require('node:assert/stri
 let session={uid:'u',generation:'g',companyId:'c',driverId:'d'},body;
 const base={protocolVersion:1,companyId:'c',driverId:'d',shiftState:'none',shiftId:null,action:'new',active:null};
 let reply=base,change=false;
+const cache=new Map();
 const m={exports:{}};
 new Function('require','module','exports',ts.transpileModule(fs.readFileSync('services/jsaHome.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText)(n=>{
+ if(n==='@react-native-async-storage/async-storage')return {default:{getItem:async k=>cache.get(k)||null,setItem:async(k,v)=>{cache.set(k,v);},removeItem:async k=>{cache.delete(k);}}};
+ if(n==='./platformDelivery')return {platformDelivery:{attempt:f=>f()}};
+ if(n==='./platformRuntime.generated')return {classifyPlatformFailure:()=> 'other'};
  if(n==='./jsaResumeProjection')return {enrichResumedJsa:r=>r};
  if(n==='firebase/app')return {getApp:()=>({})};
  if(n==='firebase/functions')return {getFunctions:()=>({}),httpsCallable:()=>async b=>{body=b;if(change)session={...session,generation:'other'};return {data:reply};}};

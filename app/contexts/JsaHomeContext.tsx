@@ -1,7 +1,7 @@
 import React,{createContext,useCallback,useContext,useEffect,useRef,useState} from 'react';
 import {AppState} from 'react-native';
 import {useAuth} from './AuthContext';
-import {loadJsaHome,type JsaHomeState} from '../../services/jsaHome';
+import {loadJsaHome,readCachedJsaHome,type JsaHomeState} from '../../services/jsaHome';
 type Value={state:JsaHomeState|null;checking:boolean;error:string;refresh(force?:boolean):Promise<void>};
 const Context=createContext<Value|null>(null);
 export function JsaHomeProvider({children}:{children:React.ReactNode}){
@@ -14,7 +14,7 @@ export function JsaHomeProvider({children}:{children:React.ReactNode}){
   if(flight.current?.key===key)return flight.current.promise;
   if(!force&&last.current.key===key&&Date.now()-last.current.at<5000)return Promise.resolve();
   const seq=++sequence.current;setValue({key,state:null,checking:true,error:''});
-  const promise=loadJsaHome().then(state=>{if(owner.current===key&&sequence.current===seq){last.current={key,at:Date.now()};setValue({key,state,checking:false,error:''});}})
+  const promise=readCachedJsaHome().then(cached=>{if(cached&&owner.current===key&&sequence.current===seq)setValue({key,state:cached,checking:false,error:''});return loadJsaHome();}).then(state=>{if(owner.current===key&&sequence.current===seq){last.current={key,at:Date.now()};setValue({key,state,checking:false,error:''});}})
    .catch(e=>{if(owner.current===key&&sequence.current===seq)setValue({key,state:null,checking:false,error:e instanceof Error?e.message:'Could not verify JSA status.'});})
    .finally(()=>{if(flight.current?.promise===promise)flight.current=null;});
   flight.current={key,promise};return promise;
