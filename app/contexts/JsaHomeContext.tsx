@@ -3,9 +3,9 @@ import React,{createContext,useCallback,useContext,useEffect,useRef,useState} fr
 import {AppState} from 'react-native';
 import {useAuth} from './AuthContext';
 import {loadJsaHome,readCachedJsaHome,type JsaHomeState} from '../../services/jsaHome';
-type Value={state:JsaHomeState|null;checking:boolean;error:string;refresh(force?:boolean):Promise<void>};
+type Value={ordinaryEntryVerified:boolean;state:JsaHomeState|null;checking:boolean;error:string;refresh(force?:boolean):Promise<void>};
 const Context=createContext<Value|null>(null);
-export function JsaHomeProvider({children}:{children:React.ReactNode}){
+export function JsaHomeProvider({children,ordinaryEntryVerified=false}:{children:React.ReactNode;ordinaryEntryVerified?:boolean}){
  const {session}=useAuth(),key=session?`${session.uid}:${session.generation}:${session.companyId}:${session.driverId}`:'';
  const owner=useRef(key);owner.current=key;
  const sequence=useRef(0),flight=useRef<{key:string;promise:Promise<void>}|null>(null),last=useRef({key:'',at:0});
@@ -22,6 +22,6 @@ export function JsaHomeProvider({children}:{children:React.ReactNode}){
  },[key]);
  useEffect(()=>{void refresh();const sub=AppState.addEventListener('change',s=>{if(s==='active')void refresh(true);});const reconnect=subscribeJsaViewReconnect(()=>void refresh(true));return()=>{reconnect();sub.remove();++sequence.current;flight.current=null;last.current={key:'',at:0};};},[refresh]);
  const current=value.key===key?value:{state:null,checking:true,error:''};
- return <Context.Provider value={{state:current.state,checking:current.checking,error:current.error,refresh}}>{children}</Context.Provider>;
+ return <Context.Provider value={{ordinaryEntryVerified,state:current.state,checking:current.checking,error:current.error,refresh}}>{children}</Context.Provider>;
 }
 export function useJsaHome(){const context=useContext(Context);if(!context)throw Error('JSA home provider missing');return context;}

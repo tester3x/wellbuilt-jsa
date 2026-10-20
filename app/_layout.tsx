@@ -1,3 +1,4 @@
+import {canBrowseJsaHome} from '../services/jsaHomePresentation';
 import BrandedAlertHost from '../components/BrandedAlertHost';
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { Stack, usePathname, useRouter, useGlobalSearchParams } from 'expo-router';
@@ -765,7 +766,7 @@ function AppContent() {
   return (
     <ThemeProvider>
       <NavThemeProvider value={navigationTheme}>
-        <JsaHomeProvider>
+        <JsaHomeProvider ordinaryEntryVerified={canBrowseJsaHome({authenticated:isAuthenticated,identityReady:governedSessionReady,ownerMatches:!!session&&!!governedWatcherBinding&&governedWatcherBinding.uid===session.uid&&governedWatcherBinding.driverId===session.driverId&&governedWatcherBinding.companyId===session.companyId,inspectionPending:identityInspectionPending,hasGovernedLaunch:hasActiveGovernedLaunch,isolationBlocked:authWorkflowIsolation.blocked})}>
         <View style={{ flex: 1, backgroundColor: 'transparent' }}>
           <JsaAppBackground />
           <NavigationStack />

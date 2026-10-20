@@ -1,0 +1,10 @@
+const fs=require('node:fs'),ts=require('typescript'),assert=require('node:assert/strict');
+const m={exports:{}};new Function('module','exports',ts.transpileModule(fs.readFileSync('services/jsaHomePresentation.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText)(m,m.exports);
+const base={authenticated:true,identityReady:true,ownerMatches:true,inspectionPending:false,hasGovernedLaunch:false,isolationBlocked:false};assert.equal(m.exports.canBrowseJsaHome(base),true);
+for(const key of Object.keys(base))assert.equal(m.exports.canBrowseJsaHome({...base,[key]:!base[key]}),false,key);
+const home=fs.readFileSync('app/(tabs)/index.tsx','utf8'),root=fs.readFileSync('app/_layout.tsx','utf8');
+assert.match(root,/<JsaHomeProvider ordinaryEntryVerified=\{canBrowseJsaHome/);
+assert.match(home,/home\.ordinaryEntryVerified \|\| workflowIsolation\.mountForm && standaloneAllowed/);
+assert.match(home,/handleNextAllowed\(workflowIsolation\.blocked\)/);
+assert.match(home,/workflowIsolation\.mountForm && hasGovernedIdentity && standaloneAllowed/);
+console.log('Read-only home accepts only an exact ready owner; pending/governed/blocked entries and all mutation guards remain isolated.');

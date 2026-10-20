@@ -2238,7 +2238,7 @@ export default function JsaHomeScreen() {
           </View>
         </View>
 
-        {!isSsoMode && !details && !newStandalone && workflowIsolation.mountForm && hasGovernedIdentity && standaloneAllowed ? (
+        {!isSsoMode && !details && !newStandalone && hasGovernedIdentity && (home.ordinaryEntryVerified || workflowIsolation.mountForm && standaloneAllowed) ? (
           <View style={{flex:1,padding:16,gap:16}}>
             <View style={styles.card}>
               <Text style={styles.cardTitle}>{t('Your JSA')}</Text>
