@@ -7,7 +7,7 @@ const {jsaDocumentHtml,signingTime}=load(path.resolve(__dirname,'../services/jsa
 const layout={schemaVersion:1,locationsCoveredPlacement:'after-job-details',locationDifferencesPlacement:'after-assessment'};
 const record={id:'fixture-only',operator:'Example customer',driverName:'Example Driver',truckNumber:'Test truck',date:'2026-09-14',timestamp:'2026-09-14T12:00:00Z',signature:'Example Driver',signatureImage:'data:image/png;base64,aGVsbG8=',wells:[{name:'Site <A>',jobType:'Service'}],ppeSelected:{glasses:true},prepared:{trained:true},assessmentSteps:[{id:'one',title:'Original assessment',items:[{hazard:'Original hazard',controls:'Original control'}]}],locationLayout:layout,additions:[{location:'Site B',activity:'Service',hazards:'Later hazard',controls:'Later control',ppe:'Glasses',conditionsDiffer:true,acknowledgedAtMs:1789387260000}],notes:'<script>unsafe</script>'};
 const before=JSON.stringify(record);
-for(const width of [undefined,3,4]){const html=jsaDocumentHtml(record,width);for(const text of ['Original assessment','Original hazard','Original control','Locations covered','Location-specific differences','Site B','Later control','Example Driver','fixture-only','Original signature'])assert.ok(html.includes(text),text);assert.ok(html.includes('Site &lt;A&gt;'));assert.ok(!html.includes('<script>'));assert.ok(html.includes('data:image/png;base64,aGVsbG8='));assert.ok(!html.includes('Reference only:'));assert.ok(html.includes(width?`size:${width}in 11in`:'size:letter'));assert.ok(html.indexOf('Locations covered')<html.indexOf('Steps, hazards and controls'));assert.ok(html.indexOf('<h2>Location-specific differences</h2>')>html.indexOf('Original control'));}
+for(const width of [undefined,3,4]){const html=jsaDocumentHtml(record,width);for(const text of ['Original assessment','Original hazard','Original control','Locations covered','Location-specific differences','Site B','Later control','Example Driver','Original signature'])assert.ok(html.includes(text),text);assert.ok(html.includes('Site &lt;A&gt;'));assert.ok(!html.includes('<script>'));assert.ok(html.includes('data:image/png;base64,aGVsbG8='));assert.ok(!html.includes('Reference only:'));assert.ok(html.includes(width?`size:${width}in 11in`:'size:letter'));assert.ok(html.indexOf('Locations covered')>html.indexOf('Original signature'));assert.ok(html.indexOf('<h2>Location-specific differences</h2>')>html.indexOf('Original control'));}
 assert.equal(JSON.stringify(record),before);
 assert.ok(jsaDocumentHtml({...record,assessmentSteps:[]}).includes('not proof of what was originally read'));
 assert.ok(!jsaDocumentHtml({...record,signatureImage:'javascript:alert(1)'}).includes('<img'));
@@ -26,6 +26,12 @@ console.log('JSA documents: paper/3-inch/4-inch content, signature, additions, e
 
 const resumed=jsaDocumentHtml({...record,companyName:'Test Hauler',assessmentSteps:[],assessmentArchiveUnavailable:true,jsaNumber:'JSA-'+ 'A'.repeat(43),coveredJobs:[{wellName:'Acknowledged Site',jobType:'Production Water',recordedAtMs:1000}]});
 assert.ok(resumed.includes('Test Hauler · Job Safety Analysis'));
-assert.ok(resumed.includes('Acknowledged Site'));assert.ok(resumed.includes('Jobs acknowledged on this JSA'));
+assert.ok(resumed.includes('Acknowledged Site'));assert.ok(resumed.includes('Locations covered'));assert.ok(!resumed.includes('Jobs acknowledged on this JSA'));
 assert.ok(resumed.includes('original assessment text is not available'));assert.ok(!resumed.includes('Driving on location'));
 assert.ok(!resumed.includes('JSA-'+ 'A'.repeat(43)));
+
+const complete=jsaDocumentHtml({...record,printedName:'Signed Driver',signature:{data:'image'},driverLegalName:null,coveredJobs:[{jobRef:'one',wellName:'First job',jobType:'Loading',recordedAtMs:1000,method:'read_and_acknowledged'},{jobRef:'two',wellName:'Second job',jobType:'Unloading',recordedAtMs:2000,method:'acknowledged'}]});
+assert.equal((complete.match(/<h2>Locations covered<\/h2>/g)||[]).length,1);
+assert(complete.indexOf('Locations covered')>complete.indexOf('Original signature'));
+assert(complete.indexOf('First job')<complete.indexOf('Second job'));
+assert(!complete.includes('[object Object]'));assert(complete.includes('Signed Driver'));

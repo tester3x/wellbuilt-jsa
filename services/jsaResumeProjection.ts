@@ -2,7 +2,7 @@
 const stable=(v:any):string=>JSON.stringify(v&&typeof v==='object'?Array.isArray(v)?v.map(x=>JSON.parse(stable(x))):Object.fromEntries(Object.keys(v).sort().map(k=>[k,JSON.parse(stable(v[k]))])):v??null);
 export function jsaDisplayReference(value:unknown):string {
  const text=typeof value==='string'?value:'';
- return /^JSA-[A-Za-z0-9_-]{40,}$/.test(text)?text.slice(0,12)+'…'+text.slice(-6):text;
+ return /^JSA-[A-Za-z0-9_-]{40,}$/.test(text)?'Pending sync':text;
 }
 export function enrichResumedJsa(record:any,rows:any[],owner:{companyId:string;driverId:string},adapt:(v:any)=>any){
  const original=rows.find(r=>r.governedRequestRef===record.id&&r.companyId===owner.companyId&&(r.driverId===owner.driverId||!r.driverId&&r.driverHash===owner.driverId));
