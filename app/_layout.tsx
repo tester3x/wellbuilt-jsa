@@ -79,6 +79,7 @@ function NavigationStack() {
       <Stack.Screen name="logout" options={{ headerShown: false }} />
       <Stack.Screen name="start" options={{ headerShown: false }} />
       <Stack.Screen name="sso-callback" options={{ headerShown: false }} />
+      <Stack.Screen name="app-open" options={{ headerShown: false }} />
       <Stack.Screen name="acknowledge" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="governed-status" options={{ headerShown: false }} />
       <Stack.Screen name="settings" options={{ title: t('Settings'), headerBackTitle: t('Back'), headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
@@ -274,7 +275,7 @@ function AppContent() {
       const { inspectGovernedIdentityStartupDetailed } = await import('../services/sso/jsaIdentityStartupLive');
       const { strictStartupPresentation } = await import('../services/sso/jsaIdentityStartupContract');
       const governedLaunch = await loadLaunchContext();
-      const identityInspection = await inspectGovernedIdentityStartupDetailed();
+      const identityInspection = await inspectGovernedIdentityStartupDetailed({preferCached:true});
       const identityState = identityInspection.state;
       const presentation = strictStartupPresentation(identityState);
       const markerRequiresRetry = await hasPendingLogoutFailure();
@@ -408,6 +409,7 @@ function AppContent() {
         const { buildAuthorizeUrl } = await import('../services/sso/jsaPkce');
         const url = await Linking.getInitialURL();
         if (!url) await AsyncStorage.setItem('@jsa/installationSeen', '1').catch(() => {});
+        if(url && /^jsaapp:\/\/app-open(?:[/?#]|$)/i.test(url))return; // Canonical owner-aware entry route owns this delivery.
         const session = await loadUsableGovernedSession();
         const decision = decideBootstrap({
           hasPersistedSession: !!session || isAuthenticated,

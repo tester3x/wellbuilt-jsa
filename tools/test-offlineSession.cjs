@@ -1,6 +1,7 @@
 const fs=require('node:fs'),ts=require('typescript'),assert=require('node:assert/strict');
 function load(file,mocks={}){const m={exports:{}};new Function('require','module','exports',ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true,target:ts.ScriptTarget.ES2020}}).outputText)(n=>{if(n in mocks)return mocks[n];throw Error(n)},m,m.exports);return m.exports;}
-const transient=load('services/transientConnection.ts');
+const platform=load('services/platformRuntime.generated.ts');
+const transient=load('services/transientConnection.ts',{'./platformRuntime.generated':platform});
 const verified={uid:'u',savedUid:'u',finalized:true,baseline:true,error:{code:'auth/network-request-failed'}};
 assert.equal(transient.canRestoreVerifiedOffline(verified),true);
 for(const change of [{uid:'other'},{finalized:false},{baseline:false},{error:{code:'auth/user-disabled'}},{error:{code:'functions/permission-denied'}}])assert.equal(transient.canRestoreVerifiedOffline({...verified,...change}),false);

@@ -1,3 +1,5 @@
+import {buildPlatformAppEntryUrl} from '../services/platformRuntime.generated';
+import {loadUsableGovernedSession} from '../services/sso/jsaGovernedAuthLive';
 import { BrandedAlert as Alert } from '../services/brandedAlert';
 // AppSwitcher — floating draggable button for switching between WB ecosystem apps.
 // Tap = open app grid. Double-tap = jump to WB Suite hub. Long-hold + drag = reposition.

@@ -179,7 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       current = () => read === identityReadRef.current && currentGovernedIdentityEpoch() === epoch;
       const { inspectGovernedIdentityStartupDetailed } = await import('../../services/sso/jsaIdentityStartupLive');
       if (!current()) return;
-      const governedInspection = await inspectGovernedIdentityStartupDetailed();
+      const governedInspection = await inspectGovernedIdentityStartupDetailed({preferCached:true});
       if (!current()) return;
       if (governedInspection.state === 'usable') {
         const { loadGovernedSession } = await import('../../services/sso/jsaRuntime');
