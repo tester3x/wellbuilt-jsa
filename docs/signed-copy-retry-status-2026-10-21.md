@@ -20,6 +20,14 @@ requirements are preserved; this is not a bypass for missing proof. English and
 Spanish strings are included.
 
 104 artifact queue checks and 36 terminal checks pass. JSA TypeScript passes.
-No build, installation or backend deployment. This fixes the misleading/recovery
-path in source; the morning network/archive rejection cause is not claimed proven
-without the device's original diagnostics.
+JSA89 build `3d42f259-6eea-4122-a25a-e277a176fd49` finished from source
+`80438103db7bf1ebec6e1ba2a6c0ccfc5c894e2f`. Source/profile/project,
+package/version, ARM64 ABI, shared account provider and cryptographic signature
+were verified. APK SHA256:
+`c093c7a45f886c9e834fe5369e6d9930c548b9d1513466514fa2ecf1203ea265`.
+Installed on the connected ZFold with `adb install -r`; Package Manager confirms
+versionCode 89. No app data was cleared. The first cloud build (88) failed before
+compilation because the workspace alias produced the wrong project path; the
+successful build used the actual repository path and the same source commit.
+No JSA backend deployment was needed. Runtime acceptance of the retry flow and
+the morning network/archive rejection cause remain unverified.
