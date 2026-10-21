@@ -174,7 +174,7 @@ export default function GovernedStatusScreen() {
           style={[styles.btn, { backgroundColor: accent }]}
           onPress={onReturn}
           disabled={retryingArchive || (mode === 'completed' && (archiveState === 'checking' || archiveState === 'blocked'))}
-          accessibilityLabel={t(stayAndRetry && mode === 'fail' ? 'Retry' : 'Return to WellBuilt Tickets')}
+          accessibilityLabel={t(mode === 'completed' && archiveState !== 'clear' ? retryingArchive || archiveState === 'checking' ? 'Checking saved copy…' : archiveState === 'blocked' ? 'Office assistance needed' : 'Retry saved copy' : stayAndRetry && mode === 'fail' ? 'Retry' : 'Return to WellBuilt Tickets')}
         >
           <Text style={styles.btnText}>
             {t(mode === 'completed' && archiveState !== 'clear' ? retryingArchive || archiveState === 'checking' ? 'Checking saved copy…' : archiveState === 'blocked' ? 'Office assistance needed' : 'Retry saved copy' : stayAndRetry && mode === 'fail' ? 'Retry' : 'Return to WellBuilt Tickets')}
