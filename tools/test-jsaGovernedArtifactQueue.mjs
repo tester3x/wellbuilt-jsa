@@ -896,7 +896,18 @@ for (const refusal of ['network', 'unauthenticated', 'complete_failed']) {
   const out = await commitGovernedAfterLocalSaveWithStore(store, {
     requestId: RID, action: 'read_completed', localRecordId: 'retry-me', snapshot: adapted.value, localSaveOk: true,
   });
-  check(`transient completion ${refusal} remains retryable`, out.kind === 'pending_retry');
+  check(`transient completion ${refusal} remains retryable without a false completion assertion`, out.kind === 'pending_retry' && out.completionRecorded === false && /not been confirmed/.test(out.copy));
+}
+{
+  const { world, store } = memStore({ persistImpl: async () => ({ ok: false, status: 'unavailable' }) });
+  const out = await commitGovernedAfterLocalSaveWithStore(store, {
+    requestId: RID, action: 'read_completed', localRecordId: 'kept-copy', snapshot: adapted.value, localSaveOk: true,
+  });
+  check('recorded completion with delayed archive explicitly distinguishes the two steps',
+    out.kind === 'pending_retry' && out.completionRecorded === true && /completion is recorded/.test(out.copy)
+    && !/could not record completion/.test(out.copy));
+  check('archive failure retains the frozen signed copy and completed state for retry',
+    world.queue[0].localRecordId === 'kept-copy' && world.queue[0].completeState === 'completed' && world.queue[0].artifactState === 'unsent');
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -936,7 +936,7 @@ export async function commitGovernedAfterLocalSaveWithStore(
   },
 ): Promise<
   | { kind: 'completed'; reused: boolean; action: JsaCompletionAction }
-  | { kind: 'pending_retry'; refusal: string; copy: string }
+  | { kind: 'pending_retry'; refusal: string; copy: string; completionRecorded: boolean }
   | { kind: 'fail_closed'; refusal: string; copy: string }
 > {
   const gate = decideSubmitGate({ localSaveOk: input.localSaveOk, snapshotOk: true });
@@ -985,7 +985,10 @@ export async function commitGovernedAfterLocalSaveWithStore(
   return {
     kind: 'pending_retry',
     refusal: processed.item.lastStatus,
-    copy: 'Your JSA is saved on this device, but WellBuilt could not record completion. Stay here and tap Retry. Do not return to Tickets yet.',
+    completionRecorded: processed.item.completeState === 'completed',
+    copy: processed.item.completeState === 'completed'
+      ? 'Your JSA completion is recorded. The signed copy is saved on this device and still needs to finish syncing. Tap Retry to finish; you do not need to read or sign it again.'
+      : 'Your JSA is saved on this device, but completion has not been confirmed. Stay here and tap Retry. You do not need to read or sign it again.',
   };
 }
 

@@ -140,6 +140,17 @@ export async function commitGovernedAfterLocalSave(input: {
   return commitGovernedAfterLocalSaveWithStore(liveStore(), input);
 }
 
+/** Owner-scoped recovery of the exact durable save; never starts a new JSA. */
+export async function pendingGovernedArtifact(requestId: string): Promise<ArtifactQueueItem | null> {
+  return (await liveStore().loadQueue()).find(row => row.requestId === requestId && row.artifactState !== 'succeeded') || null;
+}
+export async function retrySavedGovernedArtifact(requestId: string): Promise<void> {
+  const store = liveStore();
+  const rows = await store.loadQueue();
+  await store.saveQueue(rows.map(row => row.requestId === requestId && row.artifactState !== 'blocked' ? { ...row, nextAttemptAtMs: store.nowMs() } : row));
+  await settleArtifactQueue(store);
+}
+
 export function installJsaArtifactDelivery(){const off=subscribeGovernedSessionRevision(()=>{void delivery.changed();});const unregister=delivery.register('jsa-artifacts',{
  pending:async()=>(await liveStore().loadQueue()).filter(i=>i.artifactState!=='blocked'&&i.artifactState!=='succeeded').map(i=>i.nextAttemptAtMs),
  flush:settleGovernedArtifactQueueIfAuthenticated,

@@ -98,6 +98,7 @@ export default function SignoffScreen() {
   const [completeOrigin, setCompleteOrigin] = useState<'wbs' | 'wbt' | 'wbew' | 'standalone'>('standalone');
   const [completeReturnScheme, setCompleteReturnScheme] = useState<string | null>(null);
   const completedRecordId=useRef<string|null>(null);
+  const savedCopyRetryBusy = useRef(false);
 
   // Legal acknowledgment default is legalName only. Never displayName.
   useEffect(() => {
@@ -645,12 +646,25 @@ export default function SignoffScreen() {
         });
         if (done.kind === 'pending_retry') {
           Alert.alert(
-            t('Completion not recorded') || 'Completion not recorded',
+            done.completionRecorded ? t('Signed copy still syncing') : t('Completion not confirmed'),
             t(done.copy),
             [
               {
                 text: t('Retry') || 'Retry',
-                onPress: () => { void handleSubmit(); },
+                onPress: () => { void (async () => {
+                  if (savedCopyRetryBusy.current) return;
+                  savedCopyRetryBusy.current = true;
+                  setSubmitting(true);
+                  try {
+                    const { retrySavedGovernedArtifact } = await import('../services/sso/jsaArtifactLive');
+                    await retrySavedGovernedArtifact(governedCtx.requestId);
+                    // Reopening the terminal checks the owner-bound saved-copy
+                    // queue. It offers Retry until archived, never another read/sign.
+                    router.replace({ pathname: '/governed-status', params: { mode: 'completed', action: governedAction } } as any);
+                  } catch {
+                    Alert.alert(t('Signed copy still syncing'), t(done.copy));
+                  } finally { savedCopyRetryBusy.current = false; setSubmitting(false); }
+                })(); },
               },
               { text: t('OK') || 'OK' },
             ],

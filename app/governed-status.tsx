@@ -51,6 +51,19 @@ export default function GovernedStatusScreen() {
         ? 'This JSA request is already completed. Return to WellBuilt Tickets.'
         : failClosedCopy(refusal),
   );
+  const [archiveState, setArchiveState] = useState<'checking' | 'pending' | 'blocked' | 'clear'>(mode === 'completed' ? 'checking' : 'clear');
+  const [retryingArchive, setRetryingArchive] = useState(false);
+  const checkArchive = async () => {
+    const launch = await loadLaunchContext();
+    if (!launch) { setArchiveState('clear'); return; }
+    const { pendingGovernedArtifact } = await import('../services/sso/jsaArtifactLive');
+    const pending = await pendingGovernedArtifact(launch.requestId);
+    setArchiveState(pending ? pending.artifactState === 'blocked' ? 'blocked' : 'pending' : 'clear');
+  };
+  useEffect(() => {
+    if (mode !== 'completed') return;
+    void checkArchive().catch(() => setArchiveState('pending'));
+  }, [mode]);
 
   useEffect(() => {
     if (mode === 'submitted') {
@@ -85,6 +98,17 @@ export default function GovernedStatusScreen() {
   };
 
   const onReturn = async () => {
+    if (mode === 'completed' && archiveState !== 'clear') {
+      if (archiveState === 'checking' || archiveState === 'blocked' || retryingArchive) return;
+      setRetryingArchive(true);
+      try {
+        const launch = await loadLaunchContext();
+        if (launch) await (await import('../services/sso/jsaArtifactLive')).retrySavedGovernedArtifact(launch.requestId);
+        await checkArchive();
+      } catch { setArchiveState('pending'); }
+      finally { setRetryingArchive(false); }
+      return;
+    }
     if (mode === 'fail' && stayAndRetry) {
       await onRetry();
       return;
@@ -123,11 +147,14 @@ export default function GovernedStatusScreen() {
       <JsaAppBackground />
       <View style={styles.card}>
         <Text style={styles.title}>
-          {t(mode === 'submitted' ? submittedHeading()
+          {t(mode === 'completed' && archiveState !== 'clear' ? archiveState === 'blocked' ? 'Saved copy needs assistance' : 'Signed copy still syncing' : mode === 'submitted' ? submittedHeading()
             : mode === 'completed' ? replayHeading()
               : 'Cannot continue')}
         </Text>
-        <Text style={styles.copy}>{t(copy)}</Text>
+        <Text style={styles.copy}>{t(mode === 'completed' && archiveState !== 'clear'
+          ? archiveState === 'blocked' ? 'Your JSA completion is recorded, but its signed copy needs assistance. Your saved JSA is retained; do not read or sign a replacement.'
+            : 'Your JSA completion is recorded. Its signed copy is saved on this device and is still syncing. Retry the saved copy; you do not need to read or sign it again.'
+          : copy)}</Text>
         {mode === 'submitted' && action ? (
           <Text style={styles.meta}>{t(governedCombinedTerminalCopy(action))}</Text>
         ) : null}
@@ -146,10 +173,11 @@ export default function GovernedStatusScreen() {
         <TouchableOpacity
           style={[styles.btn, { backgroundColor: accent }]}
           onPress={onReturn}
+          disabled={retryingArchive || (mode === 'completed' && (archiveState === 'checking' || archiveState === 'blocked'))}
           accessibilityLabel={t(stayAndRetry && mode === 'fail' ? 'Retry' : 'Return to WellBuilt Tickets')}
         >
           <Text style={styles.btnText}>
-            {t(stayAndRetry && mode === 'fail' ? 'Retry' : 'Return to WellBuilt Tickets')}
+            {t(mode === 'completed' && archiveState !== 'clear' ? retryingArchive || archiveState === 'checking' ? 'Checking saved copy…' : archiveState === 'blocked' ? 'Office assistance needed' : 'Retry saved copy' : stayAndRetry && mode === 'fail' ? 'Retry' : 'Return to WellBuilt Tickets')}
           </Text>
         </TouchableOpacity>
       </View>
