@@ -74,6 +74,7 @@ const translations: Record<Language, Record<string, string>> = {
     "Locations reviewed:": "Ubicaciones revisadas:",
     "Review Next Location": "Revisar siguiente ubicación",
     "I am prepared for work": "Estoy preparado para el trabajo",
+    "Confirm every prepared-for-work item before submitting.": "Confirme todos los puntos de preparación para el trabajo antes de enviar.",
     "Signature (type your full name)": "Firma (escriba su nombre completo)",
     "Signature is required before submitting.": "Se requiere firma antes de enviar.",
     "All locations must be acknowledged before submitting.": "Todas las ubicaciones deben ser reconocidas antes de enviar.",

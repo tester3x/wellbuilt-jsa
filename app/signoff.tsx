@@ -35,6 +35,7 @@ import {
 import { STORAGE_KEYS } from "../constants/storageKeys";
 import { fetchDriverProfile } from "../services/driverAuth";
 import { wbDiagLog } from "../services/wbDiagLog";
+import { allPreparationConfirmed } from "../services/jsaPreparation";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 
@@ -78,6 +79,7 @@ export default function SignoffScreen() {
   const companyContacts = themeCompanyContacts.map((c, i) => ({ id: `cc-${i}`, ...c }));
 
   const [prepared, setPrepared] = useState<Record<string, boolean>>({});
+  const preparationConfirmed = allPreparationConfirmed(preparedItemsList, prepared);
   const [notes, setNotes] = useState("");
   const [signature, setSignature] = useState("");
   const nameEditedRef = useRef(false);
@@ -288,6 +290,11 @@ export default function SignoffScreen() {
   const handleSubmit = () => {
     if (jobGate !== 'ready' || !jobSource) return;
     if (submitLockRef.current) return;
+    if (!preparationConfirmed) {
+      setValidationNotice({ focusName: false,
+        message: t("Confirm every prepared-for-work item before submitting.") });
+      return;
+    }
     // Validation: Drawn signature required
     if (!signatureImage) {
       setValidationNotice({ focusName: false,
@@ -1652,6 +1659,7 @@ export default function SignoffScreen() {
           {preparedItemsList.map((item) => (
             <View key={item.id} style={styles.checkRow}>
                 <Switch
+                  accessibilityLabel={t(item.label)}
                   value={!!prepared[item.id]}
                   onValueChange={() => togglePrepared(item.id)}
                   thumbColor={prepared[item.id] ? accent : "#f4f3f4"}
@@ -1772,7 +1780,7 @@ export default function SignoffScreen() {
         <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} style={[footer.button, { borderColor: accent }]}><Text style={footer.text}>{t("Back")}</Text></TouchableOpacity>
         </View>
         <View style={footer.slot}>
-        <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: submitting, busy: submitting }} disabled={submitting} style={[footer.button, { borderColor: accent, flexDirection: 'row', gap: 6 }]} onPress={handleSubmit}>
+        <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: submitting || !preparationConfirmed, busy: submitting }} disabled={submitting || !preparationConfirmed} style={[footer.button, { borderColor: accent, flexDirection: 'row', gap: 6, opacity: preparationConfirmed ? 1 : 0.45 }]} onPress={handleSubmit}>
           {submitting && <ActivityIndicator size="small" color={accent} />}
           <Text style={footer.text}>{submitting ? t("Submitting…") : t("Submit JSA")}</Text>
         </TouchableOpacity>
