@@ -21,15 +21,13 @@ import {
 } from './jsaArtifactSnapshot';
 
 export async function loadArtifactQueue(): Promise<ArtifactQueueItem[]> {
-  try {
-    const raw = await AsyncStorage.getItem(GOVERNED_ARTIFACT_QUEUE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(parseQueueItem).filter((i): i is ArtifactQueueItem => !!i);
-  } catch {
-    return [];
-  }
+  const raw = await AsyncStorage.getItem(GOVERNED_ARTIFACT_QUEUE_KEY);
+  if (raw === null) return [];
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error('jsa_artifact_queue_unreadable');
+  const items = parsed.map(parseQueueItem);
+  if (items.some(item => !item)) throw new Error('jsa_artifact_queue_unreadable');
+  return items as ArtifactQueueItem[];
 }
 
 export async function saveArtifactQueue(items: ArtifactQueueItem[]): Promise<void> {
