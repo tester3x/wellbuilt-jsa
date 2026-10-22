@@ -88,23 +88,30 @@ export async function syncToCloud(): Promise<{
     // Fetch from cloud (in case there's data from other sessions)
     const cloudJSAs = await fetchJSAsForDevice(deviceId);
 
-    // Merge: prefer cloud data for conflicts (by ID), but keep local-only items
-    const localIds = new Set(localJSAs.map((j) => j.id));
-    const cloudIds = new Set(cloudJSAs.map((j) => j.id));
+    // Network work can overlap new signed saves. Merge into the latest local
+    // state, never the snapshot captured before the upload.
+    const latestData = await AsyncStorage.getItem(STORAGE_KEYS.saves);
+    const latestJSAs: FirebaseJSA[] = latestData ? JSON.parse(latestData) : [];
+    if (!Array.isArray(latestJSAs)) throw new Error('Local JSA storage is unreadable.');
+    const localIds = new Set(latestJSAs.map((j) => j.id));
 
     // Items only in cloud (downloaded)
     const downloadedItems = cloudJSAs.filter((j) => !localIds.has(j.id));
 
     // Merge all items
     const mergedJSAs = [
-      ...localJSAs,
+      ...latestJSAs,
       ...downloadedItems,
     ];
 
     // Save merged data locally
     await AsyncStorage.setItem(STORAGE_KEYS.saves, JSON.stringify(mergedJSAs));
 
-    // Update sync time
+    // A partial batch is not an acknowledgement for every saved JSA.
+    if (uploadResult.success !== true || JSON.stringify(latestJSAs) !== JSON.stringify(localJSAs)) return {
+      success: false, uploaded: uploadResult.uploaded, downloaded: downloadedItems.length,
+      error: 'Some JSAs are still saved on this phone and waiting to sync.',
+    };
     await updateLastSyncTime();
 
     return {
