@@ -19,6 +19,15 @@ export async function standaloneCall(body: Record<string, unknown>): Promise<any
   const result = await delivery.attempt(()=>call(body));
   const current = await loadUsableGovernedSession();
   if (!current || current.uid !== session.uid || current.generation !== session.generation || current.companyId !== session.companyId || current.driverId!==session.driverId) throw new Error('Session changed; retry.');
+  if(mutation || body.operation==='append') {
+    const record=(result.data as any)?.record;
+    const additionConfirmed=body.operation!=='append'||(Array.isArray(record?.additions)
+      &&record.additions.some((a:any)=>a.id===body.additionId));
+    if(!record||record.id!==body.recordId||record.companyId!==session.companyId||record.driverId!==session.driverId
+      ||(body.operation==='close'&&record.state!=='closed')||!additionConfirmed) {
+      throw new Error('JSA delivery is not confirmed; saved request retained.');
+    }
+  }
   if(pending)await removeStandalonePending(pending);
   return result.data;
 }
