@@ -1,14 +1,16 @@
 const fs=require('fs'),ts=require('typescript'),assert=require('node:assert/strict');
 let session={uid:'u',companyId:'c',driverId:'d',generation:1},offline=false,lost=false,failStorage=false,stale=false,responseOverride;
+let deliveryOverride,holdReply=false,releaseReply;
 const disk=new Map(),accepted=new Map();let count=0;
 const record={id:'R'.repeat(43),companyId:'c',driverId:'d',contentHash:'f'.repeat(64),additions:[]};
 const fields={location:'Fixture well',operator:'Fixture operator',activity:'Loading',hazards:'Fixture hazard',controls:'Fixture control',ppe:'Gloves'};
 function load(){const mod={exports:{}};new Function('require','module','exports',ts.transpileModule(fs.readFileSync('services/standaloneJsa.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true,target:ts.ScriptTarget.ES2020}}).outputText)(name=>{
- if(name==='./platformDelivery')return{platformDelivery:{attempt:fn=>fn(),changed:async()=>{}}};
+ if(name==='./platformDelivery')return{platformDelivery:deliveryOverride||{attempt:fn=>fn(),changed:async()=>{}}};
  if(name==='./transientConnection')return{isTransientConnection:()=>false};
  if(name==='firebase/app')return{getApp:()=>({})};
  if(name==='firebase/functions')return{getFunctions:()=>({}),httpsCallable:()=>async body=>{
   if(offline)throw Error('offline');
+  if(holdReply)await new Promise(resolve=>releaseReply=resolve);
   if(responseOverride!==undefined)return{data:responseOverride};
   if(body.operation==='append'){
    if(stale)throw Error('review_latest_record');
@@ -19,9 +21,9 @@ function load(){const mod={exports:{}};new Function('require','module','exports'
  }};
  if(name==='expo-crypto')return{};
  if(name.endsWith('jsaGovernedAuthLive'))return{loadUsableGovernedSession:async()=>session};
- if(name.endsWith('jsaRuntime'))return{loadLaunchContext:async()=>null};
+ if(name.endsWith('jsaRuntime'))return{loadLaunchContext:async()=>null,subscribeGovernedSessionRevision:()=>()=>{}};
  if(name.endsWith('jsaArtifactSnapshot'))return{adaptGovernedSnapshot:()=>({ok:true})};
- if(name==='@react-native-async-storage/async-storage')return{getItem:async k=>k==='saves'?'[]':disk.get(k)||null,setItem:async(k,v)=>{if(failStorage)throw Error('disk');disk.set(k,v)},removeItem:async k=>disk.delete(k)};
+ if(name==='@react-native-async-storage/async-storage')return{getAllKeys:async()=>[...disk.keys()],getItem:async k=>k==='saves'?'[]':disk.get(k)||null,setItem:async(k,v)=>{if(failStorage)throw Error('disk');disk.set(k,v)},removeItem:async k=>disk.delete(k)};
  if(name.endsWith('storageKeys'))return{STORAGE_KEYS:{saves:'saves'}};
  if(name==='./jsaDocument')return{jsaDocumentHtml:r=>JSON.stringify(r)};
  throw Error(name);
@@ -56,6 +58,25 @@ const test=async(n,f)=>{await f();count++;console.log('PASS '+n)};
    const assessmentSteps=[{id:'s',title:'Original company wording',items:[]}];
    const projected=JSON.parse(await api.standaloneReportHtml({...record,signedAtMs:1000,snapshot:{printedName:'Fixture Driver',signature:{data:'fixture'},formDate:'2026-09-15'},job:{assessmentSteps,assessmentPpeItems:[{id:'p',label:'Company PPE'}],activity:'Loading',wells:[]}}));
    assert.deepEqual(projected.assessmentSteps,assessmentSteps);assert.equal(projected.signatureImage,'data:image/png;base64,fixture');assert.equal(projected.assessmentPpeItems[0].label,'Company PPE');
+ });
+ await test('actual scheduler automatically sends on reconnect and retains failed/in-flight intents until exact acknowledgement',async()=>{
+   const policy={exports:{}};new Function('module','exports',ts.transpileModule(fs.readFileSync('services/platformRuntime.generated.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText)(policy,policy.exports);
+   let now=1000,timer=null;
+   const runtime=policy.exports.createPlatformDeliveryRuntime({now:()=>now,schedule:(run,delay)=>{const current={at:now+delay,run};timer=current;return()=>{if(timer===current)timer=null;};},notifyPending(){}});
+   let registered;const register=runtime.register;runtime.register=(name,queue)=>{registered=queue;return register(name,queue);};
+   const settle=async()=>{for(let i=0;i<120;i++)await Promise.resolve();};
+   deliveryOverride=runtime;runtime.setReachable(false);api=load();const stop=api.installStandaloneDelivery();
+   const body={operation:'create',recordId:record.id},queued=()=>JSON.parse(disk.get('@jsa/standalone-delivery-v1')||'[]');
+   await assert.rejects(()=>api.standaloneCall(body));await settle();assert.equal(queued().length,1);assert.equal(timer,null);
+   assert.equal((await registered.pending()).length,1);
+   offline=true;runtime.setReachable(true);await settle();assert.ok(timer);
+   const failedWake=timer;now=timer.at;timer=null;failedWake.run();await runtime.drain();await settle();
+   assert.equal(queued().length,1,'failed server request remains pending');
+   offline=false;responseOverride={record};holdReply=true;
+   assert.ok(timer);const retry=timer;now=timer.at;timer=null;retry.run();const draining=runtime.drain();await settle();
+   assert.equal(queued().length,1,'in-flight request remains pending');assert.equal(typeof releaseReply,'function');
+   releaseReply();await draining;await settle();assert.equal(queued().length,0);assert.equal(timer,null);
+   holdReply=false;stop();runtime.stop();deliveryOverride=undefined;responseOverride=undefined;
  });
  console.log(`${count} durable addition cases passed; fixtures only`);
 })().catch(e=>{console.error(e);process.exitCode=1});
