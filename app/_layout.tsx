@@ -113,6 +113,12 @@ function AppContent() {
   const pathname = usePathname();
   const screenParams=useGlobalSearchParams();
   const screenParamsJson=JSON.stringify(screenParams);
+  const [preparedRequestReady,setPreparedRequestReady]=useState(false);
+  useEffect(()=>{let live=true;setPreparedRequestReady(false);
+    if(pathname==='/offline-job'&&typeof screenParams.requestId==='string')void import('../services/preparedShiftJsa').then(async m=>{const request=await m.preparedShiftJsa.readRequest(screenParams.requestId);if(live)setPreparedRequestReady(!!request);}).catch(()=>{});
+    return()=>{live=false;};
+  },[pathname,screenParams.requestId,platformAccountReady]);
+
   useEffect(()=>{void import('../services/jsaScreenResume').then(m=>m.rememberJsaScreen(pathname,JSON.parse(screenParamsJson))).catch(()=>{});},[pathname,screenParamsJson]);
   const [ssoInProgress, setSsoInProgress] = useState(true); // suppress login overlay until we check initial URL
   // Count of governed /start candidates being processed — published by
@@ -414,7 +420,7 @@ function AppContent() {
         const { buildAuthorizeUrl } = await import('../services/sso/jsaPkce');
         const url = await Linking.getInitialURL();
         if (!url) await AsyncStorage.setItem('@jsa/installationSeen', '1').catch(() => {});
-        if(url && /^jsaapp:\/\/app-open(?:[/?#]|$)/i.test(url))return; // Canonical owner-aware entry route owns this delivery.
+        if(url && /^jsaapp:\/\/(?:app-open|offline-job)(?:[/?#]|$)/i.test(url))return; // Canonical owner-aware entry route owns this delivery.
         const session = await loadUsableGovernedSession();
         const decision = decideBootstrap({
           hasPersistedSession: !!session || isAuthenticated,
@@ -530,6 +536,7 @@ function AppContent() {
   useEffect(() => {
     if(!platformAccountReady)return;
     const handleDeepLink = async (event: { url: string }) => {
+      if(/^jsaapp:\/\/offline-job(?:[/?#]|$)/i.test(event.url))return;
       try {
         // Cascade logout from WB S — only if this session was started via SSO
         if (event.url?.includes('logout')) {
@@ -661,6 +668,7 @@ function AppContent() {
         setSsoInProgress(false);
         return;
       }
+      if(/^jsaapp:\/\/offline-job(?:[/?#]|$)/i.test(url)){setSsoInProgress(false);return;}
       if (url.includes('logout')) {
         const authMethod = await SecureStore.getItemAsync('jsa_authMethod');
         const { loadGovernedSession } = await import('../services/sso/jsaRuntime');
@@ -774,7 +782,7 @@ function AppContent() {
 
           {/* Welcome greeting — scoped to the authenticated entry/request, unless an unfinished-JSA
               nag is also pending (compliance takes priority). */}
-          {isAuthenticated && (
+          {isAuthenticated && !preparedRequestReady && (
             <WelcomeModal
               visible={showWelcome && !showUnfinished && welcomeOwner === `${session?.uid}:${session?.generation}`}
               driverFirstName={welcomeName}
@@ -787,7 +795,7 @@ function AppContent() {
           )}
 
           {/* Unfinished JSA compliance modal — shown on auth + on foreground */}
-          {isAuthenticated && (
+          {isAuthenticated && !preparedRequestReady && (
             <UnfinishedJsasModal
               visible={showUnfinished}
               list={unfinished}
@@ -838,7 +846,7 @@ function AppContent() {
           )}
 
           {/* Splash overlay while checking auth */}
-          {(mode === 'checking' || identityInspectionPending) && (
+          {!preparedRequestReady && (mode === 'checking' || identityInspectionPending) && (
             <View style={[styles.splash, styles.overlay]}>
               <ActivityIndicator size="large" color={colors.primary} />
             </View>
@@ -848,7 +856,7 @@ function AppContent() {
               valid launch candidate is being processed, only this
               connecting surface shows; historical local records never
               paint as the active launch. */}
-          {launchResolutionBlocksContent(startResolving) && (
+          {!preparedRequestReady && launchResolutionBlocksContent(startResolving) && (
             <View style={[styles.splash, styles.overlay]}>
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={{ color: colors.textMuted, marginTop: 12, fontSize: 15 }}>
@@ -860,7 +868,7 @@ function AppContent() {
           {/* Unauthenticated overlay. A governed launch / leftover SSO
               session that could not be verified must NOT fall through to
               manual name/passcode as a substitute for governed auth. */}
-          {mode !== 'checking' && !isAuthenticated && !ssoInProgress && !governedSessionReady && (
+          {!preparedRequestReady && mode !== 'checking' && !isAuthenticated && !ssoInProgress && !governedSessionReady && (
             <View style={styles.overlay}>
               {unauthSurface === 'unverified_gate' ? (
                 <ShiftAuthorityGate variant="overlay" returnTarget={returnTarget}
@@ -872,7 +880,7 @@ function AppContent() {
               )}
             </View>
           )}
-          {mode !== 'checking' && isAuthenticated && authWorkflowIsolation.blocked && pathname !== '/settings' && (
+          {!preparedRequestReady && mode !== 'checking' && isAuthenticated && authWorkflowIsolation.blocked && pathname !== '/settings' && (
             <View style={styles.overlay}>
               <GovernedIsolationSurface
                 kind={authWorkflowIsolation.surface}
