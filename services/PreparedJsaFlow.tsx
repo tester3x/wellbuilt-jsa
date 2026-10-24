@@ -17,6 +17,16 @@ export async function resolvePreparedRead(id: string) {
   return { request, assessment: applicable[0], populate,
     handoff: applyGovernedJobHandoff({ populate, wellsParam: '[]', wellNameParam: '', jobActivityParam: '' }), hasLaunch: true };
 }
+export async function recordPreparedRead(id: string, grantId: string, assessmentHash: string, snapshot: Record<string, unknown>) {
+  const current = await resolvePreparedRead(id);
+  if (current.request.grant.id !== grantId || current.assessment.contentHash !== assessmentHash)
+    throw Error('The prepared JSA changed. Reopen this job from Tickets.');
+  await preparedShiftJsa.record(current.request.job.jobRef, current.request.job.operator, 'read', {
+    assessmentHash, snapshot,
+  }, current.request.grant.id);
+  void preparedShiftJsa.drain().catch(() => {});
+  return 'wellbuilt-tickets://jsa-return?v=1&requestId=' + encodeURIComponent(id) + '&status=completed';
+}
 export type PreparedReadFlow = {
   params: Record<string, string>; assessment: any; savedDraft?: any;
   resolve(input?: unknown): ReturnType<typeof resolvePreparedRead>;

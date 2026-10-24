@@ -1,3 +1,4 @@
+import {HeaderBackButton} from '@react-navigation/elements';
 import {usePreparedRead} from '../services/PreparedJsaFlow';
 import { BrandedAlert as Alert } from '../services/brandedAlert';
 import {useFormKeyboard} from '../components/useFormKeyboard';
@@ -1650,6 +1651,7 @@ export default function SignoffScreen() {
         options={{
           title: t("Review & Submit"),
           headerRight: () => <MoreMenu />,
+          ...(preparedRead ? {headerLeft:()=> <HeaderBackButton tintColor="#fff" onPress={preparedRead.back} />} : {}),
           headerBackTitle: t("PPE Checklist"),
         }}
       />

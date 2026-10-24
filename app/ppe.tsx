@@ -1,3 +1,4 @@
+import {HeaderBackButton} from '@react-navigation/elements';
 import {usePreparedRead} from '../services/PreparedJsaFlow';
 import MoreMenu from '../components/MoreMenu';
 import { jsaFlowFooterStyles as footer } from '../components/jsaFlowFooterStyles';
@@ -309,6 +310,7 @@ export default function PpeScreen() {
           title: t("PPE Checklist"),
           headerBackTitle: t("Steps & Hazards"),
           headerRight: () => <MoreMenu />,
+          ...(preparedRead ? {headerLeft:()=> <HeaderBackButton tintColor="#fff" onPress={preparedRead.back} />} : {}),
         }}
       />
       <KeyboardAvoidingView

@@ -2,7 +2,7 @@ import React,{useEffect,useMemo,useState} from 'react';
 import {ActivityIndicator,BackHandler,Linking,Text,View} from 'react-native';
 import {Stack,useLocalSearchParams} from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {PreparedReadContext,resolvePreparedRead,type PreparedReadFlow} from '../services/PreparedJsaFlow';
+import {PreparedReadContext,resolvePreparedRead,recordPreparedRead,type PreparedReadFlow} from '../services/PreparedJsaFlow';
 import {preparedShiftJsa} from '../services/preparedShiftJsa';
 import {readAttestationDraft,writeAttestationDraft} from '../services/sso/jsaAttestationScope';
 import StepsScreen from './steps';
@@ -44,14 +44,7 @@ export default function OfflineJob(){
     assessmentSteps:JSON.stringify(verified.assessment.steps),assessmentBundle:JSON.stringify(verified.assessment)}));
    setScreen(href.pathname==='/ppe'?'ppe':'signoff');},
   back:()=>setScreen(screen==='signoff'?'ppe':'steps'),
-  submit:async snapshot=>{
-   const current=await resolvePreparedRead(id);
-   if(current.request.grant.id!==verified.request.grant.id || current.assessment.contentHash!==verified.assessment.contentHash)throw Error('The prepared JSA changed. Reopen this job from Tickets.');
-   await preparedShiftJsa.record(current.request.job.jobRef,current.request.job.operator,'read',{
-    assessmentHash:current.assessment.contentHash,snapshot},current.request.grant.id);
-   void preparedShiftJsa.drain().catch(()=>{});
-   return 'wellbuilt-tickets://jsa-return?v=1&requestId='+encodeURIComponent(id)+'&status=completed';
-  },
+  submit:snapshot=>recordPreparedRead(id,verified.request.grant.id,verified.assessment.contentHash,snapshot),
  }:null,[verified,params,savedDraft,id,screen]);
  useEffect(()=>{if(screen==='steps')return;const sub=BackHandler.addEventListener('hardwareBackPress',()=>{flow?.back();return true;});return()=>sub.remove();},[flow,screen]);
  if(!flow)return <View style={{flex:1,justifyContent:'center',padding:20}}><Stack.Screen options={{title:'JSA'}}/>{error?<Text accessibilityRole="alert">{error}</Text>:<ActivityIndicator size="large" color={accent}/>}</View>;
