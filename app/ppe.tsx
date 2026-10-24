@@ -1,3 +1,4 @@
+import {usePreparedRead} from '../services/PreparedJsaFlow';
 import MoreMenu from '../components/MoreMenu';
 import { jsaFlowFooterStyles as footer } from '../components/jsaFlowFooterStyles';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -48,6 +49,8 @@ type Params = {
 };
 
 export default function PpeScreen() {
+  const preparedRead=usePreparedRead();
+  const routeParams=useLocalSearchParams<Params>();
   const {
     operator = '',
     assessmentSteps = '',
@@ -68,7 +71,7 @@ export default function PpeScreen() {
     jsaSessionId = "",
     stepAcks = "{}",
     stepsAcknowledged = "",
-  } = useLocalSearchParams<Params>();
+  } = (preparedRead?.params || routeParams);
   const resolvedTask = jsaType || task;
   const router = useRouter();
   const { t } = useLanguage();
@@ -127,7 +130,7 @@ export default function PpeScreen() {
       try {
         const { resolveGovernedJobHandoff } = await import('../services/sso/jsaGovernedJobLive');
         const { decideGovernedJobScreen, jobWorkflowMayAdvance } = await import('../services/sso/jsaGovernedJobFields');
-        const { populate, handoff } = await resolveGovernedJobHandoff({
+        const { populate, handoff } = await (preparedRead?.resolve || resolveGovernedJobHandoff)({
           wellsParam: typeof wells === 'string' ? wells : '[]',
           wellNameParam: typeof wellName === 'string' ? wellName : '',
           jobActivityParam: typeof jobActivityName === 'string' ? jobActivityName : '',
@@ -196,7 +199,7 @@ export default function PpeScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [wells, wellName, jobActivityName, jsaSessionId, router]);
+  }, [wells, wellName, jobActivityName, jsaSessionId, router, preparedRead?.resolve]);
 
   const wellsList = useMemo(() => {
     try {
@@ -265,7 +268,7 @@ export default function PpeScreen() {
 
   const handleNext = () => {
     if (jobGate !== 'ready' || !jobSource) return;
-    router.push({
+    (preparedRead?.navigate || router.push)({
       pathname: "/signoff",
       params: {
         driverName,
@@ -404,7 +407,7 @@ export default function PpeScreen() {
         </ScrollView>
         <View style={[footer.bar, footer.row]}>
           <View style={footer.slot}>
-          <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} style={[footer.button, { borderColor: accent }]}><Text style={footer.text}>{t('Back')}</Text></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" onPress={() => preparedRead ? preparedRead.back() : router.back()} style={[footer.button, { borderColor: accent }]}><Text style={footer.text}>{t('Back')}</Text></TouchableOpacity>
           </View>
           <View style={footer.slot}>
           <TouchableOpacity style={[footer.button, { borderColor: accent }]} onPress={handleNext}>

@@ -1,3 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {classifyPlatformFailure} from './platformRuntime.generated';
 // services/driverAuth.ts
 // Governed registration/profile helpers.
 // Manual authentication is exclusively services/sso/jsaManualLoginLive.ts:
@@ -40,7 +42,22 @@ export const fetchDriverProfile = async (): Promise<{
   const governed = await loadGovernedSession();
   if (governed) {
     const { fetchCanonicalGovernedProfile } = await import('./sso/jsaCanonicalProfile');
-    const canonical = await fetchCanonicalGovernedProfile();
+    // Presentation cache only: never feeds authentication, logout baseline or
+    // JSA authority. Reuse only the same authenticated installation generation.
+    const binding=JSON.stringify([governed.uid,governed.companyId,governed.driverId,governed.generation]);
+    const profileKey='@jsa/profile-view:'+binding;
+    let canonical;
+    try{
+      canonical=await fetchCanonicalGovernedProfile();
+      if(canonical && JSON.stringify(await loadGovernedSession().then(x=>x?[x.uid,x.companyId,x.driverId,x.generation]:null))===binding)
+        await AsyncStorage.setItem(profileKey,JSON.stringify(canonical)).catch(()=>{});
+    }catch(error){
+      if(classifyPlatformFailure(error)!=='transport')throw error;
+      const current=await loadGovernedSession();
+      if(!current || JSON.stringify([current.uid,current.companyId,current.driverId,current.generation])!==binding)return null;
+      const {parseCanonicalProfile}=await import('./sso/jsaIdentityContract');
+      canonical=parseCanonicalProfile(JSON.parse(await AsyncStorage.getItem(profileKey)||'null'),governed);
+    }
     if (!canonical) return null;
     return {
       truckNumber: canonical.truckNumber || '', trailerNumber: canonical.trailerNumber || '',

@@ -1,3 +1,4 @@
+import {usePreparedRead} from '../services/PreparedJsaFlow';
 import { BrandedAlert as Alert } from '../services/brandedAlert';
 import {loadTaskSelectionDraft,freezeTaskSelectionDraft} from '../services/jsaTaskSelectionDraft';
 import TaskAssessmentPicker from '../components/TaskAssessmentPicker';
@@ -46,6 +47,7 @@ const stepColors = {
 };
 
 export default function StepsScreen() {
+  const preparedRead=usePreparedRead();
   const router = useRouter();
   const [stepsGuard, setStepsGuard] = useState<'unresolved' | 'allowed' | 'denied'>('unresolved');
   const [guardReason, setGuardReason] = useState<IsolationReason>('unresolved');
@@ -57,6 +59,7 @@ export default function StepsScreen() {
     let cancelled = false;
     void (async () => {
       try {
+        if(preparedRead){const verified=await preparedRead.resolve();if(!cancelled){setJobPopulate(verified.populate);setStepsGuard('allowed');}return;}
         const {
           authoritativeContextMatchesLaunch,
           decideJobDetailsIsolation,
@@ -131,7 +134,7 @@ export default function StepsScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [router]);
+  }, [router,preparedRead]);
 
   if (stepsGuard !== 'allowed') {
     return (
@@ -155,7 +158,8 @@ export function StepsWorkflow({
   jobPopulate?: GovernedJobPopulate;
 }) {
   const router = useRouter();
-  const params = useLocalSearchParams<{
+  const preparedRead=usePreparedRead();
+  const routeParams = useLocalSearchParams<{
     operator?:string;
   driverName?: string;
   truckNumber?: string;
@@ -171,6 +175,7 @@ export function StepsWorkflow({
   otherInfo?: string;
   jsaSessionId?: string;
 }>();
+  const params = preparedRead?.params || routeParams;
 
   const jobHandoff = applyGovernedJobHandoff({
     populate: jobPopulate,
@@ -242,7 +247,7 @@ const locationsList = useMemo(() => {
     catch(e){if(scope===activeTaskScope.current)setTaskDraftError(e instanceof Error?e.message:String(e));}
     finally{if(scope===activeTaskScope.current)setTaskDraftLoading(false);}
   };
-  const steps: JSAStep[] = taskSelection?.steps ?? jsaTemplate?.steps ?? JSA_STEPS;
+  const steps: JSAStep[] = preparedRead?.assessment.steps ?? taskSelection?.steps ?? jsaTemplate?.steps ?? JSA_STEPS;
   useEffect(() => {
     setBackgroundPackageId(taskSelection?.packageId || resolveBackgroundPackageForJob(jobActivityName));
   }, [jobActivityName, taskSelection?.packageId, resolveBackgroundPackageForJob, setBackgroundPackageId]);
@@ -374,7 +379,7 @@ const locationsList = useMemo(() => {
   };
 
   if(taskDraftLoading || taskDraftError) return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}><Text style={{padding:24}}>{t(taskDraftError || 'Restoring your assessment…')}</Text>{!!taskDraftError&&<TouchableOpacity onPress={()=>setTaskLoadRetry(n=>n+1)} style={{padding:24}}><Text>{t('Retry loading assessment')}</Text></TouchableOpacity>}</SafeAreaView>;
-  if((taskCatalogVersion===2 || jsaTemplate?.catalogVersion===2) && !taskSelection) return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>{jobHandoff.source==='governed_snapshot' ? <Text>{t('Task-specific required-job assessments are not enabled yet. Return to Suite.')}</Text> : <TaskAssessmentPicker onChoose={selection=>void chooseTasks(selection)}/>}</SafeAreaView>;
+  if(!preparedRead && (taskCatalogVersion===2 || jsaTemplate?.catalogVersion===2) && !taskSelection) return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>{jobHandoff.source==='governed_snapshot' ? <Text>{t('Task-specific required-job assessments are not enabled yet. Return to Suite.')}</Text> : <TaskAssessmentPicker onChoose={selection=>void chooseTasks(selection)}/>}</SafeAreaView>;
   return (
     <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
       <Stack.Screen
@@ -492,7 +497,7 @@ const locationsList = useMemo(() => {
                         }
                         markStep(currentStepIndex);
                         persistStepEvidence(nextAcks);
-                        router.push({
+                        (preparedRead?.navigate || router.push)({
                           pathname: "/ppe",
                           params: {
                             driverName,

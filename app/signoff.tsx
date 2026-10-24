@@ -1,3 +1,4 @@
+import {usePreparedRead} from '../services/PreparedJsaFlow';
 import { BrandedAlert as Alert } from '../services/brandedAlert';
 import {useFormKeyboard} from '../components/useFormKeyboard';
 import MoreMenu from '../components/MoreMenu';
@@ -62,9 +63,11 @@ type Params = {
 };
 
 export default function SignoffScreen() {
+  const preparedRead=usePreparedRead();
   const [submitting, setSubmitting] = useState(false);
   const [reviewOpenedAt] = useState(() => new Date());
-  const params = useLocalSearchParams<Params>();
+  const routeParams = useLocalSearchParams<Params>();
+  const params = preparedRead?.params || routeParams;
   const router = useRouter();
   const { t, lang } = useLanguage();
   const locale = lang === 'es' ? 'es-MX' : 'en-US';
@@ -114,13 +117,20 @@ export default function SignoffScreen() {
     })();
   }, []);
 
+  useEffect(()=>{
+    const saved=preparedRead?.savedDraft;if(!saved)return;
+    if(saved.notes)setNotes(saved.notes);
+    if(saved.printedName){nameEditedRef.current=true;setGovernedPrintedName(saved.printedName);setSignature(saved.printedName);}
+    if(saved.signature)setSignatureImage(saved.signature);
+  },[preparedRead?.savedDraft]);
+
   // Pre-load drawn signature from Firebase profile (same as WB T / WB S)
   useEffect(() => {
     (async () => {
       try {
         const profile = await fetchDriverProfile();
         if(profile?.legalName?.trim() && !nameEditedRef.current){profileLegalNameRef.current=true;setGovernedPrintedName(profile.legalName.trim());setSignature(profile.legalName.trim());}
-        if (profile?.signature) {
+        if (profile?.signature && !preparedRead?.savedDraft?.signature) {
           setSignatureImage(profile.signature);
           console.log('[JSA-Signoff] Pre-loaded signature from Firebase profile');
         }
@@ -128,7 +138,7 @@ export default function SignoffScreen() {
         console.warn('[JSA-Signoff] Failed to load signature:', err);
       }
     })();
-  }, []);
+  }, [preparedRead?.savedDraft?.signature]);
 
   // Parse wells and locations passed from previous screen
   // Parse wells — supports both old (string[]) and new (WellEntry[]) formats
@@ -150,7 +160,7 @@ export default function SignoffScreen() {
       try {
         const { resolveGovernedJobHandoff } = await import('../services/sso/jsaGovernedJobLive');
         const { decideGovernedJobScreen, jobWorkflowMayAdvance } = await import('../services/sso/jsaGovernedJobFields');
-        const { populate, handoff } = await resolveGovernedJobHandoff({
+        const { populate, handoff } = await (preparedRead?.resolve || resolveGovernedJobHandoff)({
           wellsParam: (params.wells as string) || '[]',
           wellNameParam: (params.wellName as string) || '',
           jobActivityParam: (params.jobActivityName as string) || '',
@@ -221,7 +231,7 @@ export default function SignoffScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [params.wells, params.wellName, params.jobActivityName, params.jsaSessionId, router]);
+  }, [params.wells, params.wellName, params.jobActivityName, params.jsaSessionId, router, preparedRead?.resolve]);
 
   const wellsList = useMemo(() => {
     try {
@@ -313,6 +323,18 @@ export default function SignoffScreen() {
         if (parsed?.selected) { ppeObj = parsed.selected; ppeOtherItems = parsed.otherItems || []; }
         else if (typeof parsed === 'object' && !Array.isArray(parsed)) ppeObj = parsed;
       } catch {}
+
+      if(preparedRead){
+        const required=preparedRead.assessment.steps.map((step:{id:string})=>step.id);
+        if(!governedPrintedName.trim() || required.some((id:string)=>stepAcks[id]!==true)){
+          skipForcedSubmitted=true;setValidationNotice({focusName:!governedPrintedName.trim(),message:t(!governedPrintedName.trim()?'Legal name is required':'Please review all steps before continuing.')});return;
+        }
+        const returnUrl=await preparedRead.submit({prepared,locationAcks:{},locations:[],stepsAcknowledged:true,stepAcks,
+          ppeSelected:ppeObj,ppeOtherItems,notes:notes.trim(),pusher:params.pusher||'',otherInfo:params.otherInfo||'',
+          printedName:governedPrintedName.trim(),signature:{mimeType:'image/png',data:signatureImage!.replace(/^data:image\/png;base64,/, '')},
+          truckNumber:params.truckNumber||'',formDate:params.date||''});
+        setCompleteCloudPending(true);setCompleteOrigin('wbt');setCompleteReturnScheme(returnUrl);setShowCompleteModal(true);return;
+      }
 
       // ── Activity persistence contract ────────────────────────────
       // Read-mode (viewJsa) resolves activity by locationActivity.ts,
@@ -1504,6 +1526,7 @@ export default function SignoffScreen() {
     saveAndGo().catch((err) => {
       console.error('[JSA-Signoff] saveAndGo failed — forcing HONEST modal:', err);
       if (skipForcedSubmitted) return;
+      if(preparedRead){setValidationNotice({focusName:false,message:err instanceof Error?err.message:String(err)});return;}
       // 8/6 — the forced modal no longer claims success: cloudPending copy
       // renders (the local save is the first step and is best-effort
       // durable); no return link, no receipt, WB-T stays gated.
@@ -1777,7 +1800,7 @@ export default function SignoffScreen() {
       </ScrollView>
       <View style={[footer.bar, footer.row]}>
         <View style={footer.slot}>
-        <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} style={[footer.button, { borderColor: accent }]}><Text style={footer.text}>{t("Back")}</Text></TouchableOpacity>
+        <TouchableOpacity accessibilityRole="button" onPress={() => preparedRead ? preparedRead.back() : router.back()} style={[footer.button, { borderColor: accent }]}><Text style={footer.text}>{t("Back")}</Text></TouchableOpacity>
         </View>
         <View style={footer.slot}>
         <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: submitting || !preparationConfirmed, busy: submitting }} disabled={submitting || !preparationConfirmed} style={[footer.button, { borderColor: accent, flexDirection: 'row', gap: 6, opacity: preparationConfirmed ? 1 : 0.45 }]} onPress={handleSubmit}>
