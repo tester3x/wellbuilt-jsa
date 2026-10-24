@@ -104,11 +104,11 @@ exports.createPreparedJsaRuntime=function({store,owner,call,mint,hash,now=Date.n
 
 /** Android's signature-pinned peer providers share protected local records.
  * Firebase SDK still supplies authentication for every server request. */
-exports.createNativePreparedJsa=function({user,call}){
+exports.createNativePreparedJsa=function({user,call,ready}){
  const native=require('./index'),Crypto=require('expo-crypto');
  return exports.createPreparedJsaRuntime({
   store:{keys:()=>native.jsaKeys(),read:k=>native.jsaRead(k),write:(k,v)=>native.jsaWrite(k,v),writeBatch:items=>native.jsaWriteBatch(JSON.stringify(items))},call,
-  owner:async()=>{const u=user();if(!u)return null;const row=JSON.parse(await native.readAccount()||'null');
+  owner:async()=>{if(ready)await ready();const u=user();if(!u)return null;const row=JSON.parse(await native.readAccount()||'null');
    const a=row?.access,o=a?.owner;return !row?.revoked&&a?.version===1&&o?.uid===u.uid?{...o,grantId:a.grantId}:null;},
   mint:async()=>{const b=await Crypto.getRandomBytesAsync(32);let out='',bits=0,n=0;const abc='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';for(const x of b){n=(n<<8)|x;bits+=8;while(bits>=6){bits-=6;out+=abc[(n>>>bits)&63];}}if(bits)out+=abc[(n<<(6-bits))&63];return out;},
   hash:e=>Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256,JSON.stringify(e)),
