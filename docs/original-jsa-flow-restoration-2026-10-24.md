@@ -64,4 +64,32 @@ server refusals. Identity/session/profile validation remains in the canonical
 reader. Explicit access denial still cannot use cached profile data. Four new
 transport tests, three presentation-cache tests, TypeScript, lint and final Android
 export pass. Original JSA screen presentation is unchanged by this correction.
-The replacement APK and repeat physical offline cold-start check remain pending.
+The replacement APK and repeat physical offline cold-start check are complete
+as recorded below.
+
+## JSA97 physical verification and installation
+
+Build `93751543-82b0-4117-ac36-18af15692817`, source
+`964c750055f05a4ecf2afdeda608089c8792a1f1`, versionCode97, finished successfully.
+APK SHA256:
+`4901625FF473D2FFA75DD30EC40319F813B2378510C97BB5ABBA66508DBF483E`.
+
+Installed S24 first. The original Review & Submit layout, saved signature strokes,
+prefilled legal name, frozen four preparation items, and disabled Submit while
+switches are off were visually and structurally verified. Repeated after
+force-stop and cold start with S24 Wi-Fi and mobile data disabled. The same saved
+signature/name and frozen items appeared offline. Both settings were restored in
+a finally block and verified against their original values; airplane mode stayed
+off. The first assertion inspected the enabled text leaf instead of its disabled
+button parent; corrected the test selector and repeated successfully.
+
+The test was a view-only TEST WELL fixture using the original Signoff module and
+a frozen assessment, with no jobRef, signing, submission, job or shift creation.
+It does not claim a new on-phone end-to-end protected submission. The protected
+adapter/native record/replay and acknowledgment behavior have automated coverage
+described above. S24 was returned to JSA home afterward.
+
+Installed the identical JSA97 APK on ZFold while WB M was foreground. Package
+manager confirmed97 and WB M remained foreground; JSA was not launched and no
+ZFold connectivity was changed. Mobile106 remains installed there. No server
+JSA policy or daily full-read evidence was changed.
