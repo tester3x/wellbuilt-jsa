@@ -25,3 +25,26 @@ was created or modified during validation. Physical acceptance on the dedicated
 test phone remains pending the corrected APK. Do not claim this source is already
 installed, and do not reinstall over the user's active workflow without timing it
 with the requested truck stop.
+
+## JSA95 installation
+
+Build `7dfa79a0-f66b-4621-af6a-65a18e4d2502` finished from source
+`3397b3ca9046e31f335d80958d15305c84c0d635`. APK SHA-256:
+`0D3AE4C531AFBC333776F06C461FE1EFB62D3A906A7D3667A130B351C07A1C2C`.
+Installed by data-preserving replacement on ZFold at the user's requested truck
+stop. Package manager confirmed versionCode 95. Launch reached the current-shift
+home/welcome surface with no fatal/JS startup errors. The user returned to Tickets,
+so screen automation stopped rather than competing with their live work.
+
+Nine lifecycle tests were rerun against this app's actual prepared-JSA runtime:
+offline full-read validation, no-RPC prepared operator use, cold restart, lost or
+wrong confirmation retention, account/period fences, native auth readiness and
+shift-end replay all passed. The four presentation-navigation tests also passed.
+The canonical suite's newer missing-native-module compatibility test is outside
+this app's mirrored runtime version; it is not counted as an app test.
+
+The ZFold displayed an active call, so no network settings were changed. A user
+question is pending before the physical offline screen cycle. Current-shift
+evidence, preparation switches and signatures were not changed or submitted.
+Physical restored-form fit and offline/reconnect UI verification remain pending;
+installation and code-level offline tests must not be reported as that acceptance.
