@@ -1,8 +1,8 @@
 # Restore the original JSA workflow
 
-The user explicitly rejected both the prepared one-page replacement (M94) and
-the M95 imitation. Restore the actual existing screens, not a restyled substitute.
-Do not describe M95 as accepted or fully restored.
+The user explicitly rejected both the prepared one-page replacement (JSA94) and
+the JSA95 imitation. Restore the actual existing screens, not a restyled substitute.
+Do not describe JSA95 as accepted or fully restored.
 
 The protected `/offline-job` route is now a transport adapter that renders the
 original `StepsScreen`, `PpeScreen` and `SignoffScreen` under a validated prepared
@@ -42,3 +42,26 @@ first-read to acknowledgment offline acceptance are not yet verified for this
 artifact. ZFold has Mobile106/JSA95. The user is actively using Tickets; no
 network-change permission has been supplied. Do not operate its screen/network
 while they work. Use the dedicated test phone first.
+
+## JSA96 test result and narrow transport correction
+
+Build `0318b794-db79-4183-b183-1b62ab7ec93c`, source `9dab3b8`, was installed
+only on the S24. Its original review layout, profile legal-name prefill, visible
+saved signature and preparation-disabled Submit were confirmed online without
+signing/submitting a JSA. A view-only TEST WELL fixture was used, with no jobRef
+or server record creation.
+
+A cold start with S24 Wi-Fi/mobile data off exposed a profile-cache failure:
+Firebase's callable client wrapped the rejected native fetch as `functions/internal`,
+so the presentation cache correctly refused to treat it as a transport failure.
+JSA96 was held off ZFold. S24 network settings were restored in a finally block
+and verified exactly (airplane 0, Wi-Fi 1, data 1). No ZFold screen/network changes
+were made during this test.
+
+The canonical profile read now uses the same SDK-owned bearer and callable JSON
+envelope over native fetch, preserving transport errors separately from HTTP and
+server refusals. Identity/session/profile validation remains in the canonical
+reader. Explicit access denial still cannot use cached profile data. Four new
+transport tests, three presentation-cache tests, TypeScript, lint and final Android
+export pass. Original JSA screen presentation is unchanged by this correction.
+The replacement APK and repeat physical offline cold-start check remain pending.

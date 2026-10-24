@@ -7,6 +7,7 @@ import { loadGovernedSession } from './jsaRuntime';
 import { parseBoundLogoutBaseline, serializeBoundLogoutBaseline } from './jsaLogoutWatcherContract';
 import type { ManualInstallationOwner } from './jsaManualLogin';
 import { parseCanonicalProfile, type JsaCanonicalProfile } from './jsaIdentityContract';
+import { requestProfileHydration } from './jsaProfileTransport';
 
 export const CANONICAL_LOGOUT_BASELINE_KEY = 'jsa_lastCanonicalLogoutAt';
 
@@ -29,13 +30,18 @@ export async function fetchCanonicalGovernedProfile(): Promise<JsaCanonicalProfi
       generation: profileGeneration,
       maxAgeMs: 30_000,
       load: async () => {
-        const callable = httpsCallable(getFunctions(getApp()), 'getOwnDriverHydration', { timeout: 15_000 });
-        const result = await callable({});
+        const user = auth.currentUser;
+        if (!user || user.uid !== session.uid) throw Error('governed_identity_changed');
+        const data = await requestProfileHydration({
+          url: `https://us-central1-${getApp().options.projectId}.cloudfunctions.net/getOwnDriverHydration`,
+          token: await user.getIdToken(false), fetch,
+        });
         const current = await loadGovernedSession();
         if (!current || JSON.stringify([current.uid, current.driverId, current.companyId, current.generation]) !== key) {
           throw new Error('governed_identity_changed');
         }
-        const profile = parseCanonicalProfile(result.data, { driverId: session.driverId, companyId: session.companyId });
+        if (auth.currentUser !== user) throw Error('governed_identity_changed');
+        const profile = parseCanonicalProfile(data, { driverId: session.driverId, companyId: session.companyId });
         if (!profile) throw new Error('canonical_profile_invalid');
         return profile;
       },
