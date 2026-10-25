@@ -478,16 +478,17 @@ function AppContent() {
     return () => { cancelled = true; };
   }, [isAuthenticated,platformAccountReady]);
 
-  // Full-screen immersive mode — hide Android navigation bar
+  // Keep system navigation visible while forms and action bars respect safe areas.
   useEffect(() => {
-    const hideNavBar = () => {
+    const showNavBar = () => {
       if (Platform.OS === 'android') {
-        NavigationBar.setVisibilityAsync('hidden');
-        NavigationBar.setBehaviorAsync('overlay-swipe');
-        NavigationBar.setBackgroundColorAsync('#00000000');
+        NavigationBar.setVisibilityAsync('visible').catch(() => {});
+        NavigationBar.setBehaviorAsync('inset-touch').catch(() => {});
+        NavigationBar.setBackgroundColorAsync('#00000000').catch(() => {});
+        NavigationBar.setButtonStyleAsync('light').catch(() => {});
       }
     };
-    hideNavBar();
+    showNavBar();
     // One authenticated canonical logoutAt listener replaces vc20's
     // three-second full-profile callable polling. Resume performs one
     // immediate bound read; network/auth errors are explicitly ignored.
@@ -511,7 +512,7 @@ function AppContent() {
     const appStateSub = AppState.addEventListener('change', (state) => {
       active = state === 'active';
       if (state === 'active') {
-        hideNavBar();
+        showNavBar();
         void import('../services/sso/jsaRuntime').then(async ({ loadGovernedSession }) => {
           if (await loadGovernedSession()) {
             const { checkGovernedLogoutSignalOnce } = await import('../services/sso/jsaLogoutWatcherLive');
