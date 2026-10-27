@@ -84,7 +84,7 @@ function NavigationStack() {
       <Stack.Screen name="acknowledge" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="governed-status" options={{ headerShown: false }} />
       <Stack.Screen name="settings" options={{ title: t('Settings'), headerBackTitle: t('Back'), headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
-      <Stack.Screen name="switcher" options={{ title: t('Switcher'), headerBackTitle: t('Back') }} />
+      <Stack.Screen name="switcher" options={{ title: t('Back to WB S'), headerBackTitle: t('Back') }} />
       <Stack.Screen name="steps" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="ppe" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />
       <Stack.Screen name="signoff" options={{ headerTitleAlign: 'center', headerTitleStyle: { fontWeight: '800', color: '#FFFFFF' } }} />

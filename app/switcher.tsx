@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useRouter } from 'expo-router';
-import AppSwitcher from '../components/AppSwitcher';
-export default function SwitcherScreen() {
+import { backToSuite } from '../services/hubNavigation';
+/** Compatibility for old internal links; the app grid has been retired. */
+export default function HubReturnScreen() {
   const router = useRouter();
-  return <AppSwitcher presentation="modal" visible selfScheme="jsaapp" getIdentity={async () => null}
-    onClose={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')} />;
+  useEffect(() => { router.replace('/(tabs)'); void backToSuite(); }, [router]);
+  return null;
 }

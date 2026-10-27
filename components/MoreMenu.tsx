@@ -4,12 +4,11 @@ import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../app/contexts/LanguageContext';
-import AppSwitcher from './AppSwitcher';
+import { backToSuite } from '../services/hubNavigation';
 import { colors } from '../constants/colors';
 
 export default function MoreMenu({ placement = 'header', compact = false }: { placement?: 'header' | 'bottom'; compact?: boolean }) {
   const [visible, setVisible] = useState(false);
-  const [switcherVisible, setSwitcherVisible] = useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
@@ -23,10 +22,10 @@ export default function MoreMenu({ placement = 'header', compact = false }: { pl
       <Pressable style={styles.backdrop} accessibilityLabel={t('Close menu')} onPress={() => setVisible(false)}>
         <View testID="jsa-more-menu" style={[styles.menu, placement === 'bottom' ? { bottom: Math.max(insets.bottom, 8) + 64 } : { top: insets.top + 52 }]}>
           {([{ label: 'New JSA', route: '/(tabs)', icon: 'add-circle-outline' }, { label: 'Open JSA', route: '/open-jsas', icon: 'shield-checkmark-outline' }, { label: 'Saved JSAs', route: '/(tabs)/history', icon: 'time-outline' },
-            { label: 'Switcher', route: '/switcher', icon: 'apps-outline' }, { label: 'Settings', route: '/settings', icon: 'settings-outline' }] as const).map(item =>
+            { label: 'Back to WB S', route: '/switcher', icon: 'home-outline' }, { label: 'Settings', route: '/settings', icon: 'settings-outline' }] as const).map(item =>
             <Pressable key={item.route} accessibilityRole="button" style={styles.item} onPress={() => {
               setVisible(false);
-              if (item.label === 'Switcher') setSwitcherVisible(true);
+              if (item.label === 'Back to WB S') void backToSuite();
               else if (item.label === 'New JSA') router.push({ pathname: '/(tabs)', params: { newStandalone: String(Date.now()) } } as Href);
               else router.push(item.route as Href);
             }}><Text style={styles.label}>{t(item.label)}</Text><Ionicons name={item.icon} size={23} color={colors.primaryDark}/></Pressable>
@@ -34,7 +33,6 @@ export default function MoreMenu({ placement = 'header', compact = false }: { pl
         </View>
       </Pressable>
     </Modal>
-    {switcherVisible && <AppSwitcher presentation="modal" visible selfScheme="jsaapp" getIdentity={async () => null} onClose={() => setSwitcherVisible(false)} />}
   </>;
 }
 

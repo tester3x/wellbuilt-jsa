@@ -541,6 +541,7 @@ const translations: Record<Language, Record<string, string>> = {
     "Start Over": "Comenzar de nuevo",
     "Steps, hazards and controls": "Pasos, peligros y controles",
     "Switcher": "Selector",
+    "Back to WB S": "Volver a WB S",
     "Task-specific required-job assessments are not enabled yet. Return to Suite.": "Las evaluaciones obligatorias específicas de la tarea aún no están habilitadas. Vuelva a Suite.",
     "The signed report and its additions stay available.": "El informe firmado y sus adiciones seguirán disponibles.",
     "Thermal and regular paper printers": "Impresoras térmicas y de papel normal",
