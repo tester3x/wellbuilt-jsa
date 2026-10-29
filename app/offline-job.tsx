@@ -1,5 +1,5 @@
 import React,{useEffect,useMemo,useState} from 'react';
-import {ActivityIndicator,BackHandler,Linking,Text,View} from 'react-native';
+import {ActivityIndicator,BackHandler,Linking,Pressable,Text,View} from 'react-native';
 import {Stack,useLocalSearchParams} from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {PreparedReadContext,resolvePreparedRead,recordPreparedRead,type PreparedReadFlow} from '../services/PreparedJsaFlow';
@@ -12,15 +12,23 @@ import {useTheme} from './contexts/ThemeContext';
 
 /** Protected offline transport entry. All form UI is the original JSA screens. */
 export default function OfflineJob(){
+ const accountReady=require('../modules/wellbuilt-platform/AccountGate').useAccountReady() as boolean;
  const {requestId:raw}=useLocalSearchParams<{requestId:string}>(),id=typeof raw==='string'?raw:'';
  const {accent}=useTheme();
  const [verified,setVerified]=useState<Awaited<ReturnType<typeof resolvePreparedRead>>|null>(null);
  const [params,setParams]=useState<Record<string,string>>({});
  const [screen,setScreen]=useState<'steps'|'ppe'|'signoff'>('steps');
  const [savedDraft,setSavedDraft]=useState<any>(null),[error,setError]=useState('');
+ const [retry,setRetry]=useState(0);
  useEffect(()=>{let live=true;setVerified(null);setError('');void(async()=>{
+  // The navigator stays mounted behind the account overlay. Firebase restoring
+  // alone does not mean the signature-pinned shared request owner is ready.
+  if(!accountReady)return;
   const current=await resolvePreparedRead(id);
-  if(await preparedShiftJsa.proof(current.request.job.jobRef)){
+  if(!live)return;
+  const proof=await preparedShiftJsa.proof(current.request.job.jobRef);
+  if(!live)return;
+  if(proof){
    await Linking.openURL('wellbuilt-tickets://jsa-return?v=1&requestId='+encodeURIComponent(id)+'&status=completed');return;
   }
   const old=JSON.parse(await AsyncStorage.getItem('preparedJsaDraft/'+id)||'null');
@@ -35,7 +43,7 @@ export default function OfflineJob(){
    date:current.request.grant.policyDay,operator:current.request.job.operator,wellName:current.request.job.wellName,
    jobActivityName:current.request.job.jobType,assessmentSteps:JSON.stringify(current.assessment.steps),assessmentBundle:JSON.stringify(current.assessment)};
   if(live){setSavedDraft(old);setParams(base);setVerified(current);}
- })().catch(e=>{if(live)setError(e.message);});return()=>{live=false;};},[id]);
+ })().catch(e=>{if(live)setError(e.message);});return()=>{live=false;};},[id,accountReady,retry]);
  const flow=useMemo<PreparedReadFlow|null>(()=>verified?{
   params,assessment:verified.assessment,savedDraft,
   resolve:()=>resolvePreparedRead(id),
@@ -47,6 +55,9 @@ export default function OfflineJob(){
   submit:snapshot=>recordPreparedRead(id,verified.request.grant.id,verified.assessment.contentHash,snapshot),
  }:null,[verified,params,savedDraft,id,screen]);
  useEffect(()=>{if(screen==='steps')return;const sub=BackHandler.addEventListener('hardwareBackPress',()=>{flow?.back();return true;});return()=>sub.remove();},[flow,screen]);
- if(!flow)return <View style={{flex:1,justifyContent:'center',padding:20}}><Stack.Screen options={{title:'JSA'}}/>{error?<Text accessibilityRole="alert">{error}</Text>:<ActivityIndicator size="large" color={accent}/>}</View>;
+ if(!flow)return <View style={{flex:1,justifyContent:'center',padding:20}}><Stack.Screen options={{title:'JSA'}}/>{error?<>
+  <Text accessibilityRole="alert">{error}</Text>
+  <Pressable accessibilityRole="button" onPress={()=>setRetry(n=>n+1)} style={{padding:16,marginTop:16,backgroundColor:accent,borderRadius:10}}><Text>Retry this job’s JSA</Text></Pressable>
+ </>:<ActivityIndicator size="large" color={accent}/>}</View>;
  return <PreparedReadContext.Provider value={flow}>{screen==='steps'?<StepsScreen/>:screen==='ppe'?<PpeScreen/>:<SignoffScreen/>}</PreparedReadContext.Provider>;
 }

@@ -1,3 +1,10 @@
+## Registered laptop checkout — October 29, 2026
+
+- First read `C:/dev/workspace-control/POLICY.md` fully. Its desktop D: control paths map to C: on this laptop. Current user-authorized policy overrides old build notes.
+- Existing registered home: `C:/dev/JSA`, branch `feat/jsa-register-join-code-20260917`, remote `https://github.com/tester3x/wellbuilt-jsa.git`, common Git directory `C:/dev/wellbuilt-jsa/.git`.
+- Claim/check/finish using `C:/dev/workspace-control/guard.cjs` and the actual session ID before writing; one writer per repository. Preserve other copies, local edits and native files; do not create another checkout or source-copy build, reset, force-push or bypass hooks.
+- Local builds, when explicitly authorized, use exact reconciled committed source in this registered home under current workspace policy. Keep credentials and generated APKs outside Git.
+
 ## Expo/EAS build authorization — all apps, both computers
 
 - Batch fixes and features into substantial updates. Do not create cosmetic-only builds.

@@ -115,7 +115,7 @@ function AppContent() {
   const screenParamsJson=JSON.stringify(screenParams);
   const [preparedRequestReady,setPreparedRequestReady]=useState(false);
   useEffect(()=>{let live=true;setPreparedRequestReady(false);
-    if(pathname==='/offline-job'&&typeof screenParams.requestId==='string')void import('../services/preparedShiftJsa').then(async m=>{const request=await m.preparedShiftJsa.readRequest(screenParams.requestId);if(live)setPreparedRequestReady(!!request);}).catch(()=>{});
+    if(platformAccountReady&&pathname==='/offline-job'&&typeof screenParams.requestId==='string')void import('../services/preparedShiftJsa').then(async m=>{const request=await m.preparedShiftJsa.readRequest(screenParams.requestId);if(live)setPreparedRequestReady(!!request);}).catch(()=>{});
     return()=>{live=false;};
   },[pathname,screenParams.requestId,platformAccountReady]);
 
