@@ -24,11 +24,40 @@ function gate(){
 test('Sign in survives foreground, connection and signed-out account events until real sign-in',async()=>{
  const g=gate();g.render();await g.flush();g.render();
  assert.equal(g.button('Retry'),undefined,'signed-out state should not offer a futile retry');
- await g.button('Sign in').props.onPress();g.render();assert(g.loginVisible());assert.equal(g.ready(),false);
+ await g.button('Sign in').props.onPress();g.render();assert(g.loginVisible());assert.equal(g.ready(),true);
  for(const send of [()=>g.events.app('active'),()=>g.events.accountChanged({}),()=>g.events.connectionChanged({reachable:true})]){
-  send();await g.flush();g.render();assert(g.loginVisible(),'background signed-out check must not hide login');assert.equal(g.ready(),false);
+  send();await g.flush();g.render();assert(g.loginVisible(),'background signed-out check must not hide login');assert.equal(g.ready(),true);
  }
  g.setRestore(async()=> 'restored');g.events.accountChanged({});await g.flush();g.render();assert(g.loginVisible());assert.equal(g.ready(),true);
+});
+
+test('interactive sign-in lets the real JSA auth startup reach login without creating an identity',async()=>{
+ const ts=require('typescript');
+ const source=ts.createSourceFile('AuthContext.tsx',fs.readFileSync('app/contexts/AuthContext.tsx','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ let effect,check;
+ function visit(node){
+  if(ts.isCallExpression(node)&&node.expression.getText(source)==='useEffect'&&node.arguments[0]?.getText(source).includes('subscribeGovernedSessionRevision'))effect=node.arguments[0];
+  if(ts.isVariableDeclaration(node)&&node.name.getText(source)==='checkInitialState')check=node.initializer;
+  ts.forEachChild(node,visit);
+ }
+ visit(source);assert(effect&&check,'exercise actual subscription and identity inspection');
+ const js=ts.transpileModule('const checkInitialState = '+check.getText(source)+'; const effect = '+effect.getText(source)+'; effect();',{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+ const g=gate();g.render();await g.flush();g.render();
+ let mode='checking',session='unchecked',subscriptions=0;
+ const mocks={
+  '../../services/sso/jsaRuntime':{subscribeGovernedSessionRevision:callback=>{subscriptions++;callback();return ()=>{};}},
+  '../../services/sso/jsaGovernedAuthLive':{currentGovernedIdentityEpoch:()=>1},
+  '../../services/sso/jsaIdentityStartupLive':{inspectGovernedIdentityStartupDetailed:async()=>({state:'standalone'})},
+  '../../services/sso/jsaLegacyAuthRetirementLive':{retireLegacyAuthenticationKeys:async()=>({retired:true})}
+ };
+ const context=()=>({platformAccountReady:g.ready(),identityReadRef:{current:0},pollRef:{current:null},registrationAttemptRef:{current:0},
+  registrationPollGuardRef:{current:{invalidate(){}}},
+  setSession:value=>{session=value;},setMode:value=>{mode=value;},setError:()=>{},
+  getPendingRegistration:async()=>null,require:name=>{assert(name in mocks,name);return mocks[name];},console});
+ vm.runInNewContext(js,context());await g.flush();assert.equal(subscriptions,0);
+ await g.button('Sign in').props.onPress();g.render();
+ vm.runInNewContext(js,context());await g.flush();
+ assert.equal(subscriptions,1);assert.equal(mode,'login');assert.equal(session,null);
 });
 test('late signed-out failure cannot cover a newly requested login; access denial still blocks',async()=>{
  const g=gate();g.render();await g.flush();g.render();
