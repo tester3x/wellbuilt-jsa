@@ -1,3 +1,7 @@
+## Current local/cloud build permission - October 30, 2026
+
+Local Android APK builds and rebuilds for user-authorized work do not need separate permission. Any Expo.dev/EAS cloud build, retry, submission or upload needs Mike's explicit current permission. Follow AGENTS.md and the workspace policy for registered-home source reconciliation, signing, version reservation and S24-first checks. This rule overrides historical EAS examples and old local-build approval gates below.
+
 # CLAUDE.md - WB JSA (Electronic Job Safety Analysis)
 
 ## Project Overview
