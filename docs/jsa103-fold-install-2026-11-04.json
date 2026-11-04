@@ -1,0 +1,11 @@
+{
+  "device": "RFGL23VJCED",
+  "versionCode": 103,
+  "packageId": "com.syconik801.jsaapp",
+  "sourceCommit": "aa80e3ea3d4e2ad17b9ef6a700416fff78ec72bb",
+  "installedAt": "2026-11-04T18:22:17.338Z",
+  "installedApkSha256": "54a6b4d3c86f34c25e89a6b018151788da7c880f21dbc39d27d4eee0ff2f7ca9",
+  "authorization": "Mike: Yes—update the Fold now",
+  "verification": "Installed-r without data clear; package version readback and pulled installed-base SHA256 match S24 artifact. Saved JSAs shows35 records including November1–4. Today signed report opens with original assessment and signing time11:17:52AM CST. No attestation, new job, close/delete or shift change performed.",
+  "remaining": "Genuine next job started from WBT home-screen icon requires driver acceptance."
+}
