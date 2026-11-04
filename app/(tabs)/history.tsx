@@ -104,7 +104,12 @@ export default function HistoryTabScreen() {
       setHistory(openRecordsFirst(await ownJsaRecords()));
       // An absent cache is precisely when the server must still be checked.
       try {
-        setHistory(openRecordsFirst(await (await import('../../services/standaloneJsa')).syncStandaloneHistory()));
+        const results=await Promise.allSettled([
+          import('../../services/standaloneJsa').then(m=>m.syncStandaloneHistory()),
+          import('../../services/preparedJsaHistoryLive').then(m=>m.syncPreparedJsaHistory()),
+        ]);
+        setHistory(openRecordsFirst(await ownJsaRecords()));
+        if(results.some(r=>r.status==='rejected'))setError(t('Could not refresh JSAs. Showing records available on this phone. Try again when connected.'));
       } catch {
         setHistory(openRecordsFirst(await ownJsaRecords()));
         setError(t('Could not refresh JSAs. Showing records available on this phone. Try again when connected.'));
@@ -132,6 +137,7 @@ export default function HistoryTabScreen() {
   };
 
   const handleDeleteItem = (item: HistoryItem) => {
+    if ((item as any).workflow === 'prepared') return;
     if ((item as any).workflow === 'standalone') {
       if ((item as any).state !== 'open') return;
       Alert.alert(t('Close JSA?'), t('The signed report and its additions stay available.'), [
@@ -173,6 +179,7 @@ export default function HistoryTabScreen() {
     const standalone = (item as any).workflow === 'standalone';
     const openStandalone = standalone && (item as any).state === 'open';
     const closedStandalone = standalone && (item as any).state === 'closed';
+    const retained = (item as any).workflow === 'prepared';
 
     return (
       <TouchableOpacity
@@ -195,9 +202,9 @@ export default function HistoryTabScreen() {
         <View style={styles.cardBottom}>
           <Text style={styles.cardDriver}>{item.driverName} • {t("Truck")} #{item.truckNumber}</Text>
           <View style={styles.cardActions}>
-            {closedStandalone ? (
-              <View accessibilityRole="text" accessibilityLabel={t('Closed')} style={styles.statusLabel}>
-                <Text style={[styles.actionText, { color: colors.textMuted }]}>{t('Closed')}</Text>
+            {closedStandalone || retained ? (
+              <View accessibilityRole="text" accessibilityLabel={t(retained ? 'Saved JSA' : 'Closed')} style={styles.statusLabel}>
+                <Text style={[styles.actionText, { color: colors.textMuted }]}>{t(retained ? 'Saved JSA' : 'Closed')}</Text>
               </View>
             ) : (
               <TouchableOpacity

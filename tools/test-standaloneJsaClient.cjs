@@ -41,7 +41,7 @@ new Function('require','module','exports',js)(name=>{
  assert.equal(local.find(r=>r.id==='hash-only').state,'closed');
  assert.equal(local.find(r=>r.id==='incomplete').signatureImage,'');
  local.push({...payload,id:'failed-close',state:'open',standaloneRecordId:'F'.repeat(43)});closeState='open';
- await assert.rejects(()=>api.closeStandaloneJsa({id:'failed-close'}),/verified/);
+ await assert.rejects(()=>api.closeStandaloneJsa({id:'failed-close'}),/delivery is not confirmed; saved request retained/);
  assert.equal(local.find(r=>r.id==='failed-close').state,'open');closeState='closed';
  await assert.rejects(()=>api.closeStandaloneJsa({id:'shift'}),/owner mismatch/);
  local.push({...payload,id:'conflict',driverId:'other',driverHash:'d'});await assert.rejects(()=>api.closeStandaloneJsa({id:'conflict'}),/Not owned/);

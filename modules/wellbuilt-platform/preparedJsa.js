@@ -96,6 +96,20 @@ exports.createPreparedJsaRuntime=function({store,owner,call,mint,hash,now=Date.n
  }
  async function endShift(shiftId){const o=await current(),all=await rows('bundle',o);for(const g of all.filter(g=>g.shiftId===shiftId))if(!await read('ended/'+g.binding.jsaPeriodId,o))await write('ended/'+g.binding.jsaPeriodId,{shiftId,at:now()},o);}
  return {preload,bundle,inspect,record,proof,commitEvent,drain,endShift,
+  // Historical display only. A previous owner's grant or an ended period is
+  // never current authorization, but the driver's original signed report stays
+  // readable. Keep the frozen assessment and later acknowledgements separate.
+  async history(){
+   const o=await current(),events=await rows('event',o),requests=await rows('request',o),out=[];
+   for(const e of events.filter(e=>e.kind==='read')){
+    const grant=await read('bundle/'+e.grantId,o);
+    if(!grant||!grant.assessments?.some(a=>a.contentHash===e.assessmentHash))continue;
+    const request=requests.find(r=>r.grantId===e.grantId&&r.job?.jobRef===e.jobRef);
+    out.push({event:e,grant,job:request?.job||null,coveredJobs:events.filter(a=>a.fullReadId===e.id&&a.kind!=='read')
+     .map(a=>({event:a,job:requests.find(r=>r.job?.jobRef===a.jobRef&&r.grantId===a.grantId)?.job||null}))});
+   }
+   await check(o);return out;
+  },
   async request(job){const {o,g}=await bundle(job.operator);const id=await mint();await write('request/'+id,{id,grantId:g.id,job,at:now()},o);return id;},
   async readRequest(id){const o=await current(),r=await read('request/'+id,o);if(!r)return null;const {g}=await bundle(r.job.operator);const original=await read('bundle/'+r.grantId,o);return original?.accountGrantId===o.grantId&&original.binding.jsaPeriodId===g.binding.jsaPeriodId&&original.expiresAtMs>=now()?{...r,grant:original}:null;},
   async readEvent(id){return eventById(id,await current());},

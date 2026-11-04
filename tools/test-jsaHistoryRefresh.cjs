@@ -13,7 +13,8 @@ async function check({local=[],remote=[],fail=false,authFail=false}){
   if(name.includes('ThemeContext'))return {useTheme:()=>({})};
   if(name.includes('constants/colors'))return {colors:{}};
   if(name.endsWith('services/jsaRecord'))return {ownJsaRecords:async()=>{if(authFail)throw Error('signin');return local}};
-  if(name.endsWith('services/standaloneJsa'))return {syncStandaloneHistory:async()=>{called++;if(fail)throw Error('offline');return remote}};
+  if(name.endsWith('services/standaloneJsa'))return {syncStandaloneHistory:async()=>{called++;if(fail)throw Error('offline');local=remote;return remote}};
+  if(name.endsWith('services/preparedJsaHistoryLive'))return {syncPreparedJsaHistory:async()=>{}};
   return {};
  },module,module.exports);
  module.exports.default();await callbacks[0]();return {states,called,focus};
