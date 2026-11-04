@@ -1,0 +1,33 @@
+{
+  "sourceCommit": "aa80e3ea3d4e2ad17b9ef6a700416fff78ec72bb",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a139b5-d3f7-7401-bdf0-3443ec841c28",
+  "reservation": "android-release-v103",
+  "reservationTagObject": "83fa81da85da2b7b0489bc9eedc97acdcf9d32af",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 103,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-103-aa80e3e\\com.syconik801.jsaapp-vc103.apk",
+  "apkSha256": "54a6b4d3c86f34c25e89a6b018151788da7c880f21dbc39d27d4eee0ff2f7ca9",
+  "completedAt": "2026-11-04T18:00:23.980Z",
+  "installed": false,
+  "s24": {
+    "serial": "R5CX15HEGQB",
+    "versionCode": 103,
+    "verifiedAt": "2026-11-04T18:02:48.222Z",
+    "installedApkSha256": "54a6b4d3c86f34c25e89a6b018151788da7c880f21dbc39d27d4eee0ff2f7ca9",
+    "ui": "Launcher opened existing MikeS24 identity; Saved JSAs shows19 owner-bound reports including retained signed rows, no refresh-incomplete message. No signature, new job, deletion, shift end or attestation performed."
+  },
+  "fold": {
+    "installed": false,
+    "reason": "Working driver device; next real home-screen handoff and November list acceptance still pending."
+  },
+  "checks": "TypeScript; prepared history/remote backfill/entry/original-flow; history refresh; standalone client; open records; home offline; platform startup, routes, root; account-gate sign-in.",
+  "reconciliation": "Fresh remote heads; JSA102 ancestor and interactive sign-in fixes retained. No higher remote version reservation; EAS Android99, installed102 baseline. Other-machine unpushed work cannot be discovered."
+}
