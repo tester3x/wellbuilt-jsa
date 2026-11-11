@@ -1,0 +1,29 @@
+{
+  "sourceCommit": "4e4d6c87066ccab1add39ed8dee855f063f608a6",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a1ca24-a83e-7f40-b6df-ac284cb3cd76",
+  "reservation": "android-release-v105",
+  "reservationTagObject": "0f65dc0eff684e66c9530a6464c8e5cbe8172672",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 105,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-105-4e4d6c8\\com.syconik801.jsaapp-vc105.apk",
+  "apkSha256": "088bc766d4f890ae48a1b1b82718166ce0c22c1603468ca0c22f798a4bf79f10",
+  "completedAt": "2026-11-11T10:43:24.156Z",
+  "installed": true,
+  "s24": {
+    "result": "Installed and cold-launched. Account restore stopped before shift verification and Retry did not recover it. Shift sign-in acceptance pending.",
+    "versionCode": 105
+  },
+  "fold": {
+    "result": "Retained pending S24 shift-entry acceptance.",
+    "versionCode": 103
+  },
+  "checks": "TypeScript and two local release tests passed. Registered-home APK signer and package verified."
+}
