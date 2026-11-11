@@ -486,6 +486,9 @@ export default function JsaHomeScreen() {
           if (!owned()) throw new Error('shift_refresh_superseded');
           const launch = await loadLaunchContext();
           if (!owned()) throw new Error('shift_refresh_superseded');
+          const shiftForLaunch = launch && decision.mayLabelActive ? decision.activeShiftId : null;
+          setIsSsoMode(!!shiftForLaunch);
+          setSsoShiftId(shiftForLaunch);
           const usable = await loadUsableGovernedSession();
           if (!owned()) throw new Error('shift_refresh_superseded');
           const marker = await loadGovernedTerminalFailure();
@@ -705,32 +708,6 @@ export default function JsaHomeScreen() {
     });
     return dateScope;
   }, []);
-
-  // A verified shift is context, not a request to perform a required JSA.
-  // Suite's ordinary app card clears launch ownership; only an explicit
-  // governed launch may select the shift-bound workflow.
-  const resolveMode = React.useCallback(async () => {
-    try {
-      const { loadLaunchContext } = await import('../../services/sso/jsaRuntime');
-      const launch = await loadLaunchContext();
-      const verified = await isCurrentShiftVerified();
-      const id = await AsyncStorage.getItem('wellbuilt-current-shift-id');
-      if (launch && id && verified) {
-        setIsSsoMode(true);
-        setSsoShiftId(id);
-        console.log('[JSA-mode] resolved=sso required launch with verified current shift');
-      } else {
-        setIsSsoMode(false);
-        setSsoShiftId(null);
-        console.log('[JSA-mode] resolved=standalone (no required launch with verified shift)');
-      }
-    } catch {
-      setIsSsoMode(false);
-      setSsoShiftId(null);
-    }
-  }, [session?.uid, session?.generation]);
-  useEffect(() => { resolveMode(); }, [resolveMode]);
-  useFocusEffect(useCallback(() => { resolveMode(); }, [resolveMode]));
 
   // Slugify operator names the same way signoff.tsx writes operatorSlug —
   // jsa_day_status doc keys use this exact transform. Keeps comparison
@@ -1317,7 +1294,9 @@ export default function JsaHomeScreen() {
         }
         return;
       }
-      const { strictLoadGovernedSession } = await import('../../services/sso/jsaRuntime');
+      const { strictLoadGovernedSession, loadLaunchContext } = await import('../../services/sso/jsaRuntime');
+      if (!stillLatest()) return;
+      const launch = await loadLaunchContext();
       if (!stillLatest()) return;
       const governed = await strictLoadGovernedSession();
       if (!stillLatest()) return;
@@ -1327,7 +1306,7 @@ export default function JsaHomeScreen() {
         ? await AsyncStorage.getItem('wellbuilt-current-shift-id')
         : null;
       if (!stillLatest()) return;
-      const isShiftMode = isSsoMode && !!shiftId;
+      const isShiftMode = !!launch && !!shiftId;
       owner = ownership.bind(sequence, {
         sessionGeneration: governed?.generation ?? null,
         uid: governed?.uid ?? session?.uid ?? null,
@@ -1337,11 +1316,11 @@ export default function JsaHomeScreen() {
       });
       if (!owner) return;
 
-      const presentationMatches = !isSsoMode || (!!governed && !!session
+      const presentationMatches = !launch || (!!governed && !!session
         && governed.uid === session.uid
         && governed.driverId === session.driverId
         && governed.companyId === session.companyId);
-      if (!presentationMatches) {
+      if (!presentationMatches || (launch && !shiftId)) {
         await publish('unavailable', null);
         return;
       }
@@ -1373,7 +1352,7 @@ export default function JsaHomeScreen() {
 
       if (!isShiftMode) {
         console.log('[JSA-current-shift] loadTodaysSave miss=local mode=standalone');
-        await publish(isSsoMode ? 'unavailable' : 'backend_required', null);
+        await publish('backend_required', null);
         return;
       }
 
@@ -1445,7 +1424,7 @@ export default function JsaHomeScreen() {
       console.warn('[JSA] loadTodaysSave failed:', err);
       if (owner) await publish('unavailable', null);
     }
-  }, [refreshShiftIdFromServer, session, isSsoMode]);
+  }, [refreshShiftIdFromServer, session]);
   useEffect(() => { loadTodaysSave(); }, [loadTodaysSave]);
   useFocusEffect(useCallback(() => { loadTodaysSave(); }, [loadTodaysSave]));
   useEffect(() => {
