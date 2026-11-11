@@ -18,12 +18,12 @@
   "completedAt": "2026-11-11T10:43:24.156Z",
   "installed": true,
   "s24": {
-    "result": "Installed and cold-launched. Account restore stopped before shift verification and Retry did not recover it. Shift sign-in acceptance pending.",
+    "result": "After switching WB Suite from LGDispatch to MikeS24, Suite showed Start Shift and JSA 105 opened from Suite on one tap with the off-shift message and New JSA.",
     "versionCode": 105
   },
   "fold": {
-    "result": "Retained pending S24 shift-entry acceptance.",
-    "versionCode": 103
+    "result": "Installed signed APK in place. First tap on the Suite JSA card opened JSA. Logs verified the active shift and queried that shift; the home screen showed Current shift has an open JSA and Resume JSA. Welcome left open. No shift, duty, or JSA edits.",
+    "versionCode": 105
   },
   "checks": "TypeScript and two local release tests passed. Registered-home APK signer and package verified."
 }
