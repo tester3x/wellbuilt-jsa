@@ -1,0 +1,21 @@
+{
+  "verification": "Package/version/signer checked, S24 foreground launch before Fold installation; workflow test pending",
+  "artifact": "C:/dev/release-artifacts/jsa-106/com.syconik801.jsaapp-vc106.apk",
+  "sha256": "eb5b5557c4afd4320becb735a23d1d0ca70a0b7c09cfa03a1520e9a5aaf251c1",
+  "installed": [
+    "S24",
+    "Z Fold"
+  ],
+  "backendCommit": "f42e2280",
+  "packageId": "com.syconik801.jsaapp",
+  "versionCode": 106,
+  "sourceCommit": "7c0d82c342ff9461c64e6182949bccb08d00f0c7",
+  "backendFunction": "jsaOffShiftPeriod",
+  "unpublishedWorkLimitation": "Other-machine unpushed work cannot be discovered",
+  "deviceEvidence": [
+    "R5CX15HEGQB     versionCode=106 minSdk=24 targetSdk=36",
+    "RFGL23VJCED     versionCode=106 minSdk=24 targetSdk=36"
+  ],
+  "method": "Registered home local Android Gradle release",
+  "signature": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459"
+}
