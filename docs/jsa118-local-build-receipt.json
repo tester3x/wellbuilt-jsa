@@ -1,0 +1,42 @@
+{
+  "sourceCommit": "ad58d837f59958240a4a9f3f72b3774a0177046a",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+  "reservation": "android-release-v118",
+  "reservationTagObject": "9e0621954999b0bf8bac4cee852d4343b981d07c",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 118,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-118-ad58d83\\com.syconik801.jsaapp-vc118.apk",
+  "apkSha256": "f041deced2146716c58cd4ba6c8d03c53ab8e4b282ed9d1b2b8d83f517739a7c",
+  "completedAt": "2026-11-18T16:47:28.905Z",
+  "installed": true,
+  "installedDevices": [
+    "S24"
+  ],
+  "foldDisposition": "Left unchanged on 117",
+  "verification": {
+    "home": "Open off-shift JSA; Resume JSA and End JSA shown consistently",
+    "resume": "Current signed record opens with original signature black on white and both linked locations",
+    "periodStillOpen": true,
+    "signedArtifactDeepEqualToBefore": true,
+    "existingSignedSnapshotsChecked": 43,
+    "changedSignedSnapshots": 0,
+    "printing": false,
+    "endJsaExecuted": false
+  },
+  "checks": [
+    "TypeScript passed",
+    "Home client and presentation checks passed",
+    "Offline home tests 7/7 passed",
+    "Signature and document checks passed",
+    "Backend home and period regression tests 49/49 passed"
+  ],
+  "reconciliationLimitation": "Other-machine unpushed work cannot be discovered"
+}
