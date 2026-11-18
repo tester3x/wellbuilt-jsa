@@ -34,7 +34,7 @@ export function mergePreparedHistory(legacy:any[], cached:any[], local:any[]):an
    // and original signature from the local save; supplemental history is separate.
    rows.set(linked.id,{...r,id:linked.id,workflow:'prepared',state:'saved',
     historyAliases:[...(linked.historyAliases||[]),r.id],
-    historyContext:{...linked.historyContext,
+    historyContext:{...linked.historyContext,operator:linked.historyContext?.operator||linked.operator||r.historyContext?.operator,
      coveredJobs:[...(linked.historyContext?.coveredJobs||[]),...(linked.coveredJobs||[]),...(r.historyContext?.coveredJobs||[])],
      additions:[...(linked.additions||[]),...(linked.historyContext?.additions||[]),...(r.historyContext?.additions||[])],
      locations:[...(linked.locations||[]),...(linked.historyContext?.locations||[])],

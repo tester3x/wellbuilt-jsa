@@ -12,7 +12,7 @@ export function signingTime(value:unknown,locale='en-US',notRecorded='Not record
  return value!=null&&!Number.isNaN(date.getTime())?date.toLocaleString(locale,{timeZoneName:'short'}):notRecorded;
 }
 export function recordCustomer(r:any,t:Translator=identity):string{
-  return r.operator || [...new Set((r.wells || []).map((w:any)=>w.operator).filter(Boolean))].join(', ') || t('Customer not recorded');
+  return r.operator || r.historyContext?.operator || [...new Set((r.wells || []).map((w:any)=>w.operator).filter(Boolean))].join(', ') || t('Customer not recorded');
 }
 
 function locationSections(r:any,t:Translator,locale:string){
