@@ -1,0 +1,39 @@
+{
+  "sourceCommit": "859ced86a13ee5e4ca721f95bbeb4d05b6e62f06",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+  "reservation": "android-release-v115",
+  "reservationTagObject": "2ab965bad6243541cf438254a12f94ef51c83a78",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 115,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-115-859ced8\\com.syconik801.jsaapp-vc115.apk",
+  "apkSha256": "ce53d54cc224725954f362576d21a8fe8253642b763970e23bf24000f342ef32",
+  "completedAt": "2026-11-18T07:34:06.819Z",
+  "installed": {
+    "S24": "115 verified; black signature visible on white background",
+    "Fold": "115 verified after S24 pass; black signature visible on white background"
+  },
+  "scope": "Rendering-only: remove whole-image brightness filter and signature tint; explicit white background for report, paper/thermal HTML, signoff and Settings previews. Original PNG remains unchanged.",
+  "checks": [
+    "TypeScript",
+    "Paper/3-inch/4-inch signature rendering regression",
+    "Opaque PNG preserved without brightness/tint filter",
+    "Submit failure and separate recovery regressions",
+    "Actual signature screenshots reviewed on both phones"
+  ],
+  "integrity": {
+    "s24TestRecordFieldsAndUpdateTimeUnchanged": true,
+    "foldTestRecordFieldsAndUpdateTimeUnchanged": true,
+    "correctionsPerNewFixture": 1,
+    "existingSignedSnapshotsRechecked": 43,
+    "changed": 0
+  },
+  "printing": "No paper printed"
+}
