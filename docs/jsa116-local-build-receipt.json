@@ -1,0 +1,41 @@
+{
+  "sourceCommit": "7dcaaac6dfb0e7819dc7e29b5790bd160e422f58",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+  "reservation": "android-release-v116",
+  "reservationTagObject": "2fa711655712682731c1fc884df82b7691da3f10",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 116,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-116-7dcaaac\\com.syconik801.jsaapp-vc116.apk",
+  "apkSha256": "7fa47e6bff83c7f68deed02a6d6e806886bf93b855ce1471826194ec261a4a10",
+  "completedAt": "2026-11-18T07:50:00.951Z",
+  "installed": {
+    "S24": "116 installed first; opaque software-test signature black on white visually verified",
+    "Fold": "116 installed after S24 pass; real Thor transparent signature black on white visually verified"
+  },
+  "acceptance": {
+    "thorCardCount": 1,
+    "thorLocations": [
+      "THOR 1-31-30H",
+      "HYDRO CLEAR SWD 1",
+      "GABRIEL 7-36-25TFH",
+      "GABRIEL 5-36-25TFH"
+    ],
+    "realSignature": "Visible black strokes on white; original PNG retained",
+    "originalThorSignedArtifactUnchanged": true,
+    "existingSignedSnapshotsChecked": 43,
+    "changedSignedSnapshots": 0,
+    "testFixtureOriginalFieldsUpdateTimeAndSignatureUnchanged": true,
+    "separateCorrectionCountPerFixture": 1,
+    "printed": false
+  },
+  "supersedes": "115 opaque-only signature verification did not cover the real transparent light-ink signature; the real Thor check found it invisible. 116 handles both actual formats.",
+  "verification": "TypeScript, signature PNG filters 0–4 and both canvas formats, immutable report projection, original flow, submit failure, recovery, history merge/cloud/refresh tests passed; ADB package readback 116 on both devices."
+}
