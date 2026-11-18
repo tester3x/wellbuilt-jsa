@@ -1,3 +1,4 @@
+import {signatureImageCss} from './signatureDisplay';
 import {jsaOperator} from './jsaInformation';
 import {jsaDisplayReference} from './jsaResumeProjection';
 import {selectedAssessmentLabels} from './jsaAssessmentLabels';
@@ -57,7 +58,7 @@ export function jsaDocumentHtml(r:any,width?:3|4,options:DocumentLocale={}):stri
  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>
  @page{size:${width?`${width}in 11in`:'letter'};margin:${width?'8px':'24px'}}
  body{background:#fff;font-family:Arial,sans-serif;color:#000;margin:0;padding:8px;font-size:${width?'13':'12'}px;font-weight:${width?'600':'400'};line-height:1.35;overflow-wrap:anywhere}
- h1{font-size:20px}h2{font-size:16px;margin:14px 0 5px}h3{font-size:14px;margin:9px 0 3px}h2,h3{break-after:avoid;page-break-after:avoid}.signature,.location-row,.difference{break-inside:avoid;page-break-inside:avoid}.item{break-inside:avoid;margin:5px 0}img{max-width:100%;width:240px;height:70px;object-fit:contain}.signature{background:#fff;color:#000}.signature img{background:#fff;filter:none}.note{border:1px solid;padding:7px}.footer{margin-top:15px;border-top:1px solid;padding-top:6px}.location-block{margin-top:10px}.location-row{border-bottom:1px solid #bbb;padding:5px 0}.location-row div{display:flex;justify-content:space-between;gap:10px}.location-row small,.difference small{display:block;color:#555;font-size:10px}.location-note{font-size:10px;color:#444}.difference{border-left:3px solid #555;padding-left:8px;margin:8px 0}
+ h1{font-size:20px}h2{font-size:16px;margin:14px 0 5px}h3{font-size:14px;margin:9px 0 3px}h2,h3{break-after:avoid;page-break-after:avoid}.signature,.location-row,.difference{break-inside:avoid;page-break-inside:avoid}.item{break-inside:avoid;margin:5px 0}img{max-width:100%;width:240px;height:70px;object-fit:contain}.signature{background:#fff;color:#000}.signature img{${signatureImageCss(image)}}.note{border:1px solid;padding:7px}.footer{margin-top:15px;border-top:1px solid;padding-top:6px}.location-block{margin-top:10px}.location-row{border-bottom:1px solid #bbb;padding:5px 0}.location-row div{display:flex;justify-content:space-between;gap:10px}.location-row small,.difference small{display:block;color:#555;font-size:10px}.location-note{font-size:10px;color:#444}.difference{border-left:3px solid #555;padding-left:8px;margin:8px 0}
  </style></head><body><h1>${escape(r.companyName||'WellBuilt')} · ${escape(t('Job Safety Analysis'))}</h1>${r.jsaNumber?`<div>${escape(t("JSA number"))}: ${escape(jsaDisplayReference(r.jsaNumber))}</div>`:""}
  <div>${escape(recordCustomer(r,t))}</div><div>${escape(r.driverName)} · ${escape(t('Truck'))} ${escape(r.truckNumber)} · ${escape(r.date)}</div>
  ${slot('after-job-details')}

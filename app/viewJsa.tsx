@@ -1,3 +1,4 @@
+import {signatureNeedsBlackInk} from '../services/signatureDisplay';
 import { BrandedAlert as Alert } from '../services/brandedAlert';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -658,8 +659,8 @@ export default function ViewJsaScreen() {
                 <View style={{ backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 4, height: 80, justifyContent: 'center', marginBottom: 6 }}>
                   <Image
                     source={{ uri: (params.signatureImage as string).startsWith('data:') ? params.signatureImage : `data:image/png;base64,${params.signatureImage}` }}
-                    // Force black strokes (matches Settings preview + PDF).
-                    style={{ width: '100%', height: 72, backgroundColor: '#fff' }}
+                    // Tint only transparent capture canvases; preserve opaque white backgrounds.
+                    style={{ width: '100%', height: 72, backgroundColor: '#fff', ...(signatureNeedsBlackInk(params.signatureImage as string) ? {tintColor:'#000'} : {}) }}
                     resizeMode="contain"
                   />
                 </View>

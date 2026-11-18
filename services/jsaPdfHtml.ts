@@ -1,3 +1,4 @@
+import {signatureImageCss} from './signatureDisplay';
 // services/jsaPdfHtml.ts
 // Shared HTML builder for JSA PDF — used by completed screen (inline preview)
 // and pdf generation (generate + share).
@@ -163,9 +164,7 @@ export function buildJsaPdfHtml(opts: BuildOptions): string {
       max-height: 80px;
       object-fit: contain;
       display: block;
-      /* Preserve the original black ink and opaque white PNG background. */
-      background: #fff;
-      filter: none;
+      ${signatureImageCss(sigImgSrc)};
     }
     .signature-name {
       font-size: 12px;

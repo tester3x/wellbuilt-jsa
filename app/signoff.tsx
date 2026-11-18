@@ -1,3 +1,4 @@
+import {signatureNeedsBlackInk} from '../services/signatureDisplay';
 import {requireJsaSaveInformation} from '../services/jsaInformation';
 import {HeaderBackButton} from '@react-navigation/elements';
 import {usePreparedRead} from '../services/PreparedJsaFlow';
@@ -1752,7 +1753,7 @@ export default function SignoffScreen() {
                 <View style={{ backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 4, height: 54, justifyContent: 'center' }}>
                   <Image
                     source={{ uri: signatureImage.startsWith('data:') ? signatureImage : `data:image/png;base64,${signatureImage}` }}
-                    style={{ width: '100%', height: 48, backgroundColor: '#fff' }}
+                    style={{ width: '100%', height: 48, backgroundColor: '#fff', ...(signatureNeedsBlackInk(signatureImage) ? {tintColor:'#000'} : {}) }}
                     resizeMode="contain"
                   />
                 </View>

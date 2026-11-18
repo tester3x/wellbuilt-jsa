@@ -1,3 +1,4 @@
+import {signatureImageCss} from '../services/signatureDisplay';
 import { BrandedAlert as Alert } from '../services/brandedAlert';
 import { Stack, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -253,7 +254,7 @@ export default function SettingsScreen() {
               <View style={{ backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: colors.border, height: 80, overflow: 'hidden', marginTop: 4 }}>
                 <WebView
                   key={signatureImage.substring(signatureImage.length - 20)}
-                  source={{ html: `<html><body style="margin:0;padding:0;background:#fff;display:flex;align-items:center;justify-content:center;height:100vh"><img src="${signatureImage.startsWith('data:') ? signatureImage : `data:image/png;base64,${signatureImage}`}" style="max-width:100%;max-height:80px;object-fit:contain;background:#fff;filter:none" /></body></html>` }}
+                  source={{ html: `<html><body style="margin:0;padding:0;background:#fff;display:flex;align-items:center;justify-content:center;height:100vh"><img src="${signatureImage.startsWith('data:') ? signatureImage : `data:image/png;base64,${signatureImage}`}" style="max-width:100%;max-height:80px;object-fit:contain;${signatureImageCss(signatureImage)}" /></body></html>` }}
                   style={{ flex: 1, backgroundColor: 'transparent' }}
                   scrollEnabled={false}
                 />
