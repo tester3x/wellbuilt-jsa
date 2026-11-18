@@ -1,0 +1,42 @@
+{
+  "sourceCommit": "a300f6a571c3816bd547c94918b64f14e57ffc30",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+  "reservation": "android-release-v107",
+  "reservationTagObject": "420a4496de737a1a6704a7f1906f8c7f18435be8",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 107,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-107-a300f6a\\com.syconik801.jsaapp-vc107.apk",
+  "apkSha256": "65626e6dbfde069c72389962c592fe1343df7992e59444f1b0e6d9dd853c28d1",
+  "completedAt": "2026-11-18T03:43:01.313Z",
+  "installed": {
+    "S24": "107 read back; Saved JSAs cards visually checked; search and match count verified",
+    "Fold": "107 read back; Saved JSAs opened with all 53 retained records"
+  },
+  "checks": [
+    "TypeScript passed",
+    "History summary aggregate and sparse-data tests passed",
+    "History refresh offline/cache tests passed",
+    "Prepared history local and cloud ownership/dedupe tests passed",
+    "Release runner reservation tests passed"
+  ],
+  "behavior": [
+    "Date-first headings",
+    "All known locations and activities with counts",
+    "Notes and recorded shift/signing/end metadata",
+    "Local search",
+    "No signed records changed or deleted"
+  ],
+  "limitations": [
+    "Missing historical locations and activities are labeled not recorded; they cannot be reconstructed from absent data",
+    "Open ongoing on-shift and off-shift lifecycle checks remain separate from this saved-list test",
+    "Other-machine unpushed work is undiscoverable"
+  ]
+}
