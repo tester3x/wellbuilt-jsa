@@ -39,7 +39,7 @@ import {
 import { STORAGE_KEYS } from "../constants/storageKeys";
 import { fetchDriverProfile } from "../services/driverAuth";
 import { wbDiagLog } from "../services/wbDiagLog";
-import { allPreparationConfirmed } from "../services/jsaPreparation";
+import { allPreparationConfirmed, preparationAnswers, preparationChecks } from "../services/jsaPreparation";
 import { useLanguage } from "./contexts/LanguageContext";
 import { useTheme } from "./contexts/ThemeContext";
 
@@ -84,7 +84,11 @@ export default function SignoffScreen() {
   const emergencyContacts = themeEmergencyContacts.map((c, i) => ({ id: `ec-${i}`, ...c }));
   const companyContacts = themeCompanyContacts.map((c, i) => ({ id: `cc-${i}`, ...c }));
 
-  const [prepared, setPrepared] = useState<Record<string, boolean>>({});
+  const [preparedSelections, setPrepared] = useState<Record<string, boolean>>({});
+  const prepared = useMemo(
+    () => preparationAnswers(preparedItemsList, preparedSelections),
+    [preparedItemsList, preparedSelections],
+  );
   const preparationConfirmed = allPreparationConfirmed(preparedItemsList, prepared);
   const [notes, setNotes] = useState("");
   const [signature, setSignature] = useState("");
@@ -1691,7 +1695,7 @@ export default function SignoffScreen() {
         {/* Prepared checklist */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>{t("I am prepared for work")}</Text>
-          {preparedItemsList.map((item) => (
+          {preparationChecks(preparedItemsList).map((item) => (
             <View key={item.id} style={styles.checkRow}>
                 <Switch
                   accessibilityLabel={t(item.label)}
