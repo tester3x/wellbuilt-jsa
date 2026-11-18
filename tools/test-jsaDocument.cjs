@@ -35,3 +35,5 @@ assert.equal((complete.match(/<h2>Locations covered<\/h2>/g)||[]).length,1);
 assert(complete.indexOf('Locations covered')>complete.indexOf('Original signature'));
 assert(complete.indexOf('First job')<complete.indexOf('Second job'));
 assert(!complete.includes('[object Object]'));assert(complete.includes('Signed Driver'));
+
+const linkedRecord={...record,historyContext:{coveredJobs:[{jobRef:'j1',wellName:'Thor 1',dropOff:'Hydro Clear',source:'linked_job',recordedAtMs:1000},{jobRef:'j2',wellName:'Gabriel 7',dropOff:'Hydro Clear',source:'recorded_addition',recordedAtMs:2000}],additions:[{location:'Gabriel 5',activity:'Water',conditionsDiffer:false,acknowledgedAtMs:3000}]}};const frozenLinked=JSON.stringify(linkedRecord);for(const width of [undefined,3,4]){const html=jsaDocumentHtml(linkedRecord,width);for(const name of ['Thor 1','Hydro Clear','Gabriel 7','Gabriel 5','Site B','Original signature'])assert.ok(html.includes(name),name);}assert.equal(JSON.stringify(linkedRecord),frozenLinked);

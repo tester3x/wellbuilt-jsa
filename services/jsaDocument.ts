@@ -16,7 +16,7 @@ export function recordCustomer(r:any,t:Translator=identity):string{
 }
 
 function locationSections(r:any,t:Translator,locale:string){
- const additions=Array.isArray(r.additions)?r.additions:[];
+ const additions=[...(Array.isArray(r.additions)?r.additions:[]),...(Array.isArray(r.historyContext?.additions)?r.historyContext.additions:[])];
  const seen=new Set<string>();
  const originals:any[]=[];
  const addOriginal=(name:unknown,activity:unknown)=>{
@@ -28,13 +28,15 @@ function locationSections(r:any,t:Translator,locale:string){
  if(!originals.length)addOriginal(r.wellName,r.jobActivityName);
  const signedAt=signingTime(r.timestamp||r.createdAt,locale,t('Not recorded'));
  const standaloneRows=[...originals.map(item=>({...item,meta:`${t('Original')} · ${signedAt}`,different:false})),...additions.map((a:any)=>({location:a.location,activity:a.activity,meta:`${t('Added')} · ${signingTime(a.acknowledgedAtMs,locale,t('Not recorded'))}`,different:additionHasDifferences(a)}))];
- const jobs=Array.isArray(r.coveredJobs)?r.coveredJobs:[];
+ const jobs=[...(Array.isArray(r.coveredJobs)?r.coveredJobs:[]),...(Array.isArray(r.historyContext?.coveredJobs)?r.historyContext.coveredJobs:[])];
  const unique=new Set<string>();
- const rows=jobs.length?jobs.filter((j:any)=>{
+ const jobRows=jobs.length?jobs.filter((j:any)=>{
    const key=JSON.stringify([j.jobRef,j.wellName,j.jobType,j.recordedAtMs]);
    if(!j.wellName||unique.has(key))return false;unique.add(key);return true;
- }).map((j:any)=>({location:j.wellName,activity:[j.jobType,j.dropOff].filter(Boolean).join(' � '),
-   meta:`${t(j.method==='read_and_acknowledged'?'Original':'Acknowledged')} � ${signingTime(j.recordedAtMs,locale,t('Not recorded'))}`,different:false})):standaloneRows;
+ }).map((j:any)=>({location:j.wellName,activity:[j.jobType,j.dropOff].filter(Boolean).join(' � '),
+   meta:`${t(j.source==='linked_job'?'Linked job':j.method==='read_and_acknowledged'?'Original':'Acknowledged')} � ${signingTime(j.recordedAtMs,locale,t('Not recorded'))}`,different:false})):[];
+ const jobLocations=new Set(jobs.flatMap((j:any)=>[j.wellName,j.dropOff]).filter(Boolean).map((v:string)=>v.trim().toLowerCase()));
+ const rows=[...jobRows,...standaloneRows.filter(row=>row.different||!jobLocations.has(String(row.location||'').trim().toLowerCase())),...(r.historyContext?.locations||[]).filter((name:any)=>typeof name==='string'&&!jobLocations.has(name.trim().toLowerCase())&&!seen.has(name.trim().toLowerCase())).map((name:string)=>({location:name,activity:'',meta:t('Recorded location'),different:false}))];
  const covered=rows.length?`<section class="location-block"><h2>${escape(t('Locations covered'))}</h2>${rows.map((row:any)=>`<div class="location-row"><div><b>${row.different?'* ':''}${escape(row.location)}</b><span>${escape(row.activity||'—')}</span></div><small>${escape(row.meta)}</small></div>`).join('')}${additions.length?`<p class="location-note">${escape(t('Added locations without an * were acknowledged under the same company assessment. Location-specific differences are listed separately.'))}</p>`:''}</section>`:'';
  const changed=additions.filter(additionHasDifferences);
  const differences=changed.length?`<section class="location-block"><h2>${escape(t('Location-specific differences'))}</h2>${changed.map((a:any)=>`<div class="difference"><h3>* ${escape(a.location)} · ${escape(a.activity)}</h3>${a.conditionsDiffer===true||a.conditionsDiffer===undefined?`<div><b>${escape(t('Additional hazards:'))}</b> ${escape(a.hazards)}</div><div><b>${escape(t('Additional controls:'))}</b> ${escape(a.controls)}</div>${a.ppe?`<div><b>${escape(t('PPE changes:'))}</b> ${escape(a.ppe)}</div>`:''}`:''}${a.taskAssessment?`<h3>${escape(t('Additional task assessment'))}</h3>${(a.taskAssessment.templates||[]).map((template:any)=>`<div>${escape(template.name)} · ${escape(t('Version'))} ${escape(template.version)}</div>`).join('')}${(a.taskAssessment.steps||[]).map((s:any)=>`<h3>${escape(t(s.title))}</h3>${(s.items||[]).map((i:any)=>`<div class="item"><b>${escape(t('Hazard:'))}</b> ${escape(t(i.hazard))}<br><b>${escape(t('Controls:'))}</b> ${escape(t(i.controls))}</div>`).join('')}`).join('')}${(a.taskAssessment.ppeItems||[]).length?`<div><b>${escape(t('PPE:'))}</b> ${(a.taskAssessment.ppeItems||[]).map((p:any)=>escape(t(p.label))).join(', ')}</div>`:''}${(a.taskAssessment.preparedItems||[]).length?`<div><b>${escape(t('Preparation:'))}</b> ${(a.taskAssessment.preparedItems||[]).map((p:any)=>escape(t(p.label))).join(', ')}</div>`:''}`:''}<small>${escape(t('Acknowledged'))} ${escape(signingTime(a.acknowledgedAtMs,locale,t('Not recorded')))}</small></div>`).join('')}</section>`:'';
