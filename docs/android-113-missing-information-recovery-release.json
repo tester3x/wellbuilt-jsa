@@ -1,0 +1,47 @@
+{
+  "sourceCommit": "b9ffd436f662be7bce1c63341db7b3a2a1f370e1",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+  "reservation": "android-release-v113",
+  "reservationTagObject": "120e38191827201d0854aed124b529756491fe94",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 113,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-113-b9ffd43\\com.syconik801.jsaapp-vc113.apk",
+  "apkSha256": "8b2844a7edf6d556cec780b1ee46852d80d9b2e7e86febb57ca9efc827e4ea26",
+  "completedAt": "2026-11-18T06:23:09.944Z",
+  "installed": {
+    "S24": "113 verified; retained16 records and Slawson report",
+    "Fold": "113 verified; retained39 records; missing-info badge, linked-history refresh and recovery modal inspected; Save disabled without required fields/confirmation; canceled without correcting old test"
+  },
+  "backend": {
+    "sourceCommit": "00c2ee8011df26da0cd2447a9c2beb57f1dad13d",
+    "function": "jsaDisplayCorrections",
+    "state": "ACTIVE",
+    "unauthenticatedStatus": 401
+  },
+  "checks": [
+    "TypeScript",
+    "New signing requires original operator and initial location on/off shift",
+    "Actual prepared submit refuses missing operator before record write",
+    "Separate correction ledger, offline save and cloud restore",
+    "Owner, account-change and signature fences",
+    "Reopening old records makes no corrections",
+    "Report provenance and original-signature immutability",
+    "Retained history and merge regressions"
+  ],
+  "liveDataVerification": {
+    "signedFirebaseSnapshotsRechecked": 43,
+    "changed": 0,
+    "oldTestCorrectionsApplied": false
+  },
+  "limitations": [
+    "New signing and actual confirmation persistence verified in automated fixtures; no live JSA signed or corrected during device check."
+  ]
+}
