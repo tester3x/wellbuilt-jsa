@@ -26,6 +26,21 @@ export function mergePreparedHistory(legacy:any[], cached:any[], local:any[]):an
  // Native signed evidence retains the frozen assessment when the cloud export
  // has only the authored answers. A refresh never replaces a legacy row.
  for(const r of [...cached,...local])rows.set(r.id,rows.get(r.id)?.historyContext?{...r,historyContext:rows.get(r.id).historyContext}:r);
- for(const r of legacy)rows.set(r.id,r);
+ for(const r of legacy){
+  const linked=typeof r.governedRequestRef==='string'?rows.get(r.governedRequestRef):null;
+  const driver=(v:any)=>v.driverId||v.driverHash;
+  if(linked?.workflow==='prepared'&&r.companyId&&r.companyId===linked.companyId&&driver(r)&&driver(r)===driver(linked)){
+   // One display row for the explicit local/server identity. Keep authored fields
+   // and original signature from the local save; supplemental history is separate.
+   rows.set(linked.id,{...r,id:linked.id,workflow:'prepared',state:'saved',
+    historyAliases:[...(linked.historyAliases||[]),r.id],
+    historyContext:{...linked.historyContext,
+     coveredJobs:[...(linked.historyContext?.coveredJobs||[]),...(linked.coveredJobs||[]),...(r.historyContext?.coveredJobs||[])],
+     additions:[...(linked.additions||[]),...(linked.historyContext?.additions||[]),...(r.historyContext?.additions||[])],
+     locations:[...(linked.locations||[]),...(linked.historyContext?.locations||[])],
+    },
+   });
+  }else rows.set(r.id,r);
+ }
  return [...rows.values()];
 }

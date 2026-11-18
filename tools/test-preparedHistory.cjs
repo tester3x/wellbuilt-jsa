@@ -30,3 +30,14 @@ test('foreign owner and mismatched frozen assessment are refused',()=>{
  assert.deepEqual(projectPreparedJsaHistory([{event:e,grant:g}],{companyId:'company',driverId:'driver'}),[]);
  assert.deepEqual(projectPreparedJsaHistory([{event:e,grant:g}],{companyId:'company',driverId:'other'}),[]);
 });
+
+test('explicit same-owner local/server link yields one immutable signed card retaining all supplemental history',()=>{
+ const local={id:'local-save',governedRequestRef:'server-read',companyId:'c',driverHash:'d',signatureImage:'original',assessmentSteps:[{id:'frozen'}],wells:[{name:'Thor'}],additions:[{location:'Original addition'}]};
+ const server={id:'server-read',workflow:'prepared',companyId:'c',driverId:'d',locations:['Hydro Clear'],coveredJobs:[{wellName:'Gabriel 7'}],historyContext:{coveredJobs:[{wellName:'Thor',dropOff:'Hydro Clear'}]},additions:[{location:'Later addition'}]};
+ const before=JSON.stringify([local,server]);const rows=mergePreparedHistory([local],[server],[]);
+ assert.equal(rows.length,1);assert.equal(rows[0].id,'server-read');assert.equal(rows[0].signatureImage,'original');assert.equal(rows[0].assessmentSteps,local.assessmentSteps);assert.equal(rows[0].wells,local.wells);assert.equal(rows[0].additions,local.additions);assert.equal(rows[0].historyAliases[0],'local-save');assert.equal(rows[0].historyContext.coveredJobs.length,2);assert.equal(rows[0].historyContext.locations[0],'Hydro Clear');assert.equal(rows[0].historyContext.additions[0].location,'Later addition');assert.equal(JSON.stringify([local,server]),before);
+ assert.equal(mergePreparedHistory([{...local,driverHash:'other'}],[server],[]).length,2);
+ assert.equal(mergePreparedHistory([{...local,companyId:'other'}],[server],[]).length,2);
+ assert.equal(mergePreparedHistory([{...local,governedRequestRef:'other'}],[server],[]).length,2);
+ assert.equal(mergePreparedHistory([local],[],[])[0],local,'offline local record remains accessible');
+});
