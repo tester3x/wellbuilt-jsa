@@ -1,0 +1,31 @@
+{
+  "sourceCommit": "b982e9001fb03a643d1ae1bd1f3eb1eb93c4356e",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+  "reservation": "android-release-v112",
+  "reservationTagObject": "11ac6c0e00af7213a5ac11dc008a8c5063cae782",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 112,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-112-b982e90\\com.syconik801.jsaapp-vc112.apk",
+  "apkSha256": "61d919d89e63eaee96bdc0e3d46dddb0a561d2fbdc4273d62a350b6a27bcf498",
+  "completedAt": "2026-11-18T05:16:00.745Z",
+  "installed": {
+    "S24": "112 verified; report header resolves linked operator after history refresh",
+    "Fold": "112 verified; Thor report header shows SLAWSON EXPLORATION COMPANY, INC."
+  },
+  "backendSource": "4f4fd94bf2c3c661833b343e84bb39071438e2d2",
+  "checks": [
+    "TypeScript",
+    "Document operator fallback and immutable record tests",
+    "Linked-history ownership tests",
+    "Actual header checked on both phones"
+  ],
+  "scope": "Display-only verified operator; no signed snapshot or work-state changes"
+}
