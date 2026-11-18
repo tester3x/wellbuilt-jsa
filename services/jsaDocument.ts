@@ -30,11 +30,11 @@ function locationSections(r:any,t:Translator,locale:string){
  const standaloneRows=[...originals.map(item=>({...item,meta:`${t('Original')} · ${signedAt}`,different:false})),...additions.map((a:any)=>({location:a.location,activity:a.activity,meta:`${t('Added')} · ${signingTime(a.acknowledgedAtMs,locale,t('Not recorded'))}`,different:additionHasDifferences(a)}))];
  const jobs=[...(Array.isArray(r.coveredJobs)?r.coveredJobs:[]),...(Array.isArray(r.historyContext?.coveredJobs)?r.historyContext.coveredJobs:[])];
  const unique=new Set<string>();
- const jobRows=jobs.length?jobs.filter((j:any)=>{
-   const key=JSON.stringify([j.jobRef,j.wellName,j.jobType,j.recordedAtMs]);
-   if(!j.wellName||unique.has(key))return false;unique.add(key);return true;
- }).map((j:any)=>({location:j.wellName,activity:[j.jobType,j.dropOff].filter(Boolean).join(' � '),
-   meta:`${t(j.source==='linked_job'?'Linked job':j.method==='read_and_acknowledged'?'Original':'Acknowledged')} � ${signingTime(j.recordedAtMs,locale,t('Not recorded'))}`,different:false})):[];
+ const jobRows=jobs.flatMap((j:any)=>[j.wellName,j.dropOff].filter(Boolean).map((name:string)=>({location:name,activity:j.jobType||'',
+   meta:`${t(j.source==='linked_job'?'Linked job':j.method==='read_and_acknowledged'?'Original':'Acknowledged')} · ${signingTime(j.recordedAtMs,locale,t('Not recorded'))}`,different:false}))).filter((row:any)=>{
+   const key=JSON.stringify([String(row.location).trim().toLowerCase(),String(row.activity).trim().toLowerCase()]);
+   if(unique.has(key))return false;unique.add(key);return true;
+ });
  const jobLocations=new Set(jobs.flatMap((j:any)=>[j.wellName,j.dropOff]).filter(Boolean).map((v:string)=>v.trim().toLowerCase()));
  const rows=[...jobRows,...standaloneRows.filter(row=>row.different||!jobLocations.has(String(row.location||'').trim().toLowerCase())),...(r.historyContext?.locations||[]).filter((name:any)=>typeof name==='string'&&!jobLocations.has(name.trim().toLowerCase())&&!seen.has(name.trim().toLowerCase())).map((name:string)=>({location:name,activity:'',meta:t('Recorded location'),different:false}))];
  const covered=rows.length?`<section class="location-block"><h2>${escape(t('Locations covered'))}</h2>${rows.map((row:any)=>`<div class="location-row"><div><b>${row.different?'* ':''}${escape(row.location)}</b><span>${escape(row.activity||'—')}</span></div><small>${escape(row.meta)}</small></div>`).join('')}${additions.length?`<p class="location-note">${escape(t('Added locations without an * were acknowledged under the same company assessment. Location-specific differences are listed separately.'))}</p>`:''}</section>`:'';
