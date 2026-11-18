@@ -10,6 +10,7 @@ export interface GovernedJobContext {
   intent: string;
   wellName?: string;
   jobType?: string;
+  operator?: string;
   jobRef?: string;
   groupRef?: string | null;
 }
@@ -19,6 +20,7 @@ export type GovernedJobPopulate =
       kind: 'populate';
       wellName: string;
       jobType?: string;
+      operator?: string;
       requestId: string;
       jobRef?: string;
       intent: string;
@@ -49,6 +51,7 @@ export function decideGovernedJobPopulate(input: {
   const wellName = typeof input.context.wellName === 'string' ? input.context.wellName.trim() : '';
   if (!wellName) return { kind: 'fail_closed', reason: 'missing_well' };
   const jobType = typeof input.context.jobType === 'string' ? input.context.jobType.trim() : '';
+  const operator = typeof input.context.operator === 'string' ? input.context.operator.trim() : '';
   const jobRef = typeof input.context.jobRef === 'string' && input.context.jobRef.trim()
     ? input.context.jobRef.trim()
     : undefined;
@@ -56,6 +59,7 @@ export function decideGovernedJobPopulate(input: {
     kind: 'populate',
     wellName,
     ...(jobType ? { jobType } : {}),
+    ...(operator ? { operator } : {}),
     requestId: input.context.requestId,
     ...(jobRef ? { jobRef } : {}),
     intent: input.context.intent,
@@ -84,7 +88,7 @@ export function snapshotFromPopulate(pop: GovernedJobPopulate): GovernedJobSnaps
   if (pop.kind !== 'populate') return null;
   const well = {
     name: pop.wellName,
-    operator: '',
+    operator: pop.operator || '',
     county: '',
     ...(pop.jobType ? { jobType: pop.jobType } : {}),
   };

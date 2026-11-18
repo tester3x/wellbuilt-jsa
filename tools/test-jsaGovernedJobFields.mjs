@@ -520,5 +520,14 @@ check('5A-2 signoff finalizes activity at the adapter payload boundary',
   && signoffSrc.includes('jobActivityName: activityForSave')
   && !/task:\s*activityForSave\s*\|\|\s*paramsTask\s*\|\|\s*canonicalActivity/.test(signoffSrc));
 
+{
+  const parsed=parseGetContextView({...getPayload,operator:' Verified operator '});
+  check('protected get retains bounded operator',parsed.ok&&parsed.value.operator==='Verified operator');
+  const pop=decideGovernedJobPopulate({launchRequestId:RID,context:parsed.ok?parsed.value:null,explicitFailure:false});
+  const frozen=freezeGovernedJobForSave({populate:pop,wells:[{name:'Forged well',operator:'URL operator'}],wellName:'Forged well',jobActivityName:'Forged task'});
+  check('operator survives protected job hydration and final save freeze',frozen.wells[0].operator==='Verified operator');
+  check('pending display retains verified operator',parsed.ok&&pendingDisplayFields(parsed.value).operator==='Verified operator');
+  check('malformed operator is rejected',!parseGetContextView({...getPayload,operator:'x'.repeat(301)}).ok);
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

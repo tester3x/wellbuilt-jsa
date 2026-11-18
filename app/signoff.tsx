@@ -514,13 +514,13 @@ export default function SignoffScreen() {
 
       // operator — scopes the JSA WITHIN a shift. A driver running for two
       // oil companies in one shift gets two distinct JSAs. Source order:
-      // first well's operator field → params.operator (if WB T sent one) →
-      // empty string (= shift-default scope, single-operator shift).
+      // protected well's operator field; standalone forms may use their selected
+      // operator param. Governed launches never trust operator URL hints.
       const operatorForPayload = (() => {
         if(independent && params.operator?.trim())return params.operator.trim();
         const fromWell = (wellsForSave as any[]).find((w: any) => typeof w?.operator === 'string' && w.operator.trim())?.operator;
         if (fromWell) return String(fromWell).trim();
-        const fromParam = typeof (params as any).operator === 'string' ? (params as any).operator.trim() : '';
+        const fromParam = !resolved.hasLaunch && typeof (params as any).operator === 'string' ? (params as any).operator.trim() : '';
         return fromParam;
       })();
       requireJsaSaveInformation({operator:operatorForPayload,wells:wellsForSave,wellName:wellNameForSave,locations});

@@ -8,6 +8,7 @@ function fixture(){const id='r'.repeat(43),a={packageId:'water',contentHash:'h',
   readRequest:async id=>id===f.id?f.request:null,record:async(...args)=>{if(f.fail)throw Error('disk failed');f.writes.push(args);},drain:async()=>{f.drains++;}}}});return f;}
 test('only the protected native request can populate the actual original screens',async()=>{const f=fixture();const r=await f.api.resolvePreparedRead(f.id);
  assert.equal(r.populate.requestId,f.id);assert.equal(r.handoff.source,'governed_snapshot');assert.equal(r.handoff.wellName,'Well');assert.equal(r.assessment.contentHash,'h');
+ assert.equal(JSON.parse(r.handoff.wells)[0].operator,'Operator');
  await assert.rejects(f.api.resolvePreparedRead('untrusted'));f.request=null;await assert.rejects(f.api.resolvePreparedRead(f.id));});
 test('ambiguous frozen assessments refuse rather than substitute current templates',async()=>{const f=fixture();f.request.grant.assessments.push({...f.a});await assert.rejects(f.api.resolvePreparedRead(f.id),/unambiguously/);});
 test('a changed grant or assessment cannot submit an old rendered form',async()=>{const f=fixture();await assert.rejects(f.api.recordPreparedRead(f.id,'other','h',{}));

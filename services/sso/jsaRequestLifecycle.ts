@@ -57,6 +57,7 @@ export interface JsaRequestContextView {
   action?: JsaCompletionAction;
   wellName?: string;
   jobType?: string;
+  operator?: string;
 }
 
 export const JSA_WELL_NAME_MAX = 120;
@@ -179,6 +180,11 @@ export function parseGetContextView(raw: unknown): ParseDecision<JsaRequestConte
       if (!jobType) return { ok: false, field: 'jobType' };
       view.jobType = jobType;
     }
+    if (o.operator !== undefined) {
+      const operator = boundedDisplay(o.operator, 300);
+      if (!operator) return { ok: false, field: 'operator' };
+      view.operator = operator;
+    }
   }
   if (o.state === 'completed') {
     if (!isCompletionAction(o.action)) return { ok: false, field: 'action' };
@@ -210,6 +216,7 @@ export function pendingDisplayFields(view: JsaRequestContextView): {
   expiresAtMs?: number;
   wellName?: string;
   jobType?: string;
+  operator?: string;
 } {
   return {
     intent: view.intent,
@@ -218,6 +225,7 @@ export function pendingDisplayFields(view: JsaRequestContextView): {
     ...(view.expiresAtMs !== undefined ? { expiresAtMs: view.expiresAtMs } : {}),
     ...(view.wellName ? { wellName: view.wellName } : {}),
     ...(view.jobType ? { jobType: view.jobType } : {}),
+    ...(view.operator ? { operator: view.operator } : {}),
   };
 }
 

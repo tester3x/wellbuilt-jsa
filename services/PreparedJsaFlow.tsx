@@ -14,6 +14,7 @@ export async function resolvePreparedRead(id: string) {
   const applicable = matches.length ? matches : candidates.filter((a: any) => !a.tasks.length);
   if (applicable.length !== 1) throw Error('The required assessment is not prepared unambiguously. Connect to refresh it.');
   const populate: GovernedJobPopulate = { kind: 'populate', requestId: id, wellName: request.job.wellName,
+    operator: request.job.operator,
     jobType: request.job.jobType, jobRef: request.job.jobRef, intent: 'read_and_acknowledge' };
   return { request, assessment: applicable[0], populate,
     handoff: applyGovernedJobHandoff({ populate, wellsParam: '[]', wellNameParam: '', jobActivityParam: '' }), hasLaunch: true };
