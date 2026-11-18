@@ -1,0 +1,16 @@
+{
+  "versionCode": 114,
+  "date": "2026-11-18",
+  "device": "ZFold",
+  "checks": [
+    "New draft cannot advance without a location",
+    "Submit refuses missing operator with Cannot complete",
+    "Submit refuses missing initial location with Cannot complete",
+    "New closed SOFTWARE TEST ONLY recovery fixture; no earlier records edited",
+    "Correction Save disabled until explicit confirmation",
+    "One separate cloud correction; original fields, signature and update time unchanged",
+    "Correction persisted after cold restart",
+    "43 existing signed snapshots rechecked unchanged"
+  ],
+  "additionalFinding": "Opaque signature PNG background turned black by bitmap brightness/tint filter; renderer repair being packaged in115."
+}

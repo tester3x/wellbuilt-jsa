@@ -1752,9 +1752,7 @@ export default function SignoffScreen() {
                 <View style={{ backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 4, height: 54, justifyContent: 'center' }}>
                   <Image
                     source={{ uri: signatureImage.startsWith('data:') ? signatureImage : `data:image/png;base64,${signatureImage}` }}
-                    // tintColor forces strokes to render black regardless of
-                    // the capture source. Matches Settings preview (filter:brightness(0)).
-                    style={{ width: '100%', height: 48, tintColor: '#000' }}
+                    style={{ width: '100%', height: 48, backgroundColor: '#fff' }}
                     resizeMode="contain"
                   />
                 </View>

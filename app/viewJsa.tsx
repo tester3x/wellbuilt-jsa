@@ -659,7 +659,7 @@ export default function ViewJsaScreen() {
                   <Image
                     source={{ uri: (params.signatureImage as string).startsWith('data:') ? params.signatureImage : `data:image/png;base64,${params.signatureImage}` }}
                     // Force black strokes (matches Settings preview + PDF).
-                    style={{ width: '100%', height: 72, tintColor: '#000' }}
+                    style={{ width: '100%', height: 72, backgroundColor: '#fff' }}
                     resizeMode="contain"
                   />
                 </View>
