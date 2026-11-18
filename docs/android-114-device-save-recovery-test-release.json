@@ -1,0 +1,44 @@
+{
+  "sourceCommit": "6767059b12e8e433fc00d1e8c43dfe64bfee14b1",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+  "reservation": "android-release-v114",
+  "reservationTagObject": "3eae4333eb4ea74c07c7578d58798ed77a96c49b",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 114,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-114-6767059\\com.syconik801.jsaapp-vc114.apk",
+  "apkSha256": "d71cba76829bc82a99f587322d6beab80e7088ea2fa219e053d9752219faf095",
+  "completedAt": "2026-11-18T07:10:25.640Z",
+  "installed": {
+    "S24": "114 installed and device tested",
+    "Fold": "114 installed after S24 pass; version read back; foreground left alone"
+  },
+  "finding113": "Missing-information guard prevented the write, but inherited outer catch falsely showed Submitted. Fixed by requiring durable local-save proof before any pending/success completion modal.",
+  "deviceChecks": [
+    "Missing location disables initial Next",
+    "Missing operator at Submit shows Cannot complete and no saved JSA",
+    "Missing initial location at Submit shows Cannot complete and no saved JSA",
+    "Recovery fixture requires fields, reason and explicit confirmation; Save disabled before confirmation and enabled after",
+    "Saved correction visible in operator header, stacked location and provenance",
+    "Cold restart retains correction",
+    "Firebase fixture fields, signature and update time unchanged; exactly one separate correction uploaded"
+  ],
+  "testData": "One new closed SOFTWARE TEST ONLY recovery fixture, deliberately missing original metadata; no real job or earlier test record edited.",
+  "integrity": {
+    "existingSignedSnapshotsRechecked": 43,
+    "changed": 0
+  },
+  "checks": [
+    "Actual submit catch regression",
+    "Information recovery and cloud restore fixtures",
+    "Prepared protected submit regressions",
+    "TypeScript"
+  ]
+}
