@@ -1,3 +1,4 @@
+import {requireJsaSaveInformation} from '../services/jsaInformation';
 import {HeaderBackButton} from '@react-navigation/elements';
 import {usePreparedRead} from '../services/PreparedJsaFlow';
 import { BrandedAlert as Alert } from '../services/brandedAlert';
@@ -516,6 +517,7 @@ export default function SignoffScreen() {
         const fromParam = typeof (params as any).operator === 'string' ? (params as any).operator.trim() : '';
         return fromParam;
       })();
+      requireJsaSaveInformation({operator:operatorForPayload,wells:wellsForSave,wellName:wellNameForSave,locations});
       const operatorSlug = operatorForPayload
         ? operatorForPayload.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
         : '';

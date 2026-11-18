@@ -9,6 +9,7 @@ new Function('require','module','exports',ts.transpileModule(fs.readFileSync('se
  if(n==='@react-native-async-storage/async-storage')return{getItem:async()=>JSON.stringify(rows)};
  if(n.endsWith('storageKeys'))return{STORAGE_KEYS:{saves:'s'}};
  if(n.endsWith('jsaGovernedAuthLive'))return{loadUsableGovernedSession:async()=>session};
+ if(n==='./jsaDisplayCorrections')return {applySavedJsaCorrections:async rows=>rows};
  if(n==='./preparedJsaHistory')return projection.exports;
  if(n==='./preparedShiftJsa')return{preparedShiftJsa:{history:async()=>[]}};
  if(n.endsWith('jsaGovernedHistoryLookupLive'))return{authenticatedGovernedFirestoreFetch:async()=>({ok:!fail,json:async()=>({fields:{currentShiftId:{stringValue:'2026-09-14_123'}}})})};

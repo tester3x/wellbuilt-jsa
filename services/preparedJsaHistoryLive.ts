@@ -1,3 +1,4 @@
+import {syncJsaDisplayCorrections} from './jsaDisplayCorrections';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {getFunctions,httpsCallable} from 'firebase/functions';
 import {app} from './firebase';
@@ -10,6 +11,7 @@ import {ownJsaRecords,PREPARED_HISTORY_CACHE} from './jsaRecord';
  * install. No current-shift authority or legacy cloud writes are involved. */
 export async function syncPreparedJsaHistory():Promise<void>{
  const session=await loadUsableGovernedSession();if(!session)throw Error('Sign in first.');
+ await syncJsaDisplayCorrections().catch(()=>{});
  const local=await ownJsaRecords(),today=new Date();
  const dates=local.map((r:any)=>r.date).filter((d:any)=>typeof d==='string'&&/^20\d{2}-\d{2}-\d{2}$/.test(d));
  const parts=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;

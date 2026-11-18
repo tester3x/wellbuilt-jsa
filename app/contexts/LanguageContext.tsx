@@ -16,6 +16,21 @@ const LanguageContext = createContext<LanguageContextValue | undefined>(undefine
 const translations: Record<Language, Record<string, string>> = {
   en: {},
   es: {
+    "Incomplete details": "Detalles incompletos",
+    "Review missing information": "Revisar información faltante",
+    "Recover missing information": "Recuperar información faltante",
+    "Confirmed operator": "Operador confirmado",
+    "Confirmed locations, one per line": "Ubicaciones confirmadas, una por línea",
+    "How was this information verified?": "¿Cómo se verificó esta información?",
+    "I confirm this information is correct.": "Confirmo que esta información es correcta.",
+    "Save supplemental information": "Guardar información complementaria",
+    "Supplemental information": "Información complementaria",
+    "Confirmed supplemental information": "Información complementaria confirmada",
+    "Confirmed by": "Confirmado por",
+    "The original signed JSA is unchanged.": "El JSA firmado original no cambia.",
+    "Initial location": "Ubicación inicial",
+    "This saves supplemental information separately, available offline and synced to your account. The original signed JSA is unchanged.": "Esto guarda información complementaria por separado, disponible sin conexión y sincronizada con su cuenta. El JSA firmado original no cambia.",
+
     "Date not recorded": "Fecha no registrada",
     "Signed report": "Informe firmado",
     "On shift": "En turno",

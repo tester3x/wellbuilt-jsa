@@ -1,3 +1,4 @@
+import {requireJsaSaveInformation} from './jsaInformation';
 import { createContext, useContext } from 'react';
 import { preparedShiftJsa } from './preparedShiftJsa';
 import { applyGovernedJobHandoff, type GovernedJobPopulate } from './sso/jsaGovernedJobFields';
@@ -21,8 +22,9 @@ export async function recordPreparedRead(id: string, grantId: string, assessment
   const current = await resolvePreparedRead(id);
   if (current.request.grant.id !== grantId || current.assessment.contentHash !== assessmentHash)
     throw Error('The prepared JSA changed. Reopen this job from Tickets.');
+  requireJsaSaveInformation({operator:current.request.job.operator,wells:[{name:current.request.job.wellName}]});
   await preparedShiftJsa.record(current.request.job.jobRef, current.request.job.operator, 'read', {
-    assessmentHash, snapshot,
+    assessmentHash, snapshot:{...snapshot,locations:[current.request.job.wellName]},
   }, current.request.grant.id);
   void preparedShiftJsa.drain().catch(() => {});
   return 'wellbuilt-tickets://jsa-return?v=1&requestId=' + encodeURIComponent(id) + '&status=completed';

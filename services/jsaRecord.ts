@@ -1,3 +1,4 @@
+import {applySavedJsaCorrections} from './jsaDisplayCorrections';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {STORAGE_KEYS} from '../constants/storageKeys';
 import {loadUsableGovernedSession} from './sso/jsaGovernedAuthLive';
@@ -15,8 +16,8 @@ export async function ownJsaRecords(options:{includePrepared?:boolean}={}){
  }
  const current=await loadUsableGovernedSession();
  if(!current||current.uid!==session.uid||current.generation!==session.generation)throw new Error('Session changed. Reopen your JSA.');
- return mergePreparedHistory(rows,cached,prepared).filter((r:any)=>r.companyId===session.companyId&&(r.driverId===session.driverId||!r.driverId&&r.driverHash===session.driverId))
-   .map((r:any)=>({...r,driverId:session.driverId}));
+ return applySavedJsaCorrections(mergePreparedHistory(rows,cached,prepared).filter((r:any)=>r.companyId===session.companyId&&(r.driverId===session.driverId||!r.driverId&&r.driverHash===session.driverId))
+   .map((r:any)=>({...r,driverId:session.driverId})),session);
 }
 export async function ownJsaRecord(id:string){const r=(await ownJsaRecords()).find((r:any)=>r.id===id||r.historyAliases?.includes(id));if(!r)throw new Error('This JSA is not available for the signed-in driver.');return r;}
 

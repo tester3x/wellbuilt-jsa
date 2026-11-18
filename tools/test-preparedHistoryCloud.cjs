@@ -11,6 +11,7 @@ function fixture(){
     {id:'nov-ack',source:'job_acknowledgment',kind:'jsa_ack',date:'2026-11-01',completedAt:'2026-11-01T13:00:00Z',record:{}}
    ]}};
   }};
+  if(name==='./jsaDisplayCorrections')return {syncJsaDisplayCorrections:async()=>{}};
   if(name==='./firebase')return {app:{}};
   if(name==='./sso/jsaGovernedAuthLive')return {loadUsableGovernedSession:async()=>current};
   if(name==='./jsaRecord')return {PREPARED_HISTORY_CACHE:'cache/',ownJsaRecords:async()=>[{date:'2026-10-30'}]};

@@ -1,3 +1,4 @@
+import {jsaOperator} from './jsaInformation';
 import {jsaDisplayReference} from './jsaResumeProjection';
 import {selectedAssessmentLabels} from './jsaAssessmentLabels';
 import {JSA_STEPS,PPE_ITEMS,PREPARED_FOR_WORK_ITEMS} from '../constants/jsaTemplate';
@@ -12,7 +13,7 @@ export function signingTime(value:unknown,locale='en-US',notRecorded='Not record
  return value!=null&&!Number.isNaN(date.getTime())?date.toLocaleString(locale,{timeZoneName:'short'}):notRecorded;
 }
 export function recordCustomer(r:any,t:Translator=identity):string{
-  return r.operator || r.historyContext?.operator || [...new Set((r.wells || []).map((w:any)=>w.operator).filter(Boolean))].join(', ') || t('Customer not recorded');
+  return jsaOperator(r) || t('Customer not recorded');
 }
 
 function locationSections(r:any,t:Translator,locale:string){
@@ -36,11 +37,11 @@ function locationSections(r:any,t:Translator,locale:string){
    if(unique.has(key))return false;unique.add(key);return true;
  });
  const jobLocations=new Set(jobs.flatMap((j:any)=>[j.wellName,j.dropOff]).filter(Boolean).map((v:string)=>v.trim().toLowerCase()));
- const rows=[...jobRows,...standaloneRows.filter(row=>row.different||!jobLocations.has(String(row.location||'').trim().toLowerCase())),...(r.historyContext?.locations||[]).filter((name:any)=>typeof name==='string'&&!jobLocations.has(name.trim().toLowerCase())&&!seen.has(name.trim().toLowerCase())).map((name:string)=>({location:name,activity:'',meta:t('Recorded location'),different:false}))];
+ const rows=[...(r.displayCorrection?.locations||[]).map((name:string)=>({location:name,activity:'',meta:t('Confirmed supplemental information'),different:false})),...jobRows,...standaloneRows.filter(row=>row.different||!jobLocations.has(String(row.location||'').trim().toLowerCase())),...(r.historyContext?.locations||[]).filter((name:any)=>typeof name==='string'&&!jobLocations.has(name.trim().toLowerCase())&&!seen.has(name.trim().toLowerCase())).map((name:string)=>({location:name,activity:'',meta:t('Recorded location'),different:false}))];
  const covered=rows.length?`<section class="location-block"><h2>${escape(t('Locations covered'))}</h2>${rows.map((row:any)=>`<div class="location-row"><div><b>${row.different?'* ':''}${escape(row.location)}</b><span>${escape(row.activity||'—')}</span></div><small>${escape(row.meta)}</small></div>`).join('')}${additions.length?`<p class="location-note">${escape(t('Added locations without an * were acknowledged under the same company assessment. Location-specific differences are listed separately.'))}</p>`:''}</section>`:'';
  const changed=additions.filter(additionHasDifferences);
  const differences=changed.length?`<section class="location-block"><h2>${escape(t('Location-specific differences'))}</h2>${changed.map((a:any)=>`<div class="difference"><h3>* ${escape(a.location)} · ${escape(a.activity)}</h3>${a.conditionsDiffer===true||a.conditionsDiffer===undefined?`<div><b>${escape(t('Additional hazards:'))}</b> ${escape(a.hazards)}</div><div><b>${escape(t('Additional controls:'))}</b> ${escape(a.controls)}</div>${a.ppe?`<div><b>${escape(t('PPE changes:'))}</b> ${escape(a.ppe)}</div>`:''}`:''}${a.taskAssessment?`<h3>${escape(t('Additional task assessment'))}</h3>${(a.taskAssessment.templates||[]).map((template:any)=>`<div>${escape(template.name)} · ${escape(t('Version'))} ${escape(template.version)}</div>`).join('')}${(a.taskAssessment.steps||[]).map((s:any)=>`<h3>${escape(t(s.title))}</h3>${(s.items||[]).map((i:any)=>`<div class="item"><b>${escape(t('Hazard:'))}</b> ${escape(t(i.hazard))}<br><b>${escape(t('Controls:'))}</b> ${escape(t(i.controls))}</div>`).join('')}`).join('')}${(a.taskAssessment.ppeItems||[]).length?`<div><b>${escape(t('PPE:'))}</b> ${(a.taskAssessment.ppeItems||[]).map((p:any)=>escape(t(p.label))).join(', ')}</div>`:''}${(a.taskAssessment.preparedItems||[]).length?`<div><b>${escape(t('Preparation:'))}</b> ${(a.taskAssessment.preparedItems||[]).map((p:any)=>escape(t(p.label))).join(', ')}</div>`:''}`:''}<small>${escape(t('Acknowledged'))} ${escape(signingTime(a.acknowledgedAtMs,locale,t('Not recorded')))}</small></div>`).join('')}</section>`:'';
- return {covered,differences};
+ const correction=r.displayCorrection;const notice=correction?'<section><h2>'+escape(t('Supplemental information'))+'</h2><p>'+escape(t('Confirmed by'))+' '+escape(correction.confirmedBy)+' · '+escape(signingTime(correction.confirmedAtMs,locale))+'</p><p>'+escape(correction.reason)+'</p><p>'+escape(t('The original signed JSA is unchanged.'))+'</p></section>':'';return {covered:covered+notice,differences};
 }
 
 /** Read/print is a projection only. It never signs, closes, or edits a record. */

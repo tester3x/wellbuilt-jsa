@@ -1,3 +1,4 @@
+import {missingJsaInformation} from '../../services/jsaInformation';
 import { jsaHistorySummary } from '../../services/jsaHistorySummary';
 import { BrandedAlert as Alert } from '../../services/brandedAlert';
 import { useFocusEffect, useRouter } from "expo-router";
@@ -68,7 +69,7 @@ export default function HistoryTabScreen() {
     try {
       setError(null);
       const { ownJsaRecords } = await import('../../services/jsaRecord');
-      setHistory(openRecordsFirst(await ownJsaRecords()));
+      const available=openRecordsFirst(await ownJsaRecords());setHistory(available);if(available.length)setLoading(false);
       // An absent cache is precisely when the server must still be checked.
       try {
         const results=await Promise.allSettled([
@@ -158,6 +159,7 @@ export default function HistoryTabScreen() {
             <Text style={styles.activeBadgeText}>{t('Active JSA')}</Text>
           </View>
         )}
+        {missingJsaInformation(item).length>0&&<Text style={{color:'#795500',fontWeight:'700',marginBottom:8}}>{t('Incomplete details')} · {t('Review missing information')}</Text>}
         <View style={styles.cardTop}>
           <Text style={[styles.cardWells, { fontSize: 17, fontWeight: '700' }]}>{summary.date || t('Date not recorded')}</Text>
           <View style={{ backgroundColor: openStandalone ? '#E6F5EA' : '#edf0ed', paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8 }}>
