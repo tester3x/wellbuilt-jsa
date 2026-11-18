@@ -18,7 +18,7 @@
   "completedAt": "2026-11-18T09:34:56.607Z",
   "installed": {
     "S24": "117 installed in place; restored same pending Burger1 JSA to Review & Submit via normal Tickets handoff; original preparation and PPE selections, name and signature retained",
-    "Fold": "Unchanged at116; left off shift"
+    "Fold": "117 installed in place at Mike request; ADB version117 verified; APK SHA256 matched original signed117 receipt; no launch, job, JSA or shift action performed"
   },
   "server": {
     "function": "jsaGetReadRequest",
