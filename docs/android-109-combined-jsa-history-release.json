@@ -1,0 +1,31 @@
+{
+  "sourceCommit": "fafb23d5d7c8b69c8e5a2e66d4366cb310897f79",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+  "reservation": "android-release-v109",
+  "reservationTagObject": "db8b75735c2082cf90abc8e302407b63e3aad5e6",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 109,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-109-fafb23d\\com.syconik801.jsaapp-vc109.apk",
+  "apkSha256": "c405579e0099a5a9a6cf95f0495eef40141dc4360abd06cd5a9fc32238588e1b",
+  "completedAt": "2026-11-18T05:03:30.751Z",
+  "installed": {
+    "S24": "109 verified; list 21 to16 cards after explicit link grouping; linked locations preserved",
+    "Fold": "109 verified; list53 to39 cards; Nov16 5:11PM Thor JSA appears once with Thor, Hydro Clear, Gabriel7 and Gabriel5"
+  },
+  "checks": [
+    "TypeScript",
+    "Explicit link and same-owner grouping; foreign owner and unlinked records remain separate",
+    "Frozen authored fields/signature and all stored inputs remain unchanged",
+    "Prepared cloud history and offline refresh checks",
+    "History lookup ownership checks"
+  ],
+  "scope": "Read-only combined history projection; no record deletions or signature changes; original local record IDs remain lookup aliases"
+}
