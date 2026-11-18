@@ -1,0 +1,24 @@
+{
+  "build": 112,
+  "sourceCommit": "b982e9001fb03a643d1ae1bd1f3eb1eb93c4356e",
+  "auditDate": "2026-11-17",
+  "savedCardCounts": {
+    "Fold": 39,
+    "S24": 16
+  },
+  "cloudBackedReports": 43,
+  "olderPhoneOnlyReports": 12,
+  "checks": {
+    "uniqueExplicitCloudReadIds": true,
+    "cardLocationsPresentInReports": true,
+    "cloudLinkedOperatorsAvailable": true,
+    "signedSnapshotsRechecked": 43,
+    "signedSnapshotsChanged": 0
+  },
+  "exceptions": {
+    "olderPhoneOnlyReportsMissingOperator": 2,
+    "status": "Not corrected without verified source; exact details kept in private local audit"
+  },
+  "method": "Read-only Firebase artifact/job/addition lookup and current report-render verification, plus device inspection of older local reports. No date-based merges, printing or signed record writes.",
+  "limitation": "Two historical local reports have no operator in the report and no matching signed Firebase read found; not an all-green audit."
+}
