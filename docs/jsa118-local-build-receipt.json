@@ -40,5 +40,13 @@
   ],
   "reconciliationLimitation": "Other-machine unpushed work cannot be discovered",
   "foldInstall": "adb install -r succeeded; dumpsys versionCode 118 verified",
-  "endJsaUserTest": "Pending user tap on S24; latest UI and backend still show open period with Resume. No close action executed by agent."
+  "endJsaUserTest": {
+    "result": "Passed after agent repeated on-screen End JSA confirmation; initial reported confirmation had left period open",
+    "backendPeriodState": "finalized",
+    "reason": "driver_ended_off_shift",
+    "home": "New JSA; no Resume or open-period card",
+    "signedArtifact": "Still exists and deep-equal to pre-close artifact",
+    "savedHistory": "Burger 1 signed report remains visible in Saved JSAs",
+    "printed": false
+  }
 }
