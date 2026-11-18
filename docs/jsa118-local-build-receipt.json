@@ -18,9 +18,9 @@
   "completedAt": "2026-11-18T16:47:28.905Z",
   "installed": true,
   "installedDevices": [
-    "S24"
+    "S24",
+    "ZFold"
   ],
-  "foldDisposition": "Left unchanged on 117",
   "verification": {
     "home": "Open off-shift JSA; Resume JSA and End JSA shown consistently",
     "resume": "Current signed record opens with original signature black on white and both linked locations",
@@ -38,5 +38,7 @@
     "Signature and document checks passed",
     "Backend home and period regression tests 49/49 passed"
   ],
-  "reconciliationLimitation": "Other-machine unpushed work cannot be discovered"
+  "reconciliationLimitation": "Other-machine unpushed work cannot be discovered",
+  "foldInstall": "adb install -r succeeded; dumpsys versionCode 118 verified",
+  "endJsaUserTest": "Pending user tap on S24; latest UI and backend still show open period with Resume. No close action executed by agent."
 }
