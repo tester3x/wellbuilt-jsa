@@ -8,3 +8,10 @@ assert.match(home,/home\.ordinaryEntryVerified \|\| workflowIsolation\.mountForm
 assert.match(home,/handleNextAllowed\(workflowIsolation\.blocked\)/);
 assert.match(home,/workflowIsolation\.mountForm && hasGovernedIdentity && standaloneAllowed/);
 console.log('Read-only home accepts only an exact ready owner; pending/governed/blocked entries and all mutation guards remain isolated.');
+const message=m.exports.jsaHomeMessage;
+assert.match(message({checking:false,error:'',state:{action:'resume',shiftState:'none'}}),/open off-shift JSA/);
+assert.match(message({checking:false,error:'',state:{action:'resume',shiftState:'open'}}),/current shift has an open JSA/);
+assert.match(message({checking:false,error:'',state:{action:'new',shiftState:'none'}}),/Use New JSA/);
+assert.match(message({checking:false,error:'failed',state:{action:'resume',shiftState:'none'}}),/Could not verify/);
+const card=fs.readFileSync('components/OffShiftJsaCard.tsx','utf8');assert.match(card,/useJsaHome/);assert.doesNotMatch(card,/operation: 'read'/);assert.match(card,/home\.refresh\(true\)/);
+console.log('Home message, primary action and End JSA use one authoritative on/off-shift state.');

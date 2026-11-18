@@ -69,7 +69,7 @@ export default function WelcomeModal({
           <Text style={styles.subtitle}>{t('Welcome to WellBuilt JSA')}</Text>
           <Text style={styles.date}>{todayLong(locale)}</Text>
           <Text style={[styles.subtitle, { textAlign: 'center', marginBottom: 16 }]}>
-            {t(nextStep === 'read' ? 'Your job details are ready. Continue to read your JSA.' : 'Start a new JSA or resume the JSA for your current shift.')}
+            {t(nextStep === 'read' ? 'Your job details are ready. Continue to read your JSA.' : home.state?.action==='resume'&&home.state.shiftState==='none' ? 'You have an open off-shift JSA. Continue to JSA home.' : 'Start a new JSA or resume the JSA for your current shift.')}
           </Text>
           <TouchableOpacity style={styles.btn} onPress={onDismiss} disabled={checking} accessibilityState={{disabled:checking}}>
             {checking?<ActivityIndicator color={colors.textDark}/>:<Text style={styles.btnText}>{t('Continue')}</Text>}

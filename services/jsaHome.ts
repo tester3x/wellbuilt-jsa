@@ -5,11 +5,11 @@ import {enrichResumedJsa} from './jsaResumeProjection';
 import {getApp} from 'firebase/app';
 import {getFunctions,httpsCallable} from 'firebase/functions';
 import {loadUsableGovernedSession} from './sso/jsaGovernedAuthLive';
-export type JsaHomeState={protocolVersion:1;companyId:string;driverId:string;shiftState:'open'|'none';shiftId:string|null;action:'new'|'resume';active:null|{kind:'governed'|'standalone';id:string;jsaNumber:string|null};record?:any;offline?:boolean;cachedAtMs?:number};
+export type JsaHomeState={protocolVersion:1;companyId:string;driverId:string;shiftState:'open'|'none';shiftId:string|null;jsaPeriodId?:string;action:'new'|'resume';active:null|{kind:'governed'|'standalone';id:string;jsaNumber:string|null};record?:any;offline?:boolean;cachedAtMs?:number};
 type Owner={uid:string;generation:string;companyId:string;driverId:string};
 const cacheKey=(o:Owner)=>'@jsa/home-view-v1:'+JSON.stringify([o.uid,o.companyId,o.driverId]);
 const sameOwner=(a:Owner,b:Owner|null)=>!!b&&a.uid===b.uid&&a.generation===b.generation&&a.companyId===b.companyId&&a.driverId===b.driverId;
-const sameJsa=(a:JsaHomeState,b:JsaHomeState)=>a.shiftId===b.shiftId&&a.active?.id===b.active?.id&&a.active?.kind===b.active?.kind;
+const sameJsa=(a:JsaHomeState,b:JsaHomeState)=>a.shiftId===b.shiftId&&a.jsaPeriodId===b.jsaPeriodId&&a.active?.id===b.active?.id&&a.active?.kind===b.active?.kind;
 let cacheTail:Promise<unknown>=Promise.resolve();
 const prefetching=new Set<string>();
 const cacheEpoch=new Map<string,number>();
@@ -17,7 +17,7 @@ let requestSequence=0;const lastCacheWrite=new Map<string,number>();
 function validHome(r:JsaHomeState,owner:Owner){
  return !!r&&r.protocolVersion===1&&r.companyId===owner.companyId&&r.driverId===owner.driverId&&['open','none'].includes(r.shiftState)&&['new','resume'].includes(r.action)
   &&(r.shiftState!=='open'||typeof r.shiftId==='string'&&/^\d{4}-\d{2}-\d{2}_\d{6}$/.test(r.shiftId))
-  &&(r.shiftState!=='none'||r.shiftId===null&&r.action==='new'&&r.active===null)
+  &&(r.shiftState!=='none'||r.shiftId===null&&(r.action==='new'||typeof r.jsaPeriodId==='string'&&/^[a-f0-9]{48}$/.test(r.jsaPeriodId)))
   &&(r.action!=='resume'||!!r.active&&['governed','standalone'].includes(r.active.kind)&&typeof r.active.id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(r.active.id))
   &&(r.action!=='new'||r.active===null);
 }
