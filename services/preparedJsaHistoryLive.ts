@@ -27,7 +27,7 @@ export async function syncPreparedJsaHistory():Promise<void>{
    // Scope acknowledgements are linked to a full report, not extra signatures.
    if(r.source!=='governed'||r.kind!=='jsa_read'||!r.record?.signatureImage||!Number.isFinite(Date.parse(r.completedAt)))continue;
    records.push({...r.record,id:r.id,workflow:'prepared',state:'saved',companyId:session.companyId,driverId:session.driverId,
-    jobRef:r.jobRef,shiftId:r.shiftId,timestamp:r.completedAt,date:r.date,driverName:r.record.printedName,
+    historyContext:r.historyContext,jobRef:r.jobRef,shiftId:r.shiftId,timestamp:r.completedAt,date:r.date,driverName:r.record.printedName,
     signature:r.record.printedName,assessmentArchiveUnavailable:!r.record.assessmentSteps?.length});
   }
   const next=new Date(until+'T12:00:00');next.setDate(next.getDate()+1);cursor=parts(next);

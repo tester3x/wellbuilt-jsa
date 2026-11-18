@@ -24,3 +24,5 @@ assert.equal(closed.status, 'Ended'); assert.equal(closed.shift, 'On shift'); as
 assert.equal(summary({ ...report, workflow: 'standalone', state: 'open' }).status, 'Ongoing');
 const sparse = summary({}); assert.equal(sparse.date, ''); assert.equal(sparse.locations.length, 0);
 console.log('PASS saved JSA cards: every known location/activity, additions, covered jobs, local search, date-first sparse legacy reports, honest shift/status labels, cross-day end time and immutable signed input.');
+
+const linked={locations:[],historyContext:{coveredJobs:[{wellName:'Thor 1',dropOff:'Hydro Clear',jobType:'pw'},{wellName:'Gabriel 1',dropOff:'Hydro Clear',jobType:'sw'}]}};const frozen=JSON.stringify(linked);assert.equal(summary(linked).locations.join('|'),'Thor 1|Hydro Clear|Gabriel 1');assert.equal(JSON.stringify(linked),frozen);

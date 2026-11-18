@@ -7,7 +7,7 @@ function fixture(){
   if(name==='firebase/functions')return {getFunctions:()=>({}),httpsCallable:()=>async body=>{
    calls.push(body);if(fail)throw Error('offline');if(change)current={...session,generation:2};
    return {data:{schemaVersion:1,companyId:'c',driverId:foreign?'other':'d',...body,missing:[],records:[
-    {id:'nov-read',source:'governed',kind:'jsa_read',date:'2026-11-01',completedAt:'2026-11-01T12:00:00Z',record:{printedName:'Original name',signatureImage:'data:image/png;base64,saved'}},
+    {id:'nov-read',historyContext:{coveredJobs:[{wellName:'Thor 1',dropOff:'Hydro Clear'}]},source:'governed',kind:'jsa_read',date:'2026-11-01',completedAt:'2026-11-01T12:00:00Z',record:{printedName:'Original name',signatureImage:'data:image/png;base64,saved'}},
     {id:'nov-ack',source:'job_acknowledgment',kind:'jsa_ack',date:'2026-11-01',completedAt:'2026-11-01T13:00:00Z',record:{}}
    ]}};
   }};
@@ -23,7 +23,7 @@ function fixture(){
 test('read-only cloud refresh covers October cutoff through November, restores original signature and deduplicates export pages',async()=>{
  const f=fixture();await f.api.syncPreparedJsaHistory();const rows=JSON.parse(f.disk.get(f.key));
  assert.equal(rows.length,1);assert.equal(rows[0].id,'nov-read');assert.equal(rows[0].signatureImage,'data:image/png;base64,saved');assert.equal(rows[0].workflow,'prepared');
- assert.equal(rows[0].assessmentArchiveUnavailable,true);assert.equal(f.calls[0].startDate,'2026-10-30');assert.equal(f.calls.at(-1).endDate,'2026-11-04');
+ assert.equal(rows[0].historyContext.coveredJobs[0].dropOff,'Hydro Clear');assert.equal(rows[0].assessmentArchiveUnavailable,true);assert.equal(f.calls[0].startDate,'2026-10-30');assert.equal(f.calls.at(-1).endDate,'2026-11-04');
  await f.api.syncPreparedJsaHistory();assert.equal(JSON.parse(f.disk.get(f.key)).length,1);
 });
 test('foreign cloud reply, changed login and offline refresh cannot overwrite retained reports',async()=>{

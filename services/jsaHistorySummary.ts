@@ -10,7 +10,7 @@ function instant(value: unknown): Date | null {
   return date && Number.isFinite(date.getTime()) ? date : null;
 }
 export function jsaHistorySummary(record: any, locale = 'en-US') {
-  const wells = array(record.wells), places = array(record.locations), jobs = array(record.coveredJobs), additions = array(record.additions);
+  const wells = array(record.wells), places = array(record.locations), jobs = [...array(record.coveredJobs), ...array(record.historyContext?.coveredJobs)], additions = array(record.additions);
   const locations = distinct([
     ...wells.map(row => typeof row === 'string' ? text(row) : text(row?.name)),
     ...places.map(row => typeof row === 'string' ? text(row) : text(row?.name || row?.location)),

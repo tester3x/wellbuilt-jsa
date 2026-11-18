@@ -25,7 +25,7 @@ export function mergePreparedHistory(legacy:any[], cached:any[], local:any[]):an
  const rows=new Map<string,any>();
  // Native signed evidence retains the frozen assessment when the cloud export
  // has only the authored answers. A refresh never replaces a legacy row.
- for(const r of [...cached,...local])rows.set(r.id,r);
+ for(const r of [...cached,...local])rows.set(r.id,rows.get(r.id)?.historyContext?{...r,historyContext:rows.get(r.id).historyContext}:r);
  for(const r of legacy)rows.set(r.id,r);
  return [...rows.values()];
 }
