@@ -1,0 +1,37 @@
+{
+  "sourceCommit": "6a51a8d22b62ba690388470e92324c3856fa8dcf",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+  "reservation": "android-release-v108",
+  "reservationTagObject": "728061a057d96eef5e8e7588e4ef7ef6a2508e31",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 108,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-108-6a51a8d\\com.syconik801.jsaapp-vc108.apk",
+  "apkSha256": "3d27e2672aa8138df3ae23a49fa1f7a69dd854160e70ba0a9b6013b594a2cd1b",
+  "completedAt": "2026-11-18T04:35:46.831Z",
+  "installed": {
+    "S24": "108 verified; history refresh shows linked pickup/drop-off and recorded additions",
+    "Fold": "108 verified; Thor card now shows Thor, Hydro Clear and its recorded Gabriel additions; 53 records retained"
+  },
+  "backend": {
+    "function": "jsaWeeklyForms",
+    "project": "wellbuilt-sync",
+    "sourceCommit": "0def5a3c",
+    "deployment": "Successful update operation verified in Firebase CLI"
+  },
+  "checks": [
+    "TypeScript passed",
+    "Backend 14 historical export tests passed, including ownership and signed-snapshot immutability",
+    "Prepared history local/cloud tests passed",
+    "History summary and refresh tests passed",
+    "Device UI verified on both phones"
+  ],
+  "scope": "Read-only history context outside original signed content; no Firestore JSA or lifecycle mutations"
+}
