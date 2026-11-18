@@ -315,6 +315,7 @@ export default function SignoffScreen() {
     }
 
     let skipForcedSubmitted = false;
+    let localSaveCommitted = false;
     const saveAndGo = async () => {
       if (jobGate !== 'ready' || !jobSource) return;
       // Parse PPE into structured format for JSARecord
@@ -637,6 +638,8 @@ export default function SignoffScreen() {
         );
         return;
       }
+
+      localSaveCommitted = true;
 
       // Mark this JSA as dismissed from the home-screen active tabs.
       // Submitted JSAs live in Saved JSAs; they shouldn't auto-rehydrate as tabs.
@@ -1527,7 +1530,11 @@ export default function SignoffScreen() {
     submitLockRef.current = true;
     setSubmitting(true);
     saveAndGo().catch((err) => {
-      console.error('[JSA-Signoff] saveAndGo failed — forcing HONEST modal:', err);
+      console.error('[JSA-Signoff] saveAndGo failed:', err);
+      if (!localSaveCommitted) {
+        setValidationNotice({focusName:false,message:err instanceof Error?err.message:String(err)});
+        return;
+      }
       if (skipForcedSubmitted) return;
       if(preparedRead){setValidationNotice({focusName:false,message:err instanceof Error?err.message:String(err)});return;}
       // 8/6 — the forced modal no longer claims success: cloudPending copy
