@@ -1,0 +1,31 @@
+{
+  "sourceCommit": "b8ff2336d750a14a0489a36be7161ff58ebb2afd",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+  "reservation": "android-release-v111",
+  "reservationTagObject": "8127a18ecaa8b54eecdabeed017205b4a4f2802f",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 111,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-111-b8ff233\\com.syconik801.jsaapp-vc111.apk",
+  "apkSha256": "35d3b798ec5208a81a82246ad4d15ee567181dcc790b260c82f688590ceb16f9",
+  "completedAt": "2026-11-18T05:09:21.331Z",
+  "installed": {
+    "S24": "111 verified; Burger and Hydro Clear each rendered as a separate report row",
+    "Fold": "111 verified; Thor, Hydro Clear, Gabriel7 and Gabriel5 visually verified as four stacked rows beneath original signature"
+  },
+  "checks": [
+    "TypeScript",
+    "Paper, 3-inch and 4-inch report tests",
+    "Each linked location has its own row",
+    "Signature and authored content immutability",
+    "Existing merged-card and history summary tests"
+  ],
+  "notes": "110 compiled before stacked-row steering, never installed. 111 includes final layout. No printing or record writes performed."
+}
