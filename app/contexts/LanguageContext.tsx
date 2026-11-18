@@ -16,6 +16,20 @@ const LanguageContext = createContext<LanguageContextValue | undefined>(undefine
 const translations: Record<Language, Record<string, string>> = {
   en: {},
   es: {
+    "Date not recorded": "Fecha no registrada",
+    "Signed report": "Informe firmado",
+    "On shift": "En turno",
+    "Off shift": "Fuera de turno",
+    "Shift not recorded": "Turno no registrado",
+    "Locations not recorded": "Ubicaciones no registradas",
+    "Work performed": "Trabajo realizado",
+    "Activity not recorded": "Actividad no registrada",
+    "View report": "Ver informe",
+    "Search saved JSAs": "Buscar JSA guardados",
+    "Search locations, activities, or date": "Buscar ubicación, actividad o fecha",
+    "matching records": "registros coincidentes",
+    "No matching JSAs": "No hay JSA coincidentes",
+
     "Resume JSA": "Reanudar JSA",
     "Open JSA": "JSA abierto",
     "Current JSA": "JSA actual",

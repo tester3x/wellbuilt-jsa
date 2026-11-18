@@ -1,6 +1,7 @@
+import { jsaHistorySummary } from '../../services/jsaHistorySummary';
 import { BrandedAlert as Alert } from '../../services/brandedAlert';
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useMemo } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -8,6 +9,7 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -41,43 +43,6 @@ type HistoryItem = {
   signatureImage?: string;
 };
 
-/** Get well names from either old or new format */
-function getWellNames(item: HistoryItem): string {
-  if (item.wells && Array.isArray(item.wells) && item.wells.length > 0) {
-    return item.wells.map((w: any) => typeof w === 'string' ? w : w?.name || '').filter(Boolean).join(', ');
-  }
-  return item.wellName || '-';
-}
-
-/** Get first well's job type or fallback */
-function getJobType(item: HistoryItem): string {
-  if (item.wells && Array.isArray(item.wells) && item.wells.length > 0) {
-    const first = item.wells[0];
-    if (typeof first !== 'string' && first?.jobType) return first.jobType;
-  }
-  return item.jobActivityName || item.task || '';
-}
-
-/** Format date concisely */
-function formatDate(isoString: string, locale: string, t: (text: string) => string): string {
-  try {
-    const d = new Date(isoString);
-    const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const isYesterday = d.toDateString() === yesterday.toDateString();
-
-    const time = d.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true });
-
-    if (isToday) return `${t('Today')}, ${time}`;
-    if (isYesterday) return `${t('Yesterday')}, ${time}`;
-    return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' }) + `, ${time}`;
-  } catch {
-    return isoString;
-  }
-}
-
 function openRecordsFirst(records: HistoryItem[]): HistoryItem[] {
   return [...records].sort((left, right) => {
     const leftOpen = (left as any).workflow === 'standalone' && (left as any).state === 'open';
@@ -93,6 +58,8 @@ export default function HistoryTabScreen() {
   const locale = lang === 'es' ? 'es-MX' : 'en-US';
   const { accent, logoUrl, setBackgroundPackageId, resolveBackgroundPackageForJob } = useTheme();
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [query, setQuery] = useState('');
+  const filteredHistory = useMemo(() => { const search = query.trim().toLowerCase(); return search ? history.filter(item => jsaHistorySummary(item, locale).search.includes(search)) : history; }, [history, query, locale]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +98,7 @@ export default function HistoryTabScreen() {
   }, [loadHistory]);
 
   const handleViewDetails = (item: HistoryItem) => {
-    setBackgroundPackageId(resolveBackgroundPackageForJob((item as any).packageId || getJobType(item)));
+    setBackgroundPackageId(resolveBackgroundPackageForJob((item as any).packageId || jsaHistorySummary(item, locale).activities[0] || ''));
     router.push({pathname:'/jsa-record',params:{id:item.id}} as any);
     return;
   };
@@ -174,8 +141,7 @@ export default function HistoryTabScreen() {
   };
 
   const renderItem = ({ item }: { item: HistoryItem }) => {
-    const wellNames = getWellNames(item);
-    const jobType = getJobType(item);
+    const summary = jsaHistorySummary(item, locale);
     const standalone = (item as any).workflow === 'standalone';
     const openStandalone = standalone && (item as any).state === 'open';
     const closedStandalone = standalone && (item as any).state === 'closed';
@@ -193,18 +159,27 @@ export default function HistoryTabScreen() {
           </View>
         )}
         <View style={styles.cardTop}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cardWells} numberOfLines={2}>{wellNames}</Text>
-            {jobType ? <Text style={styles.cardJobType}>{jobType}</Text> : null}
+          <Text style={[styles.cardWells, { fontSize: 17, fontWeight: '700' }]}>{summary.date || t('Date not recorded')}</Text>
+          <View style={{ backgroundColor: openStandalone ? '#E6F5EA' : '#edf0ed', paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: openStandalone ? '#176B2C' : '#4b5550' }}>{t(summary.status)}</Text>
           </View>
-          <Text style={styles.cardDate}>{formatDate(item.timestamp, locale, t)}</Text>
         </View>
+        <Text style={[styles.cardJobType, { marginBottom: 10 }]}>{t(summary.shift)}{summary.signedAt ? ' · ' + t('Signed') + ' ' + summary.signedAt : ''}{summary.endedAt ? ' · ' + t('Ended') + ' ' + summary.endedAt : ''}</Text>
+        <Text style={{ color: colors.textMuted, fontWeight: '700', fontSize: 11 }}>{t('Locations')} ({summary.locations.length})</Text>
+        <Text style={{ color: colors.textDark, fontSize: 14, lineHeight: 20, marginTop: 3, marginBottom: 10 }} numberOfLines={3}>
+          {summary.locations.length ? summary.locations.join(' · ') : t('Locations not recorded')}
+        </Text>
+        <Text style={{ color: colors.textMuted, fontWeight: '700', fontSize: 11 }}>{t('Work performed')}</Text>
+        <Text style={{ color: colors.textDark, fontSize: 13, lineHeight: 19, marginTop: 3, marginBottom: 10 }} numberOfLines={2}>
+          {summary.activities.length ? summary.activities.join(' · ') : t('Activity not recorded')}
+        </Text>
+        {!!summary.note && <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 10 }} numberOfLines={2}>{t('Notes')}: {summary.note}</Text>}
         <View style={styles.cardBottom}>
           <Text style={styles.cardDriver}>{item.driverName} • {t("Truck")} #{item.truckNumber}</Text>
           <View style={styles.cardActions}>
             {closedStandalone || retained ? (
-              <View accessibilityRole="text" accessibilityLabel={t(retained ? 'Saved JSA' : 'Closed')} style={styles.statusLabel}>
-                <Text style={[styles.actionText, { color: colors.textMuted }]}>{t(retained ? 'Saved JSA' : 'Closed')}</Text>
+              <View accessibilityRole="text" accessibilityLabel={t('View report')} style={styles.statusLabel}>
+                <Text style={[styles.actionText, { color: colors.textMuted }]}>{t('View report')} ›</Text>
               </View>
             ) : (
               <TouchableOpacity
@@ -249,6 +224,12 @@ export default function HistoryTabScreen() {
 
       </View>
 
+      <View style={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
+        <TextInput accessibilityLabel={t('Search saved JSAs')} placeholder={t('Search locations, activities, or date')} placeholderTextColor={colors.textMuted}
+          value={query} onChangeText={setQuery} clearButtonMode="while-editing"
+          style={{ backgroundColor: '#fff', color: colors.textDark, borderWidth: 1, borderColor: colors.border, borderRadius: 9, padding: 12 }} />
+        {!!query.trim() && <Text style={{ color: colors.textMuted, paddingTop: 5 }}>{filteredHistory.length} {t('matching records')}</Text>}
+      </View>
       {!!error && (
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
@@ -267,8 +248,9 @@ export default function HistoryTabScreen() {
       )) : (
         <FlatList
           style={{flex:1,overflow:'hidden'}}
-          data={history}
+          data={filteredHistory}
           renderItem={renderItem}
+          ListEmptyComponent={<Text style={{ padding: 20, color: colors.textMuted }}>{t('No matching JSAs')}</Text>}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           refreshControl={

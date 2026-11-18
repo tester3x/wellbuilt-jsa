@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.syconik801.jsaapp",
-      "versionCode": 106,
+      "versionCode": 107,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#F4B41A"

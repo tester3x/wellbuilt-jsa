@@ -2,7 +2,7 @@ const fs=require('fs'),ts=require('typescript'),assert=require('node:assert/stri
 const source=ts.transpileModule(fs.readFileSync('app/(tabs)/history.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
 async function check({local=[],remote=[],fail=false,authFail=false}){
  const states=[],callbacks=[];let index=0,called=0,focus=false;
- const react={useState:v=>{const i=index++;states[i]=v;return[v,n=>states[i]=n]},useCallback:f=>{callbacks.push(f);return f}};
+ const react={useMemo:f=>f(),useState:v=>{const i=index++;states[i]=v;return[v,n=>states[i]=n]},useCallback:f=>{callbacks.push(f);return f}};
  const module={exports:{}};
  new Function('require','module','exports',source)(name=>{
   if(name==='react')return react;
@@ -21,8 +21,8 @@ async function check({local=[],remote=[],fail=false,authFail=false}){
 }
 (async()=>{
  let r=await check({remote:[{id:'server'}]});assert.equal(r.called,1);assert.equal(r.states[0][0].id,'server');assert.equal(r.focus,true);
- r=await check({local:[{id:'cached'}],fail:true});assert.equal(r.states[0][0].id,'cached');assert.match(r.states[3],/Could not refresh/);
- r=await check({fail:true});assert.deepEqual(r.states[0],[]);assert.ok(r.states[3]);
- r=await check({remote:[]});assert.deepEqual(r.states[0],[]);assert.equal(r.states[3],null);
+ r=await check({local:[{id:'cached'}],fail:true});assert.equal(r.states[0][0].id,'cached');assert.match(r.states[4],/Could not refresh/);
+ r=await check({fail:true});assert.deepEqual(r.states[0],[]);assert.ok(r.states[4]);
+ r=await check({remote:[]});assert.deepEqual(r.states[0],[]);assert.equal(r.states[4],null);
  console.log('4 history refresh cases passed: empty cache downloads; offline retains cache; failed empty is not confirmed empty; successful empty. Focus refresh registered.');
 })().catch(e=>{console.error(e);process.exitCode=1});
