@@ -43,7 +43,16 @@ export default function OfflineJob(){
    date:current.request.grant.policyDay,operator:current.request.job.operator,wellName:current.request.job.wellName,
    jobActivityName:current.request.job.jobType,assessmentSteps:JSON.stringify(current.assessment.steps),assessmentBundle:JSON.stringify(current.assessment)};
   if(live){setSavedDraft(old);setParams(base);setVerified(current);}
- })().catch(e=>{if(live)setError(e.message);});return()=>{live=false;};},[id,accountReady,retry]);
+ })().catch(async e=>{
+  if(!live)return;
+  if(e?.code==='jsa/offline-not-ready'&&e?.reason==='period-ended'&&e.requestId===id){
+   // Let Tickets resolve its owned job under the current server policy. This
+   // callback is explicitly not completed and grants no Start permission.
+   try{await Linking.openURL('wellbuilt-tickets://jsa-return?v=1&requestId='+encodeURIComponent(id)+'&status=period_ended');return;}
+   catch{if(!live)return;}
+  }
+  if(live)setError(e.message);
+ });return()=>{live=false;};},[id,accountReady,retry]);
  const flow=useMemo<PreparedReadFlow|null>(()=>verified?{
   params,assessment:verified.assessment,savedDraft,
   resolve:()=>resolvePreparedRead(id),

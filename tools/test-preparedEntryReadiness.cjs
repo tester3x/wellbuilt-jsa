@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
 function harness(){
- let ready=false,id='r'.repeat(43),reads=0,fail=false,release=null,proofs=0,returns=0;
+ let ready=false,id='r'.repeat(43),reads=0,fail=false,ended=false,release=null,proofs=0,returns=0,returnUrl='';
  let cursor=0;const slots=[],effects=[],pending=[];
  const react={createElement:(type,props,...children)=>({type,props:{...props,children}}),
   useState:initial=>{const n=cursor++;if(!(n in slots))slots[n]=initial;return [slots[n],v=>{slots[n]=typeof v==='function'?v(slots[n]):v;}];},
@@ -9,11 +9,11 @@ function harness(){
  const current={request:{job:{jobRef:'job',operator:'Operator',wellName:'Well',jobType:'Production Water',truckNumber:'102'},grant:{id:'grant',policyDay:'2026-10-29'}},
   assessment:{contentHash:'frozen',steps:[{id:'step'}]}};
  const modules={react,'react-native':{ActivityIndicator:'Spinner',BackHandler:{addEventListener:()=>({remove(){}})},
-  Linking:{openURL:async()=>{returns++;}},Pressable:'Button',Text:'Text',View:'View'},
+  Linking:{openURL:async url=>{returns++;returnUrl=url;}},Pressable:'Button',Text:'Text',View:'View'},
   'expo-router':{Stack:{Screen:'Screen'},useLocalSearchParams:()=>({requestId:id})},
   '@react-native-async-storage/async-storage':{getItem:async()=>null},
   '../modules/wellbuilt-platform/AccountGate':{useAccountReady:()=>ready},
-  '../services/PreparedJsaFlow':{PreparedReadContext:{Provider:'PreparedProvider'},resolvePreparedRead:async()=>{reads++;if(release)await new Promise(r=>{release=r;});if(fail)throw Error('not yet ready');return current;},recordPreparedRead:async()=>{}},
+  '../services/PreparedJsaFlow':{PreparedReadContext:{Provider:'PreparedProvider'},resolvePreparedRead:async()=>{reads++;if(release)await new Promise(r=>{release=r;});if(ended)throw Object.assign(Error('ended'),{code:'jsa/offline-not-ready',reason:'period-ended',requestId:id});if(fail)throw Error('not yet ready');return current;},recordPreparedRead:async()=>{}},
   '../services/preparedShiftJsa':{preparedShiftJsa:{proof:async()=>{proofs++;return null;}}},
   '../services/sso/jsaAttestationScope':{readAttestationDraft:async()=>({stepAcks:{}}),writeAttestationDraft:async()=>true},
   '../services/driverAuth':{fetchDriverProfile:async()=>null},
@@ -24,7 +24,7 @@ function harness(){
  function render(){cursor=0;const tree=exports.default();pending.splice(0).forEach(fn=>fn());return tree;}
  function button(tree){if(!tree||typeof tree!=='object')return null;if(tree.type==='Button')return tree;for(const child of tree.props?.children||[]){if(Array.isArray(child)){for(const c of child){const b=button(c);if(b)return b;}}else{const b=button(child);if(b)return b;}}return null;}
  return {render,settle,button,current,get reads(){return reads;},get proofs(){return proofs;},get returns(){return returns;},
-  ready:v=>{ready=v;},fail:v=>{fail=v;},id:v=>{id=v;},delay:()=>{release=true;},resume:()=>{release();release=null;}};
+  get returnUrl(){return returnUrl;},ended:v=>{ended=v;},ready:v=>{ready=v;},fail:v=>{fail=v;},id:v=>{id=v;},delay:()=>{release=true;},resume:()=>{release();release=null;}};
 }
 test('same first job waits for account restoration then opens original populated flow without a second Tickets launch',async()=>{
  const h=harness();h.render();await h.settle();assert.equal(h.reads,0);
@@ -43,4 +43,10 @@ test('superseded first request cannot return a completion or query proof after d
  // Clean up the old request, leave the new request waiting for account restoration.
  h.ready(false);h.render();h.resume();await h.settle();
  assert.equal(h.proofs,0);assert.equal(h.returns,0);assert.notEqual(h.render().type,'PreparedProvider');
+});
+
+test('ended protected request returns for fresh policy resolution without claiming completion or reusing a form',async()=>{
+ const h=harness();h.ready(true);h.ended(true);h.render();await h.settle();const tree=h.render();
+ assert.equal(h.returns,1);assert.match(h.returnUrl,/status=period_ended$/);assert.doesNotMatch(h.returnUrl,/completed/);
+ assert.equal(h.proofs,0);assert.notEqual(tree.type,'PreparedProvider');
 });

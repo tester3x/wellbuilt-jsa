@@ -111,7 +111,23 @@ exports.createPreparedJsaRuntime=function({store,owner,call,mint,hash,now=Date.n
    await check(o);return out;
   },
   async request(job){const {o,g}=await bundle(job.operator);const id=await mint();await write('request/'+id,{id,grantId:g.id,job,at:now()},o);return id;},
-  async readRequest(id){const o=await current(),r=await read('request/'+id,o);if(!r)return null;const {g}=await bundle(r.job.operator);const original=await read('bundle/'+r.grantId,o);return original?.accountGrantId===o.grantId&&original.binding.jsaPeriodId===g.binding.jsaPeriodId&&original.expiresAtMs>=now()?{...r,grant:original}:null;},
+  // An ended request is navigation evidence only, never permission to start or
+  // reuse its signature. Retain it so Tickets can register a fresh server scope.
+  async endedRequest(id){
+   if(!/^[A-Za-z0-9_-]{43}$/.test(id))return null;
+   const o=await current(),r=await read('request/'+id,o);if(!r)return null;
+   const original=await read('bundle/'+r.grantId,o);
+   return original?.accountGrantId===o.grantId&&await read('ended/'+original.binding.jsaPeriodId,o)?{...r,grant:original}:null;
+  },
+  async readRequest(id){
+   if(!/^[A-Za-z0-9_-]{43}$/.test(id))return null;
+   const o=await current(),r=await read('request/'+id,o);if(!r)return null;
+   const original=await read('bundle/'+r.grantId,o);
+   if(original?.accountGrantId!==o.grantId)return null;
+   if(await read('ended/'+original.binding.jsaPeriodId,o))throw Object.assign(failure('This JSA period has ended. Reconnecting this job to its current JSA.'),{reason:'period-ended',requestId:id});
+   const {g}=await bundle(r.job.operator);
+   return original.binding.jsaPeriodId===g.binding.jsaPeriodId&&original.expiresAtMs>=now()?{...r,grant:original}:null;
+  },
   async readEvent(id){return eventById(id,await current());},
  };
 };
