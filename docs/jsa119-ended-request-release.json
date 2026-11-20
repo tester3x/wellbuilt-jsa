@@ -1,0 +1,33 @@
+{
+  "sourceCommit": "8469e723f2f769d99d9d5ceb4d44a61eec52bdc0",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+  "reservation": "android-release-v119",
+  "reservationTagObject": "e20e3be626aa7354fe246addc84963cda8167a45",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 119,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-119-8469e72\\com.syconik801.jsaapp-vc119.apk",
+  "apkSha256": "d7ec73e1e41779d471456d2f39290996654b079ff9c552830ec34d495354ac44",
+  "completedAt": "2026-11-20T01:30:15.031Z",
+  "installed": true,
+  "devices": [
+    "S24 first with WBT407 fresh-read check",
+    "Fold after S24 pass;119 read back"
+  ],
+  "checks": [
+    "TypeScript",
+    "prepared entry4/4 including ended callback not completed",
+    "original form6/6 including no return on failed save and frozen-grant guard",
+    "local release runner2/2"
+  ],
+  "reconciliation": "Full118..119 delta reviewed. Other remote heads unchanged; cloud latest99, installed/local/reserved118. Other-machine unpushed work cannot be discovered.",
+  "verification": "S24 current off-shift test period ended through existing End JSA. Matching WBT407 opened fresh Gab1 Steps & Hazards under a new independent off-shift period, no signing or confirmations submitted. Fold installed in place afterward without launching or touching job. Old signed records not edited by this change.",
+  "limitations": "Exact ended native request recovery tested with real production runtime on fake immutable store and entry effect harness, not injected into real Fold storage. Subsequent external app-switch/reopen landed at JSA home; no repeated read pass claimed."
+}
