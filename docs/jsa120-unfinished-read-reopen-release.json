@@ -1,0 +1,38 @@
+{
+  "sourceCommit": "4a6fcbda3b0718fbe48aedaac95f8d15cd4f1ced",
+  "branch": "feat/jsa-register-join-code-20260917",
+  "checkout": "C:\\dev\\JSA",
+  "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+  "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+  "reservation": "android-release-v120",
+  "reservationTagObject": "e4c9a02efb6b8f38486672797c0f6f0970915c22",
+  "profile": "preview",
+  "buildMethod": "local Android SDK/Gradle in registered home",
+  "sourceCopy": false,
+  "cloudBuild": false,
+  "package": "com.syconik801.jsaapp",
+  "versionCode": 120,
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-120-4a6fcbd\\com.syconik801.jsaapp-vc120.apk",
+  "apkSha256": "b3ceae89cdf52bae4aba6bcf7427da17f853625f8a00bf5be696a1e3f6a3ed1e",
+  "completedAt": "2026-11-20T02:22:28.128Z",
+  "installed": true,
+  "devices": [
+    "S24 R5CX15HEGQB first",
+    "Fold RFGL23VJCED after S24 pass"
+  ],
+  "changes": "Pending governed read routes through original populated read entry with exact request ID. Clear one-time consumed trigger when route parameter clears so same request can reopen. Refused stale initial intent no longer erases live governed context/session or redirects to login. Existing request-scoped answers and original screens retained.",
+  "checks": [
+    "TypeScript passed",
+    "reopen route/owner non-mutation3/3",
+    "Welcome entry + repeated identical request passed",
+    "start-owner74/74",
+    "attestation scope20/20",
+    "governed form evidence28/28"
+  ],
+  "baselineFixture": "Isolation60/61: sole Return to WB/launchOrigin literal test already fails unchanged119 source (both strings absent at1d8a9bd). No guard weakened; new routing/owner/answer tests pass.",
+  "deviceVerification": "S24: same unfinished Gab1 read opened three times from WBT (first two with407; third with408), without submitting any attestation or signature. Third after JSA backgrounded more than3min. All returned Steps & Hazards with Gab1 and Production Water rather than staying on home. Firebase read-only confirmed same preview invoice, exactly one same pending governed request and original independent period; no completed JSA, departedEvent or closedAt. Fold then installed120 in place, version verified; no Fold job navigation or mutation.",
+  "reconciliation": "Fresh remote heads compared with119; only current authorized branch advanced. Full119..120 delta reviewed; immutable120 tag. Cloud99/installed119/local119 verified before allocation. Other-machine unpushed work cannot be discovered.",
+  "evidenceDirectory": "C:/dev/release-artifacts/jsa-reopen-120",
+  "recordedAtUtc": "2026-11-20T02:31:24.872Z"
+}
