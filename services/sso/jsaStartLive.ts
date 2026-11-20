@@ -53,10 +53,9 @@ async function initialCandidateAllowed(url: string): Promise<boolean> {
   await AsyncStorage.setItem(INSTALLATION_SEEN_KEY, '1');
   if (!allowed) {
     await AsyncStorage.setItem(IGNORED_INITIAL_REQUEST_KEY, requestId);
-    if (sameOwner) {
-      const { clearLocalGovernedLaunchState } = await import('./jsaRuntime');
-      await clearLocalGovernedLaunchState();
-    }
+    // Rejecting an old Android initial intent is not an account logout.
+    // A fresh live delivery may already be resolving this same request;
+    // never erase its protected session, context, or saved answers here.
   }
   return allowed;
 }

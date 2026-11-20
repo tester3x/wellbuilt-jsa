@@ -35,10 +35,6 @@ export default function StartScreen() {
           && normalizeJsaStartUrl(fromParams) === normalizeJsaStartUrl(initialUrl);
         const provenance = fromParams && !sameInitial ? 'live' : 'initial';
         const result = await consumeJsaStart(url, provenance);
-        if (result.kind === 'ignored' && result.refusal === 'stale_replay') {
-          router.replace('/login');
-          return;
-        }
         // Stale replay / superseded run: this route's candidate lost.
         // A LOSER NEVER NAVIGATES — only the winning launch coordinator
         // chooses the destination. This screen stays on its neutral

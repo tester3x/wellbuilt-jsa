@@ -66,7 +66,14 @@ export async function resolveEntryRoute(
   if (decision.next === 'resume_ui') {
     await saveGovernedUiStage(decision.ui);
     if (decision.ui === 'acknowledge_only') return '/acknowledge';
-    return '/(tabs)';
+    const [context,launch]=await Promise.all([loadRequestContext(),loadLaunchContext()]);
+    if(context?.state!=='pending'||context.requestId!==launch?.requestId
+      ||!['read','read_and_acknowledge'].includes(context.intent)) {
+      return {pathname:'/governed-status',params:{mode:'fail',refusal:'binding_mismatch'}};
+    }
+    // Use the same owned, populated entry as Welcome. Its request-scoped
+    // answers are restored by Steps; home must not replace an unfinished read.
+    return {pathname:'/(tabs)',params:{welcomeReadRequestId:context.requestId}};
   }
   return '/(tabs)';
 }

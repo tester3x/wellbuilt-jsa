@@ -52,8 +52,8 @@ const routeJs = compile(normalized.slice(routeStart, routeEnd));
 function route(options = {}) {
   const actions = [];
   const deps = {
-    useEffect: fn => fn(), welcomeReadRequestId: options.request || 'read-1',
-    welcomeReadConsumed: {current: options.consumed || ''},
+    useEffect: fn => fn(), welcomeReadRequestId: options.request ?? 'read-1',
+    welcomeReadConsumed: options.consumedRef || {current: options.consumed || ''},
     hydrationDone: options.hydrated !== false,
     workflowIsolation: {mountForm: options.allowed !== false},
     governedJobPopulate: fields.decideGovernedJobPopulate({launchRequestId: 'read-1', context: options.context || read, explicitFailure: false}),
@@ -91,6 +91,13 @@ function route(options = {}) {
   for (const options of [{request: 'different'}, {allowed: false},
     {consumed: 'read-1'}, {context: {...read, intent: 'acknowledge'}},
     {context: {...read, state: 'completed'}}]) assert.deepEqual(route(options), []);
+  const consumedRef={current:''};
+  assert.equal(route({consumedRef})[1][1].pathname,'/steps');
+  assert.equal(consumedRef.current,'read-1');
+  assert.deepEqual(route({consumedRef}),[]);
+  assert.deepEqual(route({request:'',consumedRef}),[]);
+  assert.equal(consumedRef.current,'');
+  assert.equal(route({consumedRef})[1][1].params.wellName,'Test Well');
   console.log('PASS: Welcome ownership, request-bound routing, and entry without history hydration');
 })().catch(error => {console.error(error); process.exitCode = 1;});
 

@@ -1462,7 +1462,8 @@ export default function JsaHomeScreen() {
   }, [todaysJsaSave, router]);
 
   useEffect(() => {
-    if (!welcomeReadRequestId || welcomeReadConsumed.current === welcomeReadRequestId) return;
+    if (!welcomeReadRequestId) { welcomeReadConsumed.current = ''; return; }
+    if (welcomeReadConsumed.current === welcomeReadRequestId) return;
     // The verified governed snapshot owns this entry. Saved-history hydration
     // is independent and must not hold navigation until a foreground refresh.
     if (!workflowIsolation.mountForm || governedJobPopulate.kind !== 'populate') return;
