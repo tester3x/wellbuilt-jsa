@@ -1,7 +1,28 @@
 {
- "versionCode":121,"package":"com.syconik801.jsaapp",
- "scope":"Prepared-job entry supersedes old governed initial/stored URL ownership, cancels old bootstrap navigation and blocks late old-generation effects. No signed artifact edits.",
- "checks":"Start owner77/77; governed auth97/97; prepared entry4/4; original form6/6; TypeScript passed. Isolation60/61 retains previously documented baseline string-only Return to WB assertion on unchanged home source; not weakened or represented as passing.",
- "reconciliation":"Fresh origin heads reviewed: active branch retains120 source4a6fcbda and receipt d1528b3; other historical branches unchanged, no retired UI restored. Fresh read-only EAS max99; installed/local/reserved120. Allocate121. Unpushed other-machine work cannot be discovered.",
- "deviceAcceptance":"Pending S24-first. Reproduce old original governed request plus fresh prepared job, verify fresh request opens and old result cannot replace it. Signed records untouched; Fold job left open."
+  "versionCode": 121,
+  "package": "com.syconik801.jsaapp",
+  "scope": "Prepared-job entry supersedes old governed initial/stored URL ownership, cancels old bootstrap navigation and blocks late old-generation effects. No signed artifact edits.",
+  "checks": "Start owner77/77; governed auth97/97; prepared entry4/4; original form6/6; TypeScript passed. Isolation60/61 retains previously documented baseline string-only Return to WB assertion on unchanged home source; not weakened or represented as passing.",
+  "reconciliation": "Fresh origin heads reviewed: active branch retains120 source4a6fcbda and receipt d1528b3; other historical branches unchanged, no retired UI restored. Fresh read-only EAS max99; installed/local/reserved120. Allocate121. Unpushed other-machine work cannot be discovered.",
+  "deviceAcceptance": "S24 first: installed121/453, seeded historical Nov20 governed initial URL; refused replay. Fresh Burger1/HydroClear PW prepared review opened its current pending JSA. Force-stopped Tickets, delivered generic failure Resume URL: cold-start restored same Job Review and selections with no number/En Route. Retry reopened same current pending governed request eRRWAGlK prefix twice, server read confirmed same job/current off-shift period and pending state. No signoff submitted; two old completed requests retained identical receipt handles and completedAt. Prepared-entry delayed original-intent race/late writes proved in production-owner harness; no actual offline radio test claimed. Fold then121/453 install-r success and version readback only; no Fold navigation/job mutation.",
+  "build": {
+    "sourceCommit": "90e7c4530bf56b92d575d8ed479b414f916a48fd",
+    "branch": "feat/jsa-register-join-code-20260917",
+    "checkout": "C:\\dev\\JSA",
+    "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+    "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+    "reservation": "android-release-v121",
+    "reservationTagObject": "1121b3596e06f4c8441e15e11022490c3312e172",
+    "profile": "preview",
+    "buildMethod": "local Android SDK/Gradle in registered home",
+    "sourceCopy": false,
+    "cloudBuild": false,
+    "package": "com.syconik801.jsaapp",
+    "versionCode": 121,
+    "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+    "artifact": "C:\\dev\\release-artifacts\\jsa-121-90e7c45\\com.syconik801.jsaapp-vc121.apk",
+    "apkSha256": "850705890cb3d833c24224b22f4860a0e55fa25802c2ab38813c535d8dd75b46",
+    "completedAt": "2026-11-22T18:20:43.563Z",
+    "installed": true
+  }
 }
