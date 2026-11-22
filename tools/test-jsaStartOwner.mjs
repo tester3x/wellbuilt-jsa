@@ -22,6 +22,7 @@ import {
   decideStartAdoption,
   getStartOwnershipForTests,
   commitIfOwned,
+  supersedeStartForPreparedEntry,
 } from '../services/sso/jsaStartOwner.ts';
 import { parseJsaLaunchUrl, isLegacyJsaLaunchUrl, buildJsaLaunchUrl } from '../services/sso/jsaLaunch.ts';
 import { reconstructJsaCallbackUrl, handleJsaSsoCallbackUrl, resetJsaCallbackOwnerForTests } from '../services/sso/jsaCallbackOwner.ts';
@@ -790,6 +791,31 @@ function arbMem(over = {}) {
     && replay2.kind === 'ignored' && replay2.refusal === 'stale_replay'
     && getStartOwnershipForTests().requestId === RID_B
     && m.state.obtainCalls.length === 1);
+}
+
+// A prepared/offline job must supersede a task's historical governed URL.
+{
+  resetJsaStartOwnerForTests();
+  const m = mem({store:{session:{uid:'driver'}}});
+  await handleJsaStartUrl(startUrl,m.deps,'live');
+  const generation=getStartOwnershipForTests().generation;
+  await supersedeStartForPreparedEntry();
+  let wrote=false;
+  const late=await commitIfOwned(RID,generation,async()=>{wrote=true;});
+  const replay=await handleJsaStartUrl(startUrl,m.deps,'initial');
+  const stored=await handleJsaStartUrl(startUrl,m.deps,'stored');
+  check('prepared entry rejects old initial/stored replay and late signed-context effects',!late.applied&&!wrote&&replay.kind==='ignored'&&stored.kind==='ignored'&&m.store.obtains===1);
+  const fresh=await handleJsaStartUrl(buildJsaLaunchUrl({v:1,source:'wbt',requestId:RID2,returnTo:'wbt',jobRef:'newJob'}),m.deps,'live');
+  check('a genuinely new live governed job still opens after prepared entry',fresh.kind==='ready'&&m.store.obtains===2);
+}
+{
+  resetJsaStartOwnerForTests();
+  let finish;const pending=new Promise(r=>{finish=r;});
+  const m=mem({store:{session:{uid:'driver'}},deps:{obtain:async(stillOwned,commit)=>{await pending;const result=await commit(async()=>{});return {kind:result.applied?'ready':'fail_closed'};}}});
+  const old=handleJsaStartUrl(startUrl,m.deps,'initial');
+  await new Promise(r=>setImmediate(r));
+  await supersedeStartForPreparedEntry();finish();
+  check('slow original intent cannot finish over the prepared job', (await old).kind==='ignored');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

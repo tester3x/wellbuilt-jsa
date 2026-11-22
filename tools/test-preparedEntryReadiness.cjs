@@ -14,6 +14,7 @@ function harness(){
   '@react-native-async-storage/async-storage':{getItem:async()=>null},
   '../modules/wellbuilt-platform/AccountGate':{useAccountReady:()=>ready},
   '../services/PreparedJsaFlow':{PreparedReadContext:{Provider:'PreparedProvider'},resolvePreparedRead:async()=>{reads++;if(release)await new Promise(r=>{release=r;});if(ended)throw Object.assign(Error('ended'),{code:'jsa/offline-not-ready',reason:'period-ended',requestId:id});if(fail)throw Error('not yet ready');return current;},recordPreparedRead:async()=>{}},
+  '../services/sso/jsaStartOwner':{supersedeStartForPreparedEntry:async()=>{}},
   '../services/preparedShiftJsa':{preparedShiftJsa:{proof:async()=>{proofs++;return null;}}},
   '../services/sso/jsaAttestationScope':{readAttestationDraft:async()=>({stepAcks:{}}),writeAttestationDraft:async()=>true},
   '../services/driverAuth':{fetchDriverProfile:async()=>null},

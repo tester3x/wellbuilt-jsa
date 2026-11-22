@@ -24,6 +24,8 @@ export default function OfflineJob(){
   // The navigator stays mounted behind the account overlay. Firebase restoring
   // alone does not mean the signature-pinned shared request owner is ready.
   if(!accountReady)return;
+  await (await import('../services/sso/jsaStartOwner')).supersedeStartForPreparedEntry();
+  if(!live)return;
   const current=await resolvePreparedRead(id);
   if(!live)return;
   const proof=await preparedShiftJsa.proof(current.request.job.jobRef);

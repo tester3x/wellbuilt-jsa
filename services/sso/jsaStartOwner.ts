@@ -164,6 +164,18 @@ interface StartOwnershipState {
 let ownership: StartOwnershipState = { requestId: null, generation: 0, adoptedLive: false };
 let generationCounter = 0;
 let hydratedFromDisk = false;
+let preparedEntryActive = false;
+
+/** A prepared-job route owns this entry; older governed work may not steer it. */
+export function supersedeStartForPreparedEntry(): Promise<void> {
+  preparedEntryActive = true;
+  return serialize(async () => {
+    if (ownership.requestId) supersededThisProcess.add(ownership.requestId);
+    generationCounter += 1;
+    ownership = { requestId: null, generation: generationCounter, adoptedLive: true };
+    hydratedFromDisk = true;
+  });
+}
 /**
  * THE serialized arbitration boundary. Ownership read, freshness/priority
  * decision, ownership mutation, persistence, and generation assignment all
@@ -180,7 +192,7 @@ function serialize<T>(op: () => Promise<T>): Promise<T> {
 
 /** Synchronous generation guard — the ONLY test for "may still act". */
 export function ownsStartGeneration(requestId: string, generation: number): boolean {
-  return ownership.requestId === requestId && ownership.generation === generation;
+  return !preparedEntryActive && ownership.requestId === requestId && ownership.generation === generation;
 }
 
 export type OwnedCommitOutcome = { applied: true } | { applied: false };
@@ -229,6 +241,7 @@ export function resetJsaStartOwnerForTests(): void {
   ownership = { requestId: null, generation: 0, adoptedLive: false };
   generationCounter = 0;
   hydratedFromDisk = false;
+  preparedEntryActive = false;
   arbiterChain = Promise.resolve();
 }
 
@@ -274,6 +287,9 @@ function arbitrate(
   deps: JsaStartOwnerDeps,
 ): Promise<ArbitrationOutcome & { taken?: 'own' | 'replace' | 'duplicate' }> {
   return serialize(async () => {
+    if (preparedEntryActive && provenance !== 'live') {
+      return { action: 'stale_replay', generation: ownership.generation };
+    }
     if (!hydratedFromDisk) {
       hydratedFromDisk = true;
       if (ownership.requestId === null && deps.currentOwnedRequestId) {
@@ -309,6 +325,7 @@ function arbitrate(
     // adopt — PERSIST FIRST: if ownLaunch throws, no in-memory field has
     // changed and the arbiter still points at the durably-written owner.
     const taken = await deps.ownLaunch(launch);
+    preparedEntryActive = false;
     if (ownership.requestId) supersededThisProcess.add(ownership.requestId);
     generationCounter += 1;
     ownership = {

@@ -111,6 +111,7 @@ function AppContent() {
   const { mode, session, isAuthenticated, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const preparedEntryPath = pathname === '/offline-job' || pathname === '/app-open';
   const screenParams=useGlobalSearchParams();
   const screenParamsJson=JSON.stringify(screenParams);
   const [preparedRequestReady,setPreparedRequestReady]=useState(false);
@@ -410,6 +411,7 @@ function AppContent() {
   // substitute manual login for governed auth.
   useEffect(() => {
     if(!platformAccountReady)return;
+    if(preparedEntryPath)return;
     let cancelled = false;
     (async () => {
       try {
@@ -437,6 +439,7 @@ function AppContent() {
           // This effect re-runs on isAuthenticated false→true, replaying
           // the task's ORIGINAL intent; it must never masquerade as live.
           const result = await consumeJsaStart(url, 'initial');
+          if(cancelled)return;
           // Stale replay / superseded / not-a-start: return IMMEDIATELY.
           // An ignored bootstrap delivery navigates nowhere, exposes no
           // stale local content, and triggers no protected get.
@@ -446,7 +449,7 @@ function AppContent() {
             return;
           }
           const href = await hrefAfterStart(result);
-          if (href) router.replace(href as any);
+          if (!cancelled && href) router.replace(href as any);
           return;
         }
         if (decision.action === 'resume_session') {
@@ -476,7 +479,7 @@ function AppContent() {
       }
     })();
     return () => { cancelled = true; };
-  }, [isAuthenticated,platformAccountReady]);
+  }, [isAuthenticated,platformAccountReady,preparedEntryPath]);
 
   // Keep system navigation visible while forms and action bars respect safe areas.
   useEffect(() => {
@@ -537,7 +540,10 @@ function AppContent() {
   useEffect(() => {
     if(!platformAccountReady)return;
     const handleDeepLink = async (event: { url: string }) => {
-      if(/^jsaapp:\/\/offline-job(?:[/?#]|$)/i.test(event.url))return;
+      if(/^jsaapp:\/\/offline-job(?:[/?#]|$)/i.test(event.url)){
+        await (await import('../services/sso/jsaStartOwner')).supersedeStartForPreparedEntry();
+        return;
+      }
       try {
         // Cascade logout from WB S — only if this session was started via SSO
         if (event.url?.includes('logout')) {
