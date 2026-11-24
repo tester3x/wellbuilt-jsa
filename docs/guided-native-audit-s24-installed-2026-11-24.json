@@ -1,5 +1,5 @@
 {
-  "status": "awaiting human guided review and authenticated return; not passed",
+  "status": "passed isolated guided handoff and authenticated return; replay not verified",
   "jsa": {
     "versionCode": 3,
     "source": "18be4e1d6264fa80ef6099676b682e9c114d101a",
@@ -9,9 +9,8 @@
   },
   "date": "2026-11-24",
   "pending": [
-    "Human guided review, PPE, preparedness and signature",
-    "Back to Tickets consumes matching completed receipt",
-    "Repeat return and immutable artifact count/hash verification"
+    "Return replay and immutable replay verification remain untested: automatic approval review blocked ADB return-link replay without a specific reason",
+    "Production SSO/router/AccountGate end-to-end acceptance remains outside this isolated test"
   ],
   "backendSource": "f491437aaf2d4d2ab253cc712de4e65e5cebc07e",
   "device": "S24 only",
@@ -25,7 +24,13 @@
     "Premature consume refused: pending",
     "Wrong audience refused: wrong_audience",
     "Foreign company refused: binding_mismatch",
-    "Anonymous context refused: not_authorized"
+    "Anonymous context refused: not_authorized",
+    "Mike completed normal guided Steps, PPE, preparedness and signature, then returned",
+    "Native test Tickets displayed PASS: authenticated JSA return verified",
+    "Emulator confirmed exactly one completed read_and_acknowledged request and one signed artifact",
+    "Request has completedAtMs and wbtConsumedAtMs; receipt was consumed",
+    "Artifact hash remained stable across final read-only checks",
+    "Production Tickets 460 and JSA 122 rechecked after human test"
   ],
   "caller": {
     "versionCode": 2,
@@ -42,5 +47,15 @@
     "appDataCleared": false,
     "deployment": false,
     "foldOperated": false
+  },
+  "completedProof": {
+    "replay": "not run",
+    "state": "completed",
+    "artifactCount": 1,
+    "localSignedSnapshotByteComparison": "not independently exported; no claim",
+    "requestCount": 1,
+    "action": "read_and_acknowledged",
+    "consumed": true,
+    "artifactHash": "795eab37e65066803e29bfe056e1f6ff4ad743bd34491a70386b3deb310f84ae"
   }
 }
