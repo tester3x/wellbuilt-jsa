@@ -2,14 +2,17 @@
 // Installed production JSA122 / Tickets460 and their data are never replaced.
 if (System.getenv('WB_NATIVE_AUDIT') != '1') throw new GradleException('Native audit requires explicit test build')
 react {
-  entryFile = rootProject.file('../tools/native-audit/index.tsx')
+  entryFile = rootProject.file(System.getenv('WB_GUIDED_AUDIT') == '1' ? '../tools/guided-audit/index.tsx' : '../tools/native-audit/index.tsx')
+  if (System.getenv('WB_GUIDED_AUDIT') == '1') bundleConfig = rootProject.file('../tools/guided-audit/metro.config.cjs')
 }
 android {
   defaultConfig {
     applicationId 'com.syconik801.jsaapp.audit'
+    if (System.getenv('WB_GUIDED_ROLE') == 'wbt') applicationId 'com.syconik801.jsaapp.audit.tickets'
     versionCode Integer.parseInt(System.getenv('WB_NATIVE_AUDIT_VERSION'))
     versionName 'native-audit-1'
+    manifestPlaceholders = [auditLabel: System.getenv('WB_GUIDED_ROLE') == 'wbt' ? 'WB Tickets Handoff Audit' : 'WB JSA Guided Audit', auditScheme: System.getenv('WB_GUIDED_ROLE') == 'wbt' ? 'wb-audit-tickets' : 'wb-audit-jsa']
   }
-  sourceSets { main { manifest.srcFile rootProject.file('../tools/native-audit/AndroidManifest.xml') } }
+  sourceSets { main { manifest.srcFile rootProject.file(System.getenv('WB_GUIDED_AUDIT') == '1' ? '../tools/guided-audit/AndroidManifest.xml' : '../tools/native-audit/AndroidManifest.xml') } }
   buildTypes { release { signingConfig signingConfigs.wbRegisteredRelease } }
 }
