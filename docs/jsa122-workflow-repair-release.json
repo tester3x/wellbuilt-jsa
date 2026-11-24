@@ -1,0 +1,33 @@
+{
+  "versionCode": 122,
+  "package": "com.syconik801.jsaapp",
+  "scope": "Notify root auth/workflow isolation after durable launch/context/failure writes; keep existing authorization and request ownership gates.",
+  "build": {
+    "sourceCommit": "51b2138857bc1133b3ba80d43eb1430225444aeb",
+    "branch": "feat/jsa-register-join-code-20260917",
+    "checkout": "C:\\dev\\JSA",
+    "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+    "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+    "reservation": "android-release-v122",
+    "reservationTagObject": "89f6559c74ee4eaed67a738b1c34509c2b80cd26",
+    "profile": "preview",
+    "buildMethod": "local Android SDK/Gradle in registered home",
+    "sourceCopy": false,
+    "cloudBuild": false,
+    "package": "com.syconik801.jsaapp",
+    "versionCode": 122,
+    "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+    "artifact": "C:\\dev\\release-artifacts\\jsa-122-51b2138\\com.syconik801.jsaapp-vc122.apk",
+    "apkSha256": "de62b76d292cdaf012c6b0a9be8d6da2c236c06e2df53328d30e189b9e92d92e",
+    "completedAt": "2026-11-24T15:34:48.999Z",
+    "installed": true
+  },
+  "recordedAt": "2026-11-24T15:38:53.698Z",
+  "reconciliation": "Retains121 source90e7c453 and subsequent receipt. Fresh all-head comparison: other remote tips unchanged before/after build. Private APK distribution/local/reserved ceiling121, fresh read-only EAS max99. No cloud build. Other-machine unpushed work cannot be discovered.",
+  "checks": "Red old runtime fails2 behavior cases; fixed workflow regression passes3. Start owner77, governed auth97, request lifecycle100, focused/prepared/startup8, release runner tests and TypeScript pass. Existing isolation source-text assertion remains60/61 on unchanged home code and is not represented as passing.",
+  "deviceAcceptance": {
+    "s24": "Install-r success and independent122 readback. Existing pending test dispatch opened Job Review and required a fresh read. Start opened current governed request; protected server get succeeded, correct test location appeared on Steps & Hazards page1 with no sign-in refusal overlay. Home/background/resume retained the same form without the overlay. No Next/preparedness/signature/Submit interaction, no shift change or job completion.",
+    "fold": "Only after S24 acceptance, install-r success and independent122 readback. Foreground YouTube stayed unchanged before/after update. No Fold navigation, Start/Close action, shift change or signed-record mutation. Driver retry from the existing Tickets review is still needed to verify that real handoff."
+  },
+  "limitation": "Original Fold request/relaunch has not been exercised after installation; do not call that device flow a pass. No local data clearing, token manipulation or failure-marker bypass."
+}
