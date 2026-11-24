@@ -60,8 +60,8 @@ expect(so.includes('let coreJsasOk = false;') && so.includes('coreJsasOk = true;
   'core outcome tracked from the actual jsas response');
 expect(so.includes('return { jsasOk: coreJsasOk };'),
   'the cloud closure reports the core outcome');
-expect(so.includes('ANCILLARY: best-effort, logged,'),
-  'ancillary-write decision documented in place');
+expect(so.includes('PDF and day-status projections are not proof of signed persistence.'),
+  'ancillary projections cannot establish signed persistence');
 // Ordinary flow (own commit): the smallest awaited boundary — the core
 // jsas write — and an honest modal. No false success anywhere:
 // completeCloudPending switches the completion copy to saved-on-device,
@@ -72,23 +72,14 @@ expect(so.includes('const core = await runCloudPersist().catch(() => ({ jsasOk: 
   'ordinary submissions await the core outcome');
 expect(so.includes("cloud sync hasn't finished yet"),
   'the completion modal tells the truth about the cloud outcome');
-expect(so.includes('forcing HONEST modal') && !so.includes("forcing modal:'"),
+expect(/saveAndGo\(\)\.catch\([\s\S]*setCompleteCloudPending\(true\);\s*setCompleteReturnScheme\(null\);[\s\S]*setShowCompleteModal\(true\)/.test(so),
   'the forced failure modal no longer claims success');
 expect(!so.includes('void runCloudPersist();'),
   'no fire-and-forget success path remains');
 
-// Receipt writer: called only after core persistence (contract comment),
-// GET-first idempotent, never without the submission id.
-expect(svc.includes('MUST be called only after the core'),
-  'receipt writer contract documented');
-{
-  const w = svc.slice(svc.indexOf('export async function writeReadReceipt'));
-  expect(w.indexOf('const g = await fetch(url') < w.indexOf("method: 'PATCH'"),
-    'GET-first idempotence before the PATCH');
-  expect(w.includes('receipt already exists — idempotent success'),
-    'an existing receipt is success, never a duplicate');
-  expect(w.includes('|| !jsaRecordId) return false;'),
-    'no receipt without the core submission id');
-}
-
+// Receipt writer uses the authenticated endpoint and compares the complete binding.
+expect(!svc.includes('await fetch('), 'no anonymous REST receipt access');
+expect(svc.includes("operation:'receipt'"), 'server validates and derives receipt');
+for(const field of ['r.requestId===ctx.requestId','r.jsaRecordId===jsaRecordId','r.companyId===ctx.companyId','r.driverHash===ctx.driverHash','r.jobDocId===ctx.jobDocId']) expect(svc.includes(field), 'receipt binding '+field);
+expect(svc.includes('|| !jsaRecordId) return false;'), 'requires signed record');
 console.log('wbtReceiptSubmission tests passed');

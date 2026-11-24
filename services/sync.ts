@@ -66,36 +66,41 @@ export async function syncToCloud(): Promise<{
   }
 
   try {
+    const {loadUsableGovernedSession}=await import('./sso/jsaGovernedAuthLive');
+    const owner=await loadUsableGovernedSession();
+    if(!owner)throw Error('Sign in to sync saved JSA evidence.');
+    const sameOwner=async()=>{const now=await loadUsableGovernedSession();if(!now||now.uid!==owner.uid||now.generation!==owner.generation||now.driverId!==owner.driverId||now.companyId!==owner.companyId)throw Error('JSA owner changed. Original evidence retained.');};
     const deviceId = await getDeviceId();
 
     // Get local JSAs
     const localData = await AsyncStorage.getItem(STORAGE_KEYS.saves);
     const localJSAs: FirebaseJSA[] = localData ? JSON.parse(localData) : [];
 
-    // Add deviceId to each JSA
-    const jsasWithDevice = localJSAs.filter((jsa: any) => jsa.workflow !== 'standalone').map((jsa) => ({
-      ...jsa,
-      deviceId,
-    }));
+    // Never augment a signed snapshot during replay or send a governed record
+    // through the historical archive path. Unknown/foreign originals stay local.
+    const jsasWithDevice = localJSAs.filter((jsa: any) => jsa.workflow !== 'standalone' && jsa.workflow !== 'prepared' && !jsa.governedRequestRef);
 
     const { syncStandaloneHistory } = await import('./standaloneJsa');
     await syncStandaloneHistory();
 
     // Upload to cloud
     const uploadResult = await uploadAllJSAs(jsasWithDevice);
+    await sameOwner();
 
     // Fetch from cloud (in case there's data from other sessions)
     const cloudJSAs = await fetchJSAsForDevice(deviceId);
+    await sameOwner();
 
     // Network work can overlap new signed saves. Merge into the latest local
     // state, never the snapshot captured before the upload.
     const latestData = await AsyncStorage.getItem(STORAGE_KEYS.saves);
     const latestJSAs: FirebaseJSA[] = latestData ? JSON.parse(latestData) : [];
     if (!Array.isArray(latestJSAs)) throw new Error('Local JSA storage is unreadable.');
-    const localIds = new Set(latestJSAs.map((j) => j.id));
+    const evidenceKey=(j:any)=>JSON.stringify([j.companyId||null,j.driverId||j.driverHash||null,j.id]);
+    const localIds = new Set(latestJSAs.map(evidenceKey));
 
     // Items only in cloud (downloaded)
-    const downloadedItems = cloudJSAs.filter((j) => !localIds.has(j.id));
+    const downloadedItems = cloudJSAs.filter((j) => !localIds.has(evidenceKey(j)));
 
     // Merge all items
     const mergedJSAs = [
@@ -104,6 +109,7 @@ export async function syncToCloud(): Promise<{
     ];
 
     // Save merged data locally
+    await sameOwner();
     await AsyncStorage.setItem(STORAGE_KEYS.saves, JSON.stringify(mergedJSAs));
 
     // A partial batch is not an acknowledgement for every saved JSA.

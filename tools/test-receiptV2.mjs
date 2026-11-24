@@ -92,7 +92,7 @@ const v2ctx = parseWbtReadRequestParams({
 // ── source pins ───────────────────────────────────────────────────────────
 const svc = readFileSync(join(root, 'services/wbtReadRequest.ts'), 'utf8');
 check('writeReadReceipt refuses v2 without proven binding (downgrade resistance)',
-  /READ_RECEIPT_VERSION_2 && !v2Binding/.test(svc));
+  /READ_RECEIPT_VERSION_2 && \(.*!v2Binding/.test(svc));
 const signoff = readFileSync(join(root, 'app/signoff.tsx'), 'utf8');
 check('signoff proves the v2 binding before the receipt write',
   signoff.includes('proveV2Binding') && /proof = await proveV2Binding\(\);[\s\S]{0,120}writeReadReceipt/.test(signoff));

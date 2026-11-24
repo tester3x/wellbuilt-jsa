@@ -1,12 +1,6 @@
 import { initializeApp } from "firebase/app";
 import {
-  collection,
-  doc,
-  getDocs,
   getFirestore,
-  query,
-  setDoc,
-  where,
 } from "firebase/firestore";
 
 // Firebase configuration — WellBuilt Suite (shared with WB Tickets)
@@ -25,9 +19,6 @@ const firebaseConfig = {
 // services/sso/jsaGovernedAuthLive.ts so callables and Auth share project.
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-
-// Collection name for JSAs
-const JSA_COLLECTION = "jsas";
 
 export type FirebaseJSA = {
   id: string;
@@ -58,11 +49,7 @@ export type FirebaseJSA = {
  */
 export async function uploadJSA(jsa: Omit<FirebaseJSA, "syncedAt">) {
   try {
-    const docRef = doc(db, JSA_COLLECTION, jsa.id);
-    await setDoc(docRef, {
-      ...jsa,
-      syncedAt: new Date().toISOString(),
-    });
+    await (await import('./legacyEvidence')).persistLegacyJsaEvidence(jsa);
     return { success: true };
   } catch (error) {
     console.error("Error uploading JSA:", error);
@@ -88,15 +75,18 @@ export async function uploadAllJSAs(jsas: Omit<FirebaseJSA, "syncedAt">[]) {
  */
 export async function fetchJSAsForDevice(deviceId: string): Promise<FirebaseJSA[]> {
   try {
-    const q = query(
-      collection(db, JSA_COLLECTION),
-      where("deviceId", "==", deviceId)
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => doc.data() as FirebaseJSA);
+    // Device IDs are presentation filters, never authorization.
+    const rows:FirebaseJSA[]=[];let after:string|null=null;
+    for(let page=0;page<20;page++){
+      const reply=await (await import('./legacyEvidence')).legacyEvidenceCall({operation:'list',after});
+      const batch=reply.records as FirebaseJSA[];rows.push(...batch);
+      if(batch.length<50)return rows;
+      const next=batch[batch.length-1]?.id;if(!next||next===after)throw Error('JSA history cursor is invalid.');after=next;
+    }
+    throw Error('JSA history refresh is incomplete; local originals retained.');
   } catch (error) {
     console.error("Error fetching JSAs:", error);
-    return [];
+    throw error;
   }
 }
 
@@ -105,15 +95,12 @@ export async function fetchJSAsForDevice(deviceId: string): Promise<FirebaseJSA[
  */
 export async function fetchJSAsForDriver(driverName: string): Promise<FirebaseJSA[]> {
   try {
-    const q = query(
-      collection(db, JSA_COLLECTION),
-      where("driverName", "==", driverName)
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => doc.data() as FirebaseJSA);
+    // A display name is not an owner identity. Use the authenticated owner list.
+    const reply=await (await import('./legacyEvidence')).legacyEvidenceCall({operation:'list'});
+    return (reply.records as FirebaseJSA[]).filter(r=>r.driverName===driverName);
   } catch (error) {
     console.error("Error fetching JSAs for driver:", error);
-    return [];
+    throw error;
   }
 }
 

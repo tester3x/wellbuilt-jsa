@@ -237,69 +237,18 @@ export async function clearReadRequestContext(): Promise<void> {
 
 // ── Durable receipt write (called ONLY after the core jsas write) ───────────
 
-const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/wellbuilt-sync/databases/(default)/documents';
-const FIRESTORE_API_KEY = 'AIzaSyAGWXa-doFGzo7T5SxHVD_v5-SHXIc8wAI';
-const RECEIPT_TIMEOUT_MS = 10_000;
-
-/**
- * Write jsa_read_receipts/{requestId}. MUST be called only after the core
- * jsas/{jsaRecordId} persistence succeeded — the receipt is a claim that
- * the submission durably exists. Idempotent: an existing receipt for this
- * requestId counts as success (retries and the immutable-rules model both
- * land here), so no duplicate success receipts are possible.
- */
-export async function writeReadReceipt(
-  ctx: WbtReadRequestContext,
-  jsaRecordId: string,
-  v2Binding?: ReceiptV2Binding,
-): Promise<boolean> {
+/** Authenticated immutable receipt, derived by the server from archived evidence. */
+export async function writeReadReceipt(ctx: WbtReadRequestContext, jsaRecordId: string, v2Binding?: ReceiptV2Binding): Promise<boolean> {
   try {
     if (!REQUEST_ID_RE.test(ctx?.requestId || '') || !jsaRecordId) return false;
-    // Downgrade resistance: a v2 request without a PROVEN binding never
-    // produces any receipt — v1 fields are not an acceptable fallback.
-    if (ctx.receiptVersion === READ_RECEIPT_VERSION_2 && !v2Binding) {
-      console.warn('[JSA][wbtReadRequest] v2 request without proven period binding — no receipt');
-      return false;
-    }
-    const url = `${FIRESTORE_BASE}/jsa_read_receipts/${ctx.requestId}?key=${FIRESTORE_API_KEY}`;
-    // GET-first idempotence: a prior successful attempt already wrote the
-    // (immutable) receipt.
-    try {
-      const c0 = new AbortController();
-      const t0 = setTimeout(() => c0.abort(), RECEIPT_TIMEOUT_MS);
-      const g = await fetch(url, { signal: c0.signal });
-      clearTimeout(t0);
-      if (g.ok) {
-        const doc = await g.json();
-        if (doc?.fields?.requestId?.stringValue === ctx.requestId) {
-          console.log('[JSA][wbtReadRequest] receipt already exists — idempotent success');
-          return true;
-        }
-      }
-    } catch {}
-    const fields = ctx.receiptVersion === READ_RECEIPT_VERSION_2 && v2Binding
-      ? buildReadReceiptFieldsV2(ctx, jsaRecordId, new Date().toISOString(), v2Binding)
-      : buildReadReceiptFields(ctx, jsaRecordId, new Date().toISOString());
-    const c1 = new AbortController();
-    const t1 = setTimeout(() => c1.abort(), RECEIPT_TIMEOUT_MS);
-    const resp = await fetch(url, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fields }),
-      signal: c1.signal,
-    });
-    clearTimeout(t1);
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      console.warn(`[JSA][wbtReadRequest] receipt write failed: HTTP ${resp.status} ${body.slice(0, 160)}`);
-      return false;
-    }
-    console.log(`[JSA][wbtReadRequest] receipt written for request ${ctx.requestId.slice(0, 8)}… (jsaRecordId=${jsaRecordId})`);
-    return true;
-  } catch (err) {
-    console.warn('[JSA][wbtReadRequest] receipt write error:', (err as any)?.message || err);
-    return false;
-  }
+    if (ctx.receiptVersion === READ_RECEIPT_VERSION_2 && (!v2Binding || v2Binding.submissionPeriodId !== ctx.periodId)) return false;
+    const reply = await (await import('./legacyEvidence')).legacyEvidenceCall({operation:'receipt',requestId:ctx.requestId,recordId:jsaRecordId});
+    const r=reply.receipt;
+    return !!r && r.requestId===ctx.requestId && r.jsaRecordId===jsaRecordId
+      && r.companyId===ctx.companyId && r.driverHash===ctx.driverHash && r.jobDocId===ctx.jobDocId
+      && r.receiptVersion===ctx.receiptVersion && r.completionType==='signed_submission'
+      && (ctx.receiptVersion===2 ? r.requestPeriodId===ctx.periodId && r.submissionPeriodId===ctx.periodId && r.workPeriodMode===v2Binding?.workPeriodMode : r.shiftId===ctx.shiftId);
+  } catch { return false; }
 }
 
 /**
