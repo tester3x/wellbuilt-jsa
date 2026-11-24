@@ -1,0 +1,46 @@
+{
+  "status": "awaiting human guided review and authenticated return; not passed",
+  "jsa": {
+    "versionCode": 3,
+    "source": "18be4e1d6264fa80ef6099676b682e9c114d101a",
+    "sha256": "e325fdc487a47ac3996831a73fac4e12384dbb5edcc77efdab5fe32192b2da1f",
+    "package": "com.syconik801.jsaapp.audit",
+    "signer": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459"
+  },
+  "date": "2026-11-24",
+  "pending": [
+    "Human guided review, PPE, preparedness and signature",
+    "Back to Tickets consumes matching completed receipt",
+    "Repeat return and immutable artifact count/hash verification"
+  ],
+  "backendSource": "f491437aaf2d4d2ab253cc712de4e65e5cebc07e",
+  "device": "S24 only",
+  "scope": "Real guided screen components plus actual Tickets handoff coordinator and receipt validator; isolated router/profile/SSO adapters. Not a production 460 end-to-end certification.",
+  "checks": [
+    "TypeScript noEmit passed",
+    "Native evidence and isolation regressions passed",
+    "Actual backend parser accepts corrected consume body",
+    "Native caller opened normal Steps page with authoritative well/operator/activity",
+    "Authenticated calls verified by emulator middleware",
+    "Premature consume refused: pending",
+    "Wrong audience refused: wrong_audience",
+    "Foreign company refused: binding_mismatch",
+    "Anonymous context refused: not_authorized"
+  ],
+  "caller": {
+    "versionCode": 2,
+    "source": "ae62cf09ae8326b383caefbaa28fc065670170a0",
+    "sha256": "e3b3b1904f400221b1adde8a41f74cddc2f58d0f5df59f6267d71cbbb76f4c25",
+    "package": "com.syconik801.jsaapp.audit.tickets",
+    "signer": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459"
+  },
+  "preservation": "Only isolated package IDs installed. Production package versions rechecked after install. No operations on real jobs, queues, signatures or Fold. Existing v1 synthetic audit work remains namespaced separately.",
+  "production": {
+    "ticketsVersion": 460,
+    "jsaVersion": 122,
+    "replaced": false,
+    "appDataCleared": false,
+    "deployment": false,
+    "foldOperated": false
+  }
+}
