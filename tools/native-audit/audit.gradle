@@ -1,0 +1,15 @@
+// Explicit test variant only, applied by the registered-home audit runner.
+// Installed production JSA122 / Tickets460 and their data are never replaced.
+if (System.getenv('WB_NATIVE_AUDIT') != '1') throw new GradleException('Native audit requires explicit test build')
+react {
+  entryFile = rootProject.file('../tools/native-audit/index.tsx')
+}
+android {
+  defaultConfig {
+    applicationId 'com.syconik801.jsaapp.audit'
+    versionCode Integer.parseInt(System.getenv('WB_NATIVE_AUDIT_VERSION'))
+    versionName 'native-audit-1'
+  }
+  sourceSets { main { manifest.srcFile rootProject.file('../tools/native-audit/AndroidManifest.xml') } }
+  buildTypes { release { signingConfig signingConfigs.wbRegisteredRelease } }
+}

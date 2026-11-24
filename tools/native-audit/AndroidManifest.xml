@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <application android:name="com.syconik801.jsaapp.MainApplication"
+    android:label="WB JSA Native Audit" android:icon="@mipmap/ic_launcher"
+    android:allowBackup="false" android:usesCleartextTraffic="true" android:theme="@style/AppTheme">
+    <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
+    <activity android:name="com.syconik801.jsaapp.MainActivity" android:exported="true"
+      android:theme="@style/Theme.App.SplashScreen" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:windowSoftInputMode="adjustResize">
+      <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+    </activity>
+  </application>
+</manifest>

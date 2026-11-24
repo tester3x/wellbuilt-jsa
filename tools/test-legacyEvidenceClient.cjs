@@ -2,6 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 function fixture(){
  const state={owner:{uid:'synthetic-user',companyId:'synthetic-company',driverId:'synthetic-driver',generation:1},calls:[],offline:false,afterCall:()=>{},reply:null};
  const m={exports:{}};const ports=name=>{
+  if(name==='./legacyEvidenceCore'){const core={exports:{}};new Function('module','exports',ts.transpileModule(fs.readFileSync('services/legacyEvidenceCore.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText)(core,core.exports);return core.exports;}
   if(name==='./sso/jsaGovernedAuthLive')return {loadUsableGovernedSession:async()=>({...state.owner})};
   if(name==='./firebase')return {app:{}};
   if(name==='firebase/functions')return {getFunctions:()=>({}),httpsCallable:(_f,name)=>async body=>{assert.equal(name,'jsaLegacyEvidence');state.calls.push(structuredClone(body));if(state.offline)throw Error('network unavailable');const result=state.reply||{schemaVersion:1,companyId:state.owner.companyId,driverId:state.owner.driverId,recordId:body.record?.id,snapshotHash:'synthetic-digest'};state.afterCall();return {data:result};}};
