@@ -1,0 +1,60 @@
+{
+  "recordedAtUtc": "2026-11-24T22:31:36.645Z",
+  "sourceCommit": "af6a9724779adccfcec4154a63ff2ed7cb64d6e1",
+  "package": "com.syconik801.jsaapp.audit",
+  "versionCode": 1,
+  "sha256": "2abefee75b188870879e32be3043bc7b39fbcb74f9f7515e671e989c7a923c01",
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "reservation": "android-native-audit-v1",
+  "artifact": "C:\\dev\\release-artifacts\\jsa-native-audit-1\\com.syconik801.jsaapp.audit-v1.apk",
+  "dashboardFixtureSource": "1fb3ac68",
+  "project": "demo-wb-audit-s24",
+  "device": "S24 only",
+  "results": {
+    "status": "native-passed",
+    "engine": "Hermes",
+    "storage": "native AsyncStorage",
+    "auth": "persisted Firebase Auth emulator",
+    "transport": "Firebase Functions emulator callable",
+    "lines": [
+      "PASS emulator project restored",
+      "PASS native original survived process restart",
+      "PASS pending work survived process restart",
+      "PASS native persisted Auth restored company A",
+      "PASS Hermes native runtime",
+      "READY offline-saved",
+      "PASS offline phase restored after restart",
+      "PASS lost receipt response keeps native work pending",
+      "PASS no false completed status",
+      "PASS identical native receipt replay confirmed",
+      "PASS company B cannot adopt A original",
+      "PASS foreign original stopped before callable",
+      "PASS authenticated server refuses foreign receipt",
+      "PASS B history contains no A evidence",
+      "PASS company switch preserves A pending original",
+      "PASS account switch during response cannot confirm A",
+      "PASS original signature time retained",
+      "PASS exactly one unchanged signed emulator record",
+      "PASS exactly one original-time emulator receipt",
+      "PASS A to B to A never alters signed snapshot",
+      "PASS native completion persisted only after proof"
+    ],
+    "proof": {
+      "counts": {
+        "rpc": 0,
+        "failures": 0,
+        "receiptDropped": 0
+      },
+      "originalUnchanged": true,
+      "signedCount": 1,
+      "receiptCount": 1,
+      "receiptTimeUnchanged": true,
+      "companyABlocks": 0
+    }
+  },
+  "offlinePhase": "S24 Wi-Fi/mobile data off and only the three test USB forwards removed. Native save refused confirmation. Force-stop/relaunch of audit app restored unchanged signed original, pending flag, and Firebase Auth A session while still offline. Connections/radios restored to original1/1 before retry.",
+  "protectedWork": "Production Tickets460 and JSA122 independently read back unchanged. Burger1 PAUSED after test, no job action taken. Production outbox log sent0 kept9. No production session/account switch or signed-record action. Fold disconnected and never operated.",
+  "isolation": "Separate package/storage sandbox, no production deep link or workforms provider. APK bundle lacks wellbuilt-sync project reference. Generated native Gradle restored byte-for-byte. Same approved JSA signer. No data clear/uninstall/cloud build/deployment.",
+  "limitations": "Native harness tests shared production evidence client core, Hermes, native AsyncStorage, persisted SDK Auth and actual Functions emulator callable. It does not certify normal Tickets-to-JSA-to-Tickets screens, production SSO-session integration, human signoff, prepared/standalone workflows or strict-rule rollout. Post-commit lost-response injection occurred after successful SDK receipt response, not by timing a physical socket disconnection. Progress assertions were captured in native logs/server receipt; on-screen progress text did not render reliably.",
+  "deployment": false
+}
