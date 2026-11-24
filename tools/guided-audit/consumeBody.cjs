@@ -1,0 +1,1 @@
+exports.consumeBody=requestId=>({requestId});

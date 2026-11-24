@@ -28,7 +28,7 @@ function App(){
    if(parsed.protocol!=='wb-audit-tickets:'||parsed.hostname!=='jsa-return')throw Error('Wrong return route');
    const pending=JSON.parse((await AsyncStorage.getItem(KEY))||'null');
    if(!pending||pending.requestId!==id)throw Error('Return has no matching local request');
-   const result=await call('jsaConsumeReadResult',{requestId:id,jobRef:pending.jobRef});
+   const result=await call('jsaConsumeReadResult',require('./consumeBody.cjs').consumeBody(id));
    if(!verifiedStartRead(pending,result))throw Error('Return not verified');
    await AsyncStorage.setItem(KEY,JSON.stringify({...pending,verified:result}));setStatus('PASS: authenticated JSA return verified. Test job may start.');
   }else{
