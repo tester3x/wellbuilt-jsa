@@ -44,6 +44,12 @@ const VERIFIER_KEY = 'jsa_pkce_verifier';
 const SESSION_KEY = 'jsa_governed_session';
 export const INSTALLATION_FINALIZED_KEY = 'jsa_governed_installation_finalized';
 const governedSessionSignal = createRevisionSignal();
+// Request/failure state can change while the authenticated SDK user stays the
+// same. Its UI consumers must not wait for another sign-in event to recheck.
+const governedWorkflowSignal = createRevisionSignal();
+export function subscribeGovernedWorkflowRevision(listener: (revision: number) => void): () => void {
+  return governedWorkflowSignal.subscribe(listener);
+}
 export const AUTH_RECOVERY_LATCH_KEY = '@jsa/authRecoveryLatch';
 export const GOVERNED_TERMINAL_FAILURE_KEY = '@jsa/governedTerminalFailure';
 
@@ -67,6 +73,7 @@ const sessionMutator = createSerializedSessionMutator({
 
 export async function saveLaunchContext(req: JsaLaunchRequest): Promise<void> {
   await AsyncStorage.setItem(JSA_LAUNCH_CONTEXT_KEY, JSON.stringify(req));
+  governedWorkflowSignal.publish();
 }
 
 export async function loadLaunchContext(): Promise<JsaLaunchRequest | null> {
@@ -78,6 +85,7 @@ export async function loadLaunchContext(): Promise<JsaLaunchRequest | null> {
 
 export async function clearLaunchContext(): Promise<void> {
   await AsyncStorage.removeItem(JSA_LAUNCH_CONTEXT_KEY);
+  governedWorkflowSignal.publish();
 }
 
 export async function saveFreshSubmittedMarker(marker: FreshSubmittedMarker): Promise<void> {
@@ -247,12 +255,14 @@ export async function clearInstallationFinalizedMarkerIfGeneration(generation: s
 export async function markGovernedTerminalFailure(requestId: string): Promise<void> {
   if (!requestId) return;
   await AsyncStorage.setItem(GOVERNED_TERMINAL_FAILURE_KEY, JSON.stringify({ requestId }));
+  governedWorkflowSignal.publish();
 }
 
 export async function clearGovernedTerminalFailureFor(requestId: string): Promise<boolean> {
   const current = await loadGovernedTerminalFailure();
   if (!current || current.requestId !== requestId) return false;
   await AsyncStorage.removeItem(GOVERNED_TERMINAL_FAILURE_KEY);
+  governedWorkflowSignal.publish();
   return true;
 }
 
@@ -355,6 +365,7 @@ export async function loadLaunchOwnership(): Promise<JsaLaunchOwnership | null> 
 
 export async function saveRequestContext(view: JsaRequestContextView): Promise<void> {
   await AsyncStorage.setItem(GOVERNED_REQUEST_CONTEXT_KEY, JSON.stringify(view));
+  governedWorkflowSignal.publish();
 }
 
 export async function loadRequestContext(): Promise<JsaRequestContextView | null> {
@@ -368,6 +379,7 @@ export async function loadRequestContext(): Promise<JsaRequestContextView | null
 
 export async function clearRequestContext(): Promise<void> {
   await AsyncStorage.removeItem(GOVERNED_REQUEST_CONTEXT_KEY);
+  governedWorkflowSignal.publish();
 }
 
 export async function savePendingComplete(rec: PendingCompleteRecord): Promise<void> {

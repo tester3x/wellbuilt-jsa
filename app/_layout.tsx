@@ -341,13 +341,17 @@ function AppContent() {
     if(!platformAccountReady)return;
     let unsubscribe: (() => void) | null = null;
     let disposed = false;
-    void import('../services/sso/jsaRuntime').then(({ subscribeGovernedSessionRevision }) => {
+    let unsubscribeWorkflow: (() => void) | null = null;
+    void import('../services/sso/jsaRuntime').then(({ subscribeGovernedSessionRevision, subscribeGovernedWorkflowRevision }) => {
       if (disposed) return;
       unsubscribe = subscribeGovernedSessionRevision(() => {
         void resolveUnauthSurface();
       });
+      unsubscribeWorkflow = subscribeGovernedWorkflowRevision(() => {
+        void resolveUnauthSurface();
+      });
     }).catch(() => { if (!disposed) setLogoutFailed(true); });
-    return () => { disposed = true; unsubscribe?.(); };
+    return () => { disposed = true; unsubscribe?.(); unsubscribeWorkflow?.(); };
   }, [platformAccountReady]);
 
   const leaveGovernedForStandalone = async () => {
