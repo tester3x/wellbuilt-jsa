@@ -1,7 +1,6 @@
 import { initializeApp } from "firebase/app";
 import {
   collection,
-  deleteDoc,
   doc,
   getDocs,
   getFirestore,
@@ -122,13 +121,7 @@ export async function fetchJSAsForDriver(driverName: string): Promise<FirebaseJS
  * Delete a JSA from Firebase
  */
 export async function deleteJSAFromCloud(jsaId: string) {
-  try {
-    await deleteDoc(doc(db, JSA_COLLECTION, jsaId));
-    return { success: true };
-  } catch (error) {
-    console.error("Error deleting JSA from cloud:", error);
-    return { success: false, error };
-  }
+  throw new Error('Saved JSA reports cannot be deleted by the client.');
 }
 
 /**

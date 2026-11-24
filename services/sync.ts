@@ -4,7 +4,6 @@ import { Platform } from "react-native";
 
 import { STORAGE_KEYS } from "../constants/storageKeys";
 import {
-  deleteJSAFromCloud,
   fetchJSAsForDevice,
   FirebaseJSA,
   isFirebaseConfigured,
@@ -134,23 +133,11 @@ export async function syncToCloud(): Promise<{
  * Delete a JSA from both local storage and cloud
  */
 export async function deleteJSAEverywhere(jsaId: string): Promise<boolean> {
-  try {
-    // Delete from cloud
-    if (isFirebaseConfigured()) {
-      await deleteJSAFromCloud(jsaId);
-    }
-
-    // Delete from local
-    const localData = await AsyncStorage.getItem(STORAGE_KEYS.saves);
-    const localJSAs = localData ? JSON.parse(localData) : [];
-    const filtered = localJSAs.filter((j: { id: string }) => j.id !== jsaId);
-    await AsyncStorage.setItem(STORAGE_KEYS.saves, JSON.stringify(filtered));
-
-    return true;
-  } catch (error) {
-    console.error("Error deleting JSA everywhere:", error);
-    return false;
-  }
+  // Saved reports are safety evidence, including legacy reports without a
+  // trustworthy owner/schema marker. Never infer that they are disposable.
+  // Standalone Close changes lifecycle metadata through its governed callable;
+  // it does not delete the signed report. Retain this guard for stale callers.
+  throw new Error('Saved JSA reports are retained as safety evidence. Close an open JSA instead.');
 }
 
 /**

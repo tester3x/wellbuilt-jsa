@@ -17,7 +17,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors, cardShadow } from "../../constants/colors";
-import { deleteJSAEverywhere } from "../../services/sync";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -114,31 +113,9 @@ export default function HistoryTabScreen() {
       ]);
       return;
     }
-    Alert.alert(
-      t("Delete JSA"),
-      t("Are you sure you want to delete this JSA? This action cannot be undone."),
-      [
-        { text: t("Cancel"), style: "cancel" },
-        {
-          text: t("Delete"),
-          style: "destructive",
-          onPress: async () => {
-            try {
-              // Delete from BOTH cloud and local. Filtering AsyncStorage alone
-              // creates a write-back loop: completed.tsx → syncToCloud →
-              // fetchJSAsForDevice re-fetches the still-living cloud doc and
-              // merges it back into local. Authoritative delete kills the loop.
-              await deleteJSAEverywhere(item.id);
-              const newHistory = history.filter((h) => h.id !== item.id);
-              setHistory(newHistory);
-            } catch (err) {
-              console.error("Error deleting JSA:", err);
-              Alert.alert(t("Error"), t("Failed to delete JSA. Please try again."));
-            }
-          },
-        },
-      ]
-    );
+    // Legacy saved reports are retained too. Unknown provenance is not
+    // permission to delete signed safety evidence or its only local original.
+    return;
   };
 
   const renderItem = ({ item }: { item: HistoryItem }) => {
@@ -146,7 +123,7 @@ export default function HistoryTabScreen() {
     const standalone = (item as any).workflow === 'standalone';
     const openStandalone = standalone && (item as any).state === 'open';
     const closedStandalone = standalone && (item as any).state === 'closed';
-    const retained = (item as any).workflow === 'prepared';
+    const retained = !standalone;
 
     return (
       <TouchableOpacity
