@@ -11,10 +11,18 @@
   "backendReceipt": "https://github.com/tester3x/wellbuilt-dashboard/blob/5b1a1578/docs/jsa-evidence-scoped-deploy-2026-11-25.json",
   "backendDisposition": "Only jsaLegacyEvidence and hardened submitJsaRecord ACTIVE; both required owner-history indexes READY; live handler source byte-matched tested compiled modules. Strict candidate rules held and all rules release IDs unchanged.",
   "installedOn": [
-    "S24"
+    "S24",
+    "ZFold"
   ],
   "s24Acceptance": "Native session/open off-shift JSA retained;25 Saved JSA records available; existing signed report opens and Back returns to history; no catalog requests logged in canary window. No End JSA, new signature/attestation, submission, print or local-data clear.",
-  "fold": "Still122; disconnected before install began. Reconnect requested, do not operate Fold job.",
+  "fold": {
+    "installed": true,
+    "versionCodeBefore": 122,
+    "versionCodeAfter": 123,
+    "verifiedAtUtc": "2026-11-25T18:26:40.348312+00:00",
+    "method": "Same approved APK SHA rechecked; adb install-r Success and native123 readback",
+    "preservation": "No launch, navigation, job/shift close, signature, print or app data clear."
+  },
   "limitations": [
     "This is read/view/catalog production canary, not a newly signed production JSA/receipt canary. Exact emulator write/retry/company switching and prior guided replay evidence are separate.",
     "Pre-existing theme/unfinished-status403 warnings observed; no rules relaxed to silence them."
