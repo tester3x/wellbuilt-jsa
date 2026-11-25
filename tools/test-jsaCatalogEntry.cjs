@@ -5,9 +5,10 @@ const start = source.indexOf('  // Load NDIC well data');
 const end = source.indexOf('  // A query entered before',start);
 assert(start > 0 && end > start);
 const effects = compile(source.slice(start,end));
-async function run(selectedOperator, assignedCustomers = [{name:'A'},{name:'B'}]) {
+async function run(selectedOperator, assignedCustomers = [{name:'A'},{name:'B'}], entry = {}) {
  const calls=[], tasks=[];
  const deps={
+  isSsoMode:false,workflowIsolation:{mountForm:true},catalogSearchRequested:true,...entry,
   useEffect: fn=>{tasks.push(fn);}, session:{uid:'u',generation:'g'}, selectedOperator,catalogRetry:0,
   setSelectedOperator:()=>{},setOperatorQuery:()=>{},setDriverOperators:()=>{},
   setWellDataLoading:()=>{},setWellDataError:()=>{},setOperatorWellsLoading:()=>{},setWellSuggestions:()=>{},
@@ -22,6 +23,9 @@ async function run(selectedOperator, assignedCustomers = [{name:'A'},{name:'B'}]
  return calls;
 }
 (async()=>{
+ assert.deepEqual(await run('A',undefined,{isSsoMode:true}),[],'Tickets handoff does not load any catalog');
+ assert.deepEqual(await run('A',undefined,{catalogSearchRequested:false}),[],'home/read/ack do not preload catalog');
+ assert.deepEqual(await run('A',undefined,{workflowIsolation:{mountForm:false}}),[],'hidden form has no catalog consumer');
  const initial=await run('');
  assert.deepEqual(initial.find(c=>c[0]==='wells'),['wells',[]]);
  assert(initial.some(c=>c[0]==='swd'));
@@ -38,5 +42,5 @@ async function run(selectedOperator, assignedCustomers = [{name:'A'},{name:'B'}]
  assert.equal(calendar.localCalendarDate(new Date('2026-01-01T02:00:00Z')),'2025-12-31');
  if(before===undefined)delete process.env.TZ;else process.env.TZ=before;
  assert(!source.includes('new Date().toISOString().slice(0, 10)'));
- console.log('PASS: actual entry loads no well catalog, selected company only, independent SWDs/theme, local evening/year dates');
+ console.log('PASS actual catalog entry: zero reads for Tickets handoff/home/hidden form; explicit standalone search retains operator choices, SWDs and manual entry; local dates.');
 })().catch(error=>{console.error(error);process.exitCode=1});

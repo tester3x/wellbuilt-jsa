@@ -111,6 +111,9 @@ export default function JsaHomeScreen() {
   const [wellDataLoading, setWellDataLoading] = useState(false);
   const [wellDataError, setWellDataError] = useState(false);
   const [catalogRetry, setCatalogRetry] = useState(0);
+  const [catalogSearchOwner, setCatalogSearchOwner] = useState('');
+  const catalogSearchKey = JSON.stringify([session?.uid, session?.generation]);
+  const catalogSearchRequested = catalogSearchOwner === catalogSearchKey;
   const [jobTypeSuggestions, setJobTypeSuggestions] = useState<string[]>([]);
   const [otherInfo, setOtherInfo] = useState("");
   const [date, setDate] = useState(
@@ -1591,7 +1594,7 @@ export default function JsaHomeScreen() {
   // Load NDIC well data — scoped by driver's assignedCustomers from RTDB.
   // Same approach as WB T: driver record has operator names, load only those wells.
   useEffect(() => {
-    if (!session) return;
+    if (!session || isSsoMode || !workflowIsolation.mountForm || !catalogSearchRequested) return;
     let cancelled = false;
     setSelectedOperator('');
     setOperatorQuery('');
@@ -1633,9 +1636,10 @@ export default function JsaHomeScreen() {
     };
     loadWellData();
     return () => { cancelled = true; };
-  }, [session?.uid, session?.generation, catalogRetry]);
+  }, [session?.uid, session?.generation, catalogRetry, isSsoMode, workflowIsolation.mountForm, catalogSearchRequested]);
 
   useEffect(() => {
+    if (isSsoMode || !workflowIsolation.mountForm || !catalogSearchRequested) return;
     let cancelled = false;
     setOperatorWellsLoading(!!selectedOperator);
     setWellSuggestions([]);
@@ -1643,7 +1647,7 @@ export default function JsaHomeScreen() {
       .catch(() => { if (!cancelled) setWellDataError(true); })
       .finally(() => { if (!cancelled) setOperatorWellsLoading(false); });
     return () => { cancelled = true; };
-  }, [selectedOperator, session?.uid, session?.generation]);
+  }, [selectedOperator, session?.uid, session?.generation, isSsoMode, workflowIsolation.mountForm, catalogSearchRequested]);
 
   // A query entered before the network response must refresh when data arrives.
   useEffect(() => {
@@ -2662,7 +2666,7 @@ export default function JsaHomeScreen() {
                 wellNameRef.current?.focus();
               }}
               selectTextOnFocus autoCorrect={false} placeholderTextColor={colors.textMuted}
-              onFocus={() => {setOperatorPickerOpen(true);formKeyboard.focus(oilCompanyRef.current,200);}}
+              onFocus={() => {setCatalogSearchOwner(catalogSearchKey);setOperatorPickerOpen(true);formKeyboard.focus(oilCompanyRef.current,200);}}
               onBlur={() => setTimeout(() => setOperatorPickerOpen(false), 200)}
               onChangeText={text => {
                 setOperatorQuery(text); setOperatorPickerOpen(true);
@@ -2703,7 +2707,7 @@ export default function JsaHomeScreen() {
                 handleWellTextChange(text);
                 setLocationInput(text);
               }}
-              onFocus={() => {setWellFieldFocused(true);formKeyboard.focus(wellNameRef.current,200);}}
+              onFocus={() => {setCatalogSearchOwner(catalogSearchKey);setWellFieldFocused(true);formKeyboard.focus(wellNameRef.current,200);}}
               onBlur={() => {
                 // Delay so tapping a suggestion item lands before the dropdown unmounts.
                 setTimeout(() => {
