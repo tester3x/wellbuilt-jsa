@@ -23,5 +23,13 @@
   "catalogChecks": "Actual home effects zero catalog reads for SSO/hidden/unrequested manual entries; explicit standalone search preserved;50 governed fields;77 owner;97 auth;100 lifecycle;3 workflow revision;TypeScript passed.",
   "sourceReviewCorrection": "The source-time reservation reconciliation summary said later guided test docs plus catalog change; full-delta.diff in fact also contains the earlier undeployed audit source. That broad delta was caught before installation. This follow-up supersedes that summary, never rewrites reservation/history.",
   "dependency": "docs/security-authenticated-evidence-2026-11-24.md: Backend bridge precedes client canary; immutable rules come last.",
-  "preservation": "S24 and Fold JSA remain122; no signed data, pending work or current Fold job modified."
+  "preservation": "S24 and Fold JSA remain122; no signed data, pending work or current Fold job modified.",
+  "backendAcceptance": {
+    "status": "completed locally; not deployed",
+    "backendSource": "fee3e2df43b14da6682784a42f7ca8b74f99e86a",
+    "receiptCommit": "4710bb02",
+    "receipt": "https://github.com/tester3x/wellbuilt-dashboard/blob/4710bb02/docs/jsa-backend-acceptance-2026-11-25.json",
+    "checks": "15 real callable groups,33 rules assertions,44 retained backend,46 standalone,14 standalone emulator flows, held-client/prepared/retention tests and existing guided backend replay passed; exact client sources in123 unchanged.",
+    "next": "Await explicit scoped deployment approval; provision/verify owner-history indexes, stage onlyjsaLegacyEvidence and hardenedsubmitJsaRecord, then client canary. Do not install123 against the old backend. Rules migration remains separately gated."
+  }
 }
