@@ -1,0 +1,23 @@
+{
+  "recordedAtUtc": "2026-11-25T17:55:41.058965+00:00",
+  "versionCode": 123,
+  "package": "com.syconik801.jsaapp",
+  "sourceCommit": "92d12c8db228260e535a6e1dad4dd901c78f0bc6",
+  "apkSha256": "bd64baa5811010c553fc17b56d64b0be7fbf1898f06fc7971b256dc6f4244ff5",
+  "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+  "artifact": "C:/dev/release-artifacts/jsa-123-92d12c8/com.syconik801.jsaapp-vc123.apk",
+  "reservation": "android-release-v123",
+  "backendSourceCommit": "4710bb02b02a46c783f9366cd5892b9248cae23e",
+  "backendReceipt": "https://github.com/tester3x/wellbuilt-dashboard/blob/5b1a1578/docs/jsa-evidence-scoped-deploy-2026-11-25.json",
+  "backendDisposition": "Only jsaLegacyEvidence and hardened submitJsaRecord ACTIVE; both required owner-history indexes READY; live handler source byte-matched tested compiled modules. Strict candidate rules held and all rules release IDs unchanged.",
+  "installedOn": [
+    "S24"
+  ],
+  "s24Acceptance": "Native session/open off-shift JSA retained;25 Saved JSA records available; existing signed report opens and Back returns to history; no catalog requests logged in canary window. No End JSA, new signature/attestation, submission, print or local-data clear.",
+  "fold": "Still122; disconnected before install began. Reconnect requested, do not operate Fold job.",
+  "limitations": [
+    "This is read/view/catalog production canary, not a newly signed production JSA/receipt canary. Exact emulator write/retry/company switching and prior guided replay evidence are separate.",
+    "Pre-existing theme/unfinished-status403 warnings observed; no rules relaxed to silence them."
+  ],
+  "history": "docs/jsa123-catalog-build-held.json remains historical evidence of the pre-deployment hold; this live release receipt records its resolved backend dependency."
+}
