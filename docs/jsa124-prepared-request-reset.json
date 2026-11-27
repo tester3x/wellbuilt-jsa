@@ -8,11 +8,35 @@
     "preparedFlowAndReadinessAndHistoryTests": 18,
     "attestationScopeTests": 20,
     "typescript": "passed",
-    "native": "Pending S24 build/install and original request reopened at Steps. New-request component regression exercised prior signoff, same-request retention, immediate stale-form removal and reset."
+    "native": "S24 package version124 confirmed. Old saved Android task link refused current-period mismatch. Returning via WB Tickets preserved Burger1 -> Gab1 Job Review; Start Job supplied its current request and JSA opened Steps & Hazards, Step1 of4. No steps or preparedness attestations submitted by automation. Warm cross-request remount proven in executable component harness, not claimed as a completed two-JSA native test."
   },
   "reconciliation": {
     "installed123Source": "92d12c8db228260e535a6e1dad4dd901c78f0bc6",
     "preRepairHead": "21823fd65b243a96f704f2920a461bb74ad4209e",
     "remoteSurvey": "All branches/tags freshly fetched; active laptop source contains installed123 ancestry. Other remote feature branches retain older historical source; no new desktop feature changes to integrate. Unpushed other-computer work is not visible."
-  }
+  },
+  "build": {
+    "sourceCommit": "0f5361f0ed90d6fa835ebeb17ffe69dfcba162c1",
+    "branch": "feat/jsa-register-join-code-20260917",
+    "checkout": "C:\\dev\\JSA",
+    "remote": "https://github.com/tester3x/wellbuilt-jsa.git",
+    "owner": "01a1cd39-d530-7ac2-ae54-c509b9310cfc",
+    "reservation": "android-release-v124",
+    "reservationTagObject": "e5b2cfa15e413dfc7a2ad9b9b168524040874729",
+    "profile": "preview",
+    "buildMethod": "local Android SDK/Gradle in registered home",
+    "sourceCopy": false,
+    "cloudBuild": false,
+    "package": "com.syconik801.jsaapp",
+    "versionCode": 124,
+    "signingSha256": "fc833ec7502cead7c5f7b0e5e394a2f7958ded629e92edb5ec7ff9522722d459",
+    "artifact": "C:\\dev\\release-artifacts\\jsa-124-0f5361f\\com.syconik801.jsaapp-vc124.apk",
+    "apkSha256": "25e069417718910fa1a3a6bad4a2f5a696d1e44461e0b9bf09a13082158f6e49",
+    "completedAt": "2026-11-27T08:01:04.226Z",
+    "installed": [
+      "S24"
+    ]
+  },
+  "fold": "Untouched, remains on123.",
+  "remaining": "Driver review/submit of current test JSA before continuing Well down device tests."
 }
