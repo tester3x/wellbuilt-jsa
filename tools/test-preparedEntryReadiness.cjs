@@ -22,7 +22,10 @@ function harness(){
  const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync('app/offline-job.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText,
   {exports,require:name=>{assert.ok(Object.hasOwn(modules,name),name);return modules[name];},console,Error});
  async function settle(){for(let i=0;i<30;i++)await Promise.resolve();}
- function render(){cursor=0;const tree=exports.default();pending.splice(0).forEach(fn=>fn());return tree;}
+ let mountedKey;
+ function render(){cursor=0;const boundary=exports.default();
+  if(boundary.props.key!==mountedKey){effects.forEach(e=>e?.cleanup?.());slots.length=0;effects.length=0;pending.length=0;mountedKey=boundary.props.key;}
+  const tree=boundary.type(boundary.props);pending.splice(0).forEach(fn=>fn());return tree;}
  function button(tree){if(!tree||typeof tree!=='object')return null;if(tree.type==='Button')return tree;for(const child of tree.props?.children||[]){if(Array.isArray(child)){for(const c of child){const b=button(c);if(b)return b;}}else{const b=button(child);if(b)return b;}}return null;}
  return {render,settle,button,current,get reads(){return reads;},get proofs(){return proofs;},get returns(){return returns;},
   get returnUrl(){return returnUrl;},ended:v=>{ended=v;},ready:v=>{ready=v;},fail:v=>{fail=v;},id:v=>{id=v;},delay:()=>{release=true;},resume:()=>{release();release=null;}};
@@ -50,4 +53,18 @@ test('ended protected request returns for fresh policy resolution without claimi
  const h=harness();h.ready(true);h.ended(true);h.render();await h.settle();const tree=h.render();
  assert.equal(h.returns,1);assert.match(h.returnUrl,/status=period_ended$/);assert.doesNotMatch(h.returnUrl,/completed/);
  assert.equal(h.proofs,0);assert.notEqual(tree.type,'PreparedProvider');
+});
+
+
+test('second job starts at Steps even when first job was left on signoff; same job foreground keeps its stage',async()=>{
+ const h=harness();h.ready(true);h.render();await h.settle();let tree=h.render();
+ const stepType=tree.props.children[0].type;
+ tree.props.value.navigate({pathname:'/signoff',params:{notes:'first job'}});
+ tree=h.render();assert.notEqual(tree.props.children[0].type,stepType);
+ assert.notEqual(h.render().props.children[0].type,stepType,'same request retains its stage');
+ h.id('s'.repeat(43));h.current.request.job.wellName='Second Well';
+ assert.notEqual(h.render().type,'PreparedProvider','old job must disappear immediately');await h.settle();tree=h.render();
+ assert.equal(tree.type,'PreparedProvider');assert.equal(tree.props.children[0].type,stepType);
+ assert.equal(tree.props.value.params.wellName,'Second Well');assert.equal(tree.props.value.params.notes,undefined);
+ assert.equal(h.returns,0);
 });

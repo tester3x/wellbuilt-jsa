@@ -1,0 +1,18 @@
+{
+  "task": "Prepared JSA route reuse must start new requests at Steps",
+  "versionCode": 124,
+  "scope": "S24 only; Fold untouched. No backend or rules changes.",
+  "cause": "Request data reloaded when route requestId changed, but the reused component kept screen=signoff and prior child state. Submission correctly refused missing step evidence.",
+  "fix": "Key complete inner guided form by protected requestId; new request synchronously unmounts old form and cancels its pending effect. Same request keeps live state; all durable draft and signed storage preserved.",
+  "validation": {
+    "preparedFlowAndReadinessAndHistoryTests": 18,
+    "attestationScopeTests": 20,
+    "typescript": "passed",
+    "native": "Pending S24 build/install and original request reopened at Steps. New-request component regression exercised prior signoff, same-request retention, immediate stale-form removal and reset."
+  },
+  "reconciliation": {
+    "installed123Source": "92d12c8db228260e535a6e1dad4dd901c78f0bc6",
+    "preRepairHead": "21823fd65b243a96f704f2920a461bb74ad4209e",
+    "remoteSurvey": "All branches/tags freshly fetched; active laptop source contains installed123 ancestry. Other remote feature branches retain older historical source; no new desktop feature changes to integrate. Unpushed other-computer work is not visible."
+  }
+}

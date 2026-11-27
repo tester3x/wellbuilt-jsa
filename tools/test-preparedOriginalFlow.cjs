@@ -22,3 +22,26 @@ test('the offline entry renders the original screen modules and contains no form
  assert.doesNotMatch(s,/<Switch|<TextInput|SignatureModal|PreparedJsaForm/);});
 
 test('missing operator cannot save a prepared JSA, including off shift',async()=>{const f=fixture();f.request.job.operator='';await assert.rejects(f.api.recordPreparedRead(f.id,'grant','h',{}),/operator/);assert.equal(f.writes.length,0);assert.equal(f.drains,0);});
+
+
+test('new prepared request remounts the entire original guided form; same request retains its boundary',()=>{
+ let requestId='request-one';
+ const React=require('react');
+ const mod=load('app/offline-job.tsx',{
+  react:{...React,default:React},'react-native':{},'expo-router':{useLocalSearchParams:()=>({requestId})},
+  '@react-native-async-storage/async-storage':{},'../services/PreparedJsaFlow':{},
+  '../services/preparedShiftJsa':{},'../services/sso/jsaAttestationScope':{},
+  './steps':()=>null,'./ppe':()=>null,'./signoff':()=>null,'./contexts/ThemeContext':{},
+ });
+ const first=mod.default();
+ const same=mod.default();
+ assert.equal(first.key,same.key);
+ requestId='request-two';const next=mod.default();
+ assert.equal(first.type,next.type);
+ assert.notEqual(first.key,next.key,'React must discard the prior final-page component state');
+ assert.equal(next.key,next.props.id);
+ assert.equal(next.props.id,'request-two');
+ const src=fs.readFileSync('app/offline-job.tsx','utf8');
+ assert.match(src,/useState<'steps'\|'ppe'\|'signoff'>\('steps'\)/);
+ assert.doesNotMatch(src,/removeItem|multiRemove|clear\(/,'navigation reset must not erase saved or signed records');
+});

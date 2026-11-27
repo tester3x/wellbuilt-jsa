@@ -12,8 +12,15 @@ import {useTheme} from './contexts/ThemeContext';
 
 /** Protected offline transport entry. All form UI is the original JSA screens. */
 export default function OfflineJob(){
- const accountReady=require('../modules/wellbuilt-platform/AccountGate').useAccountReady() as boolean;
  const {requestId:raw}=useLocalSearchParams<{requestId:string}>(),id=typeof raw==='string'?raw:'';
+ // Router can reuse this route instance for the next job. Scope the whole
+ // guided form to its request, not only the asynchronous data loader: page,
+ // confirmations, validation and child state must never cross job boundaries.
+ // Same-request foregrounding retains state; durable drafts remain untouched.
+ return <PreparedJob key={id} id={id}/>;
+}
+function PreparedJob({id}:{id:string}){
+ const accountReady=require('../modules/wellbuilt-platform/AccountGate').useAccountReady() as boolean;
  const {accent}=useTheme();
  const [verified,setVerified]=useState<Awaited<ReturnType<typeof resolvePreparedRead>>|null>(null);
  const [params,setParams]=useState<Record<string,string>>({});
